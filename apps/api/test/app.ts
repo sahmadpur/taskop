@@ -3,6 +3,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { inject } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { type AppConfig, loadConfig } from '../src/config/config';
@@ -24,8 +25,8 @@ const keys = generateKeyPairSync('ed25519', {
 export function testEnv(overrides: Record<string, string> = {}): Record<string, string> {
   return {
     NODE_ENV: 'test',
-    DATABASE_APP_URL: 'postgres://taskop_app:app@localhost:1/taskop',
-    DATABASE_PLATFORM_URL: 'postgres://taskop_platform:platform@localhost:1/taskop',
+    DATABASE_APP_URL: inject('db').appUrl,
+    DATABASE_PLATFORM_URL: inject('db').platformUrl,
     JWT_PRIVATE_KEY: keys.privateKey,
     JWT_PUBLIC_KEY: keys.publicKey,
     WEB_URL: 'http://localhost:5173',

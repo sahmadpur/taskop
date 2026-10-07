@@ -1,3 +1,10 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  '@scarf/scarf': false
+  '@swc/core': true
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false
