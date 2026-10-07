@@ -1,7 +1,12 @@
 .DS_Store
 node_modules/
+dist/
+.turbo/
+coverage/
 .env
 .env.*
 !.env.example
-dist/
-.turbo/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.expo/
