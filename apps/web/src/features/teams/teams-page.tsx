@@ -88,12 +88,23 @@ export function TeamsPage() {
           canEditMembers={canSeeUsers}
           onSubmit={async (v) => {
             const description = v.description || null;
-            const team =
-              editing === 'new'
-                ? await api.teams.create({ name: v.name, description })
-                : await api.teams.update(editing.id, { name: v.name, description });
-            if (canSeeUsers) await api.teams.setMembers(team.id, v.memberIds);
-            await refresh();
+            try {
+              let team: TeamDto;
+              if (editing === 'new') {
+                team = await api.teams.create({ name: v.name, description });
+                // Switch to edit mode so a retry after a partial failure updates instead of duplicating.
+                setEditing(team);
+              } else {
+                team = await api.teams.update(editing.id, { name: v.name, description });
+              }
+              if (canSeeUsers) {
+                const current = new Set(team.memberIds);
+                const changed = v.memberIds.length !== current.size || v.memberIds.some((id) => !current.has(id));
+                if (changed) await api.teams.setMembers(team.id, v.memberIds);
+              }
+            } finally {
+              await refresh();
+            }
           }}
         />
       )}
