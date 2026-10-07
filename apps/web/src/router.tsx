@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
+import { AuditPage } from '@/features/audit/audit-page';
 import { AcceptInvitePage } from '@/features/auth/accept-invite-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -58,10 +59,12 @@ const usersRoute = createRoute({ getParentRoute: () => appLayout, path: '/users'
 const userDetailRoute = createRoute({ getParentRoute: () => appLayout, path: '/users/$userId', component: UserDetailPage });
 const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles', component: RolesPage });
 
+const auditRoute = createRoute({ getParentRoute: () => appLayout, path: '/audit', component: AuditPage });
+
 const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
-  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute]),
+  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
