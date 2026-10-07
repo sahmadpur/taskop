@@ -6,6 +6,7 @@ import { ResetPasswordPage } from '@/features/auth/reset-password-page';
 import { SignupPage } from '@/features/auth/signup-page';
 import { VerifyEmailPage } from '@/features/auth/verify-email-page';
 import { HomePage } from '@/features/home/home-page';
+import { RolesPage } from '@/features/roles/roles-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { SitesPage } from '@/features/sites/sites-page';
 import { TeamsPage } from '@/features/teams/teams-page';
@@ -51,11 +52,12 @@ const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', comp
 const settingsRoute = createRoute({ getParentRoute: () => appLayout, path: '/settings', component: SettingsPage });
 const sitesRoute = createRoute({ getParentRoute: () => appLayout, path: '/sites', component: SitesPage });
 const teamsRoute = createRoute({ getParentRoute: () => appLayout, path: '/teams', component: TeamsPage });
+const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles', component: RolesPage });
 
 const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
-  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute]),
+  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
