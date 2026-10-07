@@ -1,4 +1,4 @@
-import type { CallHandler, ExecutionContext } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { defer, lastValueFrom, of } from 'rxjs';
 import { uuidv7 } from 'uuidv7';

@@ -29,14 +29,14 @@ describe('POST /auth/signup', () => {
   it('returns the refresh token in the body for mobile and as a cookie for web', async () => {
     const orgCode = uniq('org');
     const mobile = await t.http().post('/api/v1/auth/signup').send({
-      orgName: 'M', orgCode, fullName: 'Mobile User', email: `${orgCode}@m.az`, password: 'long password 1', client: 'mobile',
+      orgName: 'MM', orgCode, fullName: 'Mobile User', email: `${orgCode}@m.az`, password: 'long password 1', client: 'mobile',
     });
     expect(mobile.body.refreshToken).toBeTypeOf('string');
     expect(mobile.headers['set-cookie']).toBeUndefined();
 
     const orgCode2 = uniq('org');
     const web = await t.http().post('/api/v1/auth/signup').send({
-      orgName: 'W', orgCode: orgCode2, fullName: 'Web User', email: `${orgCode2}@w.az`, password: 'long password 1', client: 'web',
+      orgName: 'WW', orgCode: orgCode2, fullName: 'Web User', email: `${orgCode2}@w.az`, password: 'long password 1', client: 'web',
     });
     expect(web.body.refreshToken).toBeNull();
     const cookie = String(web.headers['set-cookie']);
@@ -49,7 +49,7 @@ describe('POST /auth/signup', () => {
   it('rejects a taken org code', async () => {
     const s = await signupTenant(t);
     const res = await t.http().post('/api/v1/auth/signup').send({
-      orgName: 'X', orgCode: s.orgCode.toUpperCase(), fullName: 'Other', email: `${uniq('e')}@x.az`, password: 'long password 1', client: 'web',
+      orgName: 'XY', orgCode: s.orgCode.toUpperCase(), fullName: 'Other', email: `${uniq('e')}@x.az`, password: 'long password 1', client: 'web',
     });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatchObject({ code: 'ORG_CODE_TAKEN', fields: { orgCode: 'errors.ORG_CODE_TAKEN' } });
@@ -58,7 +58,7 @@ describe('POST /auth/signup', () => {
   it('treats emails case-insensitively when checking duplicates', async () => {
     const s = await signupTenant(t);
     const res = await t.http().post('/api/v1/auth/signup').send({
-      orgName: 'X', orgCode: uniq('org'), fullName: 'Other', email: `  ${s.email.toUpperCase()} `, password: 'long password 1', client: 'web',
+      orgName: 'XY', orgCode: uniq('org'), fullName: 'Other', email: `  ${s.email.toUpperCase()} `, password: 'long password 1', client: 'web',
     });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('EMAIL_TAKEN');
@@ -66,7 +66,7 @@ describe('POST /auth/signup', () => {
 
   it('returns field-level validation keys', async () => {
     const res = await t.http().post('/api/v1/auth/signup').send({
-      orgName: 'X', orgCode: 'a', fullName: 'Other', email: 'bad', password: 'short', client: 'web',
+      orgName: 'XY', orgCode: 'a', fullName: 'Other', email: 'bad', password: 'short', client: 'web',
     });
     expect(res.status).toBe(400);
     expect(res.body.error.fields).toMatchObject({
