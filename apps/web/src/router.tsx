@@ -7,6 +7,7 @@ import { SignupPage } from '@/features/auth/signup-page';
 import { VerifyEmailPage } from '@/features/auth/verify-email-page';
 import { HomePage } from '@/features/home/home-page';
 import { SettingsPage } from '@/features/settings/settings-page';
+import { SitesPage } from '@/features/sites/sites-page';
 import { AppShell } from '@/layouts/app-shell';
 import { AuthLayout } from '@/layouts/auth-layout';
 import { session } from '@/lib/session';
@@ -47,11 +48,12 @@ const verifyEmailRoute = createRoute({ getParentRoute: () => rootRoute, path: '/
 
 const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage });
 const settingsRoute = createRoute({ getParentRoute: () => appLayout, path: '/settings', component: SettingsPage });
+const sitesRoute = createRoute({ getParentRoute: () => appLayout, path: '/sites', component: SitesPage });
 
 const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
-  appLayout.addChildren([homeRoute, settingsRoute]),
+  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
