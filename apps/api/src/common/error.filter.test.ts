@@ -1,10 +1,10 @@
-import { NotFoundException } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { ZodValidationException } from 'nestjs-zod';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import '@taskop/contracts';
 import { AppError } from './app-error';
-import { toAppError } from './error.filter';
+import { AllExceptionsFilter, toAppError } from './error.filter';
 
 describe('toAppError', () => {
   it('passes AppError through', () => {
@@ -36,5 +36,23 @@ describe('toAppError', () => {
 
   it('hides unknown errors', () => {
     expect(toAppError(new Error('boom')).code).toBe('INTERNAL');
+  });
+});
+
+describe('AllExceptionsFilter logging', () => {
+  it('does not log driver messages or parameters for unmapped DB errors', () => {
+    const spy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const dbError = Object.assign(new Error('Failed query: select ... params: secret-hash'), {
+      cause: { code: '42P01', detail: 'secret-hash' },
+    });
+    const res = { setHeader: vi.fn(), status: vi.fn().mockReturnThis(), json: vi.fn() };
+    const host = { switchToHttp: () => ({ getRequest: () => ({ id: 'r1' }), getResponse: () => res }) };
+    new AllExceptionsFilter().catch(dbError, host as never);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(spy.mock.calls[0]);
+    expect(logged).not.toContain('secret-hash');
+    expect(logged).toContain('42P01');
+    expect(res.status).toHaveBeenCalledWith(500);
+    spy.mockRestore();
   });
 });

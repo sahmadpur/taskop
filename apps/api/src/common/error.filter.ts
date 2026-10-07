@@ -35,6 +35,23 @@ export function toAppError(e: unknown): AppError {
   return new AppError('INTERNAL');
 }
 
+/** Never log driver/ORM errors verbatim: their messages embed SQL and bound parameters. */
+export function sanitiseForLog(exception: unknown, requestId: string | null): Record<string, unknown> {
+  const pg = pgErrorOf(exception);
+  const error = exception instanceof Error ? exception : null;
+  const payload: Record<string, unknown> = {
+    requestId,
+    errorName: error?.name ?? typeof exception,
+    pgCode: pg?.code ?? null,
+    pgConstraint: pg?.constraint ?? null,
+  };
+  if (!pg && error) payload.message = error.message;
+  if (error?.stack) {
+    payload.stack = pg ? error.stack.split('\n').filter((l) => l.trimStart().startsWith('at ')).join('\n') : error.stack;
+  }
+  return payload;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Errors');
@@ -46,7 +63,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const requestId = req.id ? String(req.id) : null;
     const err = toAppError(exception);
     if (err.code === 'INTERNAL') {
-      this.logger.error({ err: exception, requestId }, 'Unhandled error');
+      this.logger.error(sanitiseForLog(exception, requestId), 'Unhandled error');
     }
     if (err.retryAfterSeconds) res.setHeader('Retry-After', String(err.retryAfterSeconds));
     res.status(err.status).json({
