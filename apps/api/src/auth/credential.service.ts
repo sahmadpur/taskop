@@ -41,7 +41,8 @@ export class CredentialService {
       const token = await this.oneTime.create({ tenantId: candidate.tenantId, userId: candidate.id, purpose: 'password_reset' });
       return passwordResetMail({ to: email, fullName: user?.fullName ?? '', webUrl: this.config.WEB_URL, token });
     });
-    await this.auth.sendMail(mail);
+    // Not awaited: response time must not reveal whether the account exists (sendMail catches and logs).
+    void this.auth.sendMail(mail);
   }
 
   async resetPassword(token: string, password: string): Promise<void> {
@@ -61,6 +62,7 @@ export class CredentialService {
 
   /** Authenticated route: runs inside the request's tenant transaction. */
   async changeCredential(p: Principal, input: ChangeCredentialDto): Promise<void> {
+    await this.rateLimit.consume(`credential-change:${p.userId}`, 5, 900);
     const tx = this.db.tx();
     const [user] = await tx
       .select({ credentialHash: users.credentialHash, credentialKind: users.credentialKind })

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestApp, type TestApp } from './app';
 import { bearer, createUserDirect, issueInvite, loginStaff, loginWorker, signupTenant } from './fixtures';
 import { ownerQuery } from './owner-db';
@@ -20,7 +20,7 @@ describe('password reset', () => {
     const s = await signupTenant(t);
     const session = await loginStaff(t, s.email, s.password);
     await t.http().post('/api/v1/auth/password/forgot').send({ email: s.email.toUpperCase() });
-    const token = t.mailer.tokenFor(s.email);
+    const token = await vi.waitFor(() => t.mailer.tokenFor(s.email));
     expect((await t.http().post('/api/v1/auth/password/reset').send({ token, password: 'brand new password' })).status).toBe(204);
     await loginStaff(t, s.email, 'brand new password');
     expect((await t.http().post('/api/v1/auth/refresh').send({ refreshToken: session.refreshToken })).status).toBe(401);
@@ -31,7 +31,7 @@ describe('password reset', () => {
   it('rejects expired reset tokens', async () => {
     const s = await signupTenant(t);
     await t.http().post('/api/v1/auth/password/forgot').send({ email: s.email });
-    const token = t.mailer.tokenFor(s.email);
+    const token = await vi.waitFor(() => t.mailer.tokenFor(s.email));
     await ownerQuery("update auth_tokens set expires_at = now() - interval '1 second' where user_id = $1", [s.ownerId]);
     expect((await t.http().post('/api/v1/auth/password/reset').send({ token, password: 'brand new password' })).body.error.code).toBe(
       'TOKEN_INVALID',
@@ -53,6 +53,18 @@ describe('credential change', () => {
     const res = await t.http().post('/api/v1/auth/credential/change').set(bearer(login.accessToken)).send({ currentSecret: '000001', newSecret: '730184' });
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('throttles wrong current-secret attempts', async () => {
+    const s = await signupTenant(t);
+    const w = await createUserDirect(t, s.tenantId);
+    const login = await loginWorker(t, s.orgCode, w.username!, w.secret);
+    const attempt = () =>
+      t.http().post('/api/v1/auth/credential/change').set(bearer(login.accessToken)).send({ currentSecret: '000001', newSecret: '730184' });
+    for (let i = 0; i < 5; i++) expect((await attempt()).status).toBe(401);
+    const res = await attempt();
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('RATE_LIMITED');
   });
 
   it('validates the new secret against the user credential kind', async () => {
