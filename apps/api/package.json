@@ -1,0 +1,55 @@
+{
+  "name": "@taskop/api",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "scripts": {
+    "build": "swc src -d dist --strip-leading-paths --config-file .swcrc",
+    "dev": "pnpm build && (swc src -d dist --strip-leading-paths --config-file .swcrc --watch & node --env-file=.env --enable-source-maps --watch-path=dist dist/main.js)",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:setup": "tsx --env-file=.env src/db/scripts/setup.ts",
+    "db:seed": "tsx --env-file=.env src/db/scripts/seed.ts",
+    "keys:generate": "tsx src/scripts/generate-keys.ts",
+    "platform:create-admin": "tsx --env-file=.env src/scripts/create-platform-admin.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-express": "^12.1.2",
+    "@nestjs/swagger": "^12.0.2",
+    "@taskop/contracts": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "nestjs-pino": "^5.3.1",
+    "nestjs-zod": "^5.5.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "uuidv7": "^1.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.1.2",
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.16.13",
+    "@taskop/config": "workspace:*",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.12.0",
+    "pino-pretty": "^13.2.0",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.0.3"
+  }
+}
