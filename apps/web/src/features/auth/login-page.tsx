@@ -1,5 +1,6 @@
 import { Link, useNavigate, useRouter, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { safeRedirectPath } from '@/lib/redirect';
 import { session } from '@/lib/session';
 import { LoginForm } from './login-form';
 
@@ -14,7 +15,8 @@ export function LoginPage() {
       <LoginForm
         onSuccess={async (result) => {
           await session.signedIn(result);
-          if (redirect?.startsWith('/')) router.history.push(redirect);
+          const target = safeRedirectPath(redirect);
+          if (target) router.history.push(target);
           else await navigate({ to: '/' });
         }}
       />
