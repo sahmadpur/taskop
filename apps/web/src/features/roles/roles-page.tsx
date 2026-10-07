@@ -67,10 +67,13 @@ export function RolesPage() {
                     await refresh();
                     setSelected(created);
                   } else {
-                    if (!selected.systemKey && draft.name !== selected.name) await api.roles.update(selected.id, { name: draft.name });
-                    if (draft.dataScope !== selected.dataScope) await api.roles.update(selected.id, { dataScope: draft.dataScope });
-                    await api.roles.setPermissions(selected.id, draft.permissions);
-                    await refresh();
+                    try {
+                      if (!selected.systemKey && draft.name !== selected.name) await api.roles.update(selected.id, { name: draft.name });
+                      if (draft.dataScope !== selected.dataScope) await api.roles.update(selected.id, { dataScope: draft.dataScope });
+                      await api.roles.setPermissions(selected.id, draft.permissions);
+                    } finally {
+                      await refresh();
+                    }
                   }
                   toast.success(t('common.saved'));
                 }}
