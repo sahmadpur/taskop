@@ -7,13 +7,26 @@ import type { AppRequest, Principal } from '../common/request';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { type IssuedLogin, AuthService } from './auth.service';
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from './cookies';
-import { LoginResultDto, LoginStaffDto, LoginWorkerDto, RefreshDto, SignupDto, VerifyEmailDto } from './dto';
+import { CredentialService } from './credential.service';
+import {
+  ChangeCredentialDto,
+  ForgotPasswordDto,
+  InviteAcceptDto,
+  LoginResultDto,
+  LoginStaffDto,
+  LoginWorkerDto,
+  RefreshDto,
+  ResetPasswordDto,
+  SignupDto,
+  VerifyEmailDto,
+} from './dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly credentials: CredentialService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -74,6 +87,35 @@ export class AuthController {
   @HttpCode(204)
   async resendVerification(@CurrentPrincipal() p: Principal): Promise<void> {
     await this.auth.resendVerification(p);
+  }
+
+  @Public()
+  @Post('password/forgot')
+  @HttpCode(204)
+  async forgot(@Body() body: ForgotPasswordDto): Promise<void> {
+    await this.credentials.forgotPassword(body.email);
+  }
+
+  @Public()
+  @Post('password/reset')
+  @HttpCode(204)
+  async reset(@Body() body: ResetPasswordDto): Promise<void> {
+    await this.credentials.resetPassword(body.token, body.password);
+  }
+
+  @Public()
+  @Post('invite/accept')
+  @HttpCode(200)
+  @ApiOkResponse({ type: LoginResultDto })
+  async acceptInvite(@Body() body: InviteAcceptDto, @Res({ passthrough: true }) res: Response): Promise<LoginResult> {
+    return this.respond(await this.credentials.acceptInvite(body), res);
+  }
+
+  @ApiBearerAuth()
+  @Post('credential/change')
+  @HttpCode(204)
+  async changeCredential(@CurrentPrincipal() p: Principal, @Body() body: ChangeCredentialDto): Promise<void> {
+    await this.credentials.changeCredential(p, body);
   }
 
   private respond(issued: IssuedLogin, res: Response): LoginResult {

@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
+import { CredentialService } from './credential.service';
 import { PasswordHasher } from './crypto/password-hasher';
 import { TokenService } from './crypto/token.service';
 import { LoginLookup } from './login-lookup';
@@ -18,6 +19,7 @@ import { SessionService } from './session.service';
   controllers: [AuthController, MeController],
   providers: [
     AuthService,
+    CredentialService,
     PasswordHasher,
     TokenService,
     SessionService,
@@ -29,6 +31,6 @@ import { SessionService } from './session.service';
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
   ],
-  exports: [AuthService, PasswordHasher, TokenService, SessionService, OneTimeTokenService, MeService, RateLimitService],
+  exports: [AuthService, CredentialService, PasswordHasher, TokenService, SessionService, OneTimeTokenService, MeService, RateLimitService],
 })
 export class AuthModule {}

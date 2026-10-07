@@ -3,6 +3,7 @@ import type { LoginResult, Me, SystemRoleKey } from '@taskop/contracts';
 import { and, eq } from 'drizzle-orm';
 import { expect } from 'vitest';
 import { PasswordHasher } from '../src/auth/crypto/password-hasher';
+import { OneTimeTokenService } from '../src/auth/one-time-token.service';
 import { DbService } from '../src/db/db.service';
 import { roles, users } from '../src/db/schema';
 import type { TestApp } from './app';
@@ -109,4 +110,12 @@ export async function loginStaff(t: TestApp, email: string, password: string, cl
   const res = await t.http().post('/api/v1/auth/login/staff').send({ email, password, client });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body as LoginResult;
+}
+
+export async function issueInvite(t: TestApp, tenantId: string) {
+  const u = await createUserDirect(t, tenantId, { kind: 'staff', roleKey: 'manager', status: 'invited', secret: null });
+  const token = await t.app
+    .get(DbService)
+    .withTenant(tenantId, null, () => t.app.get(OneTimeTokenService).create({ tenantId, userId: u.id, purpose: 'invite' }));
+  return { userId: u.id, email: u.email!, token };
 }
