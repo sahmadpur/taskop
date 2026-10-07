@@ -52,6 +52,25 @@ describe('mobile session', () => {
     expect(mockStore.get('taskop.refreshToken')).toBe('r1');
   });
 
+  it('falls back to the cached profile offline when refresh fails with a 5xx', async () => {
+    mockStore.set('taskop.refreshToken', 'r1');
+    mockStore.set('taskop.me', JSON.stringify(me));
+    (global.fetch as jest.Mock).mockResolvedValue(
+      json(503, { error: { code: 'INTERNAL', messageKey: 'errors.INTERNAL', fields: null, retryAfterSeconds: null, requestId: null } }),
+    );
+    await session.bootstrap();
+    expect(session.get()).toMatchObject({ status: 'authenticated', offline: true });
+    expect(mockStore.get('taskop.refreshToken')).toBe('r1');
+  });
+
+  it('is anonymous (not stuck loading) when the cached profile is corrupt and the network fails', async () => {
+    mockStore.set('taskop.refreshToken', 'r1');
+    mockStore.set('taskop.me', '{not json');
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await session.bootstrap();
+    expect(session.get()).toEqual({ status: 'anonymous' });
+  });
+
   it('clears storage when refresh is rejected', async () => {
     mockStore.set('taskop.refreshToken', 'r1');
     mockStore.set('taskop.me', JSON.stringify(me));

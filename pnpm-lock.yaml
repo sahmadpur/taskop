@@ -187,6 +187,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@expo/vector-icons':
+        specifier: ^15.1.1
+        version: 15.1.1(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(@react-native/metro-config@0.87.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
       '@hookform/resolvers':
         specifier: ^5.9.1
         version: 5.9.1(@sinclair/typebox@0.27.12)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.89.0(@types/react@19.2.18)(react@19.2.3))(zod@4.6.5)
@@ -325,7 +328,7 @@ importers:
         version: 7.89.0(@types/react@19.3.0)(react@19.3.0)
       react-i18next:
         specifier: ^17.0.15
-        version: 17.0.15(i18next@26.4.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.0))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(typescript@7.0.2)
+        version: 17.0.15(i18next@26.4.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.0))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(typescript@7.0.2)
       shadcn:
         specifier: ^4.21.3
         version: 4.21.3(supports-color@8.1.1)
@@ -1213,6 +1216,13 @@ packages:
         optional: true
       react-native-worklets:
         optional: true
+
+  '@expo/vector-icons@15.1.1':
+    resolution: {integrity: sha512-Iu2VkcoI5vygbtYngm7jb4ifxElNVXQYdDrYkT7UCEIiKLeWnQY0wf2ZhHZ+Wro6Sc5TaumpKUOqDRpLi5rkvw==}
+    peerDependencies:
+      expo-font: '>=14.0.4'
+      react: '*'
+      react-native: '*'
 
   '@expo/ws-tunnel@2.0.1':
     resolution: {integrity: sha512-mljsRffbOHzmSimYQbQu9h9NR3alwCCwEEouRGFL4QRTt8dNvsNtKEPa/5jHmtDLDtsh4xXsWKwzjN9BTpeXHQ==}
@@ -7708,6 +7718,12 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
+  '@expo/vector-icons@15.1.1(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(@react-native/metro-config@0.87.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)':
+    dependencies:
+      expo-font: 57.0.4(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(@react-native/metro-config@0.87.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      react: 19.2.3
+      react-native: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(@react-native/metro-config@0.87.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1)
+
   '@expo/ws-tunnel@2.0.1(ws@8.22.0)':
     dependencies:
       ws: 8.22.0
@@ -9107,6 +9123,19 @@ snapshots:
       - '@babel/core'
       - supports-color
 
+  '@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)':
+    dependencies:
+      '@jest/create-cache-key-function': 29.7.0
+      '@react-native/js-polyfills': 0.86.3
+      babel-jest: 29.7.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      jest-environment-node: 29.7.0
+      react: 19.3.0
+      regenerator-runtime: 0.13.11
+    transitivePeerDependencies:
+      - '@babel/core'
+      - supports-color
+    optional: true
+
   '@react-native/js-polyfills@0.86.3': {}
 
   '@react-native/js-polyfills@0.87.1': {}
@@ -9143,12 +9172,12 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  '@react-native/virtualized-lists@0.86.3(@types/react@19.3.0)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
+  '@react-native/virtualized-lists@0.86.3(@types/react@19.3.0)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
     dependencies:
       invariant: 2.2.4
       nullthrows: 1.1.1
       react: 19.3.0
-      react-native: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
+      react-native: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
     optionalDependencies:
       '@types/react': 19.3.0
     optional: true
@@ -13033,7 +13062,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  react-i18next@17.0.15(i18next@26.4.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.0))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(typescript@7.0.2):
+  react-i18next@17.0.15(i18next@26.4.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.0))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(typescript@7.0.2):
     dependencies:
       '@babel/runtime': 7.29.7
       html-parse-stringify: 4.0.1
@@ -13042,7 +13071,7 @@ snapshots:
       use-sync-external-store: 1.7.0(react@19.3.0)
     optionalDependencies:
       react-dom: 19.3.0(react@19.3.0)
-      react-native: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
+      react-native: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
       typescript: 7.0.2
 
   react-i18next@17.0.16(i18next@26.4.2(typescript@6.0.3))(react-dom@19.3.0(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(@react-native/metro-config@0.87.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(typescript@6.0.3):
@@ -13175,7 +13204,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1):
+  react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1):
     dependencies:
       '@react-native/assets-registry': 0.86.3
       '@react-native/codegen': 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))
@@ -13183,7 +13212,7 @@ snapshots:
       '@react-native/gradle-plugin': 0.86.3
       '@react-native/js-polyfills': 0.86.3
       '@react-native/normalize-colors': 0.86.3
-      '@react-native/virtualized-lists': 0.86.3(@types/react@19.3.0)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
+      '@react-native/virtualized-lists': 0.86.3(@types/react@19.3.0)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1
@@ -13211,6 +13240,7 @@ snapshots:
       ws: 7.5.13
       yargs: 17.7.3
     optionalDependencies:
+      '@react-native/jest-preset': 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)
       '@types/react': 19.3.0
     transitivePeerDependencies:
       - '@babel/core'

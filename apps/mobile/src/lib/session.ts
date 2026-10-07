@@ -1,4 +1,4 @@
-import { ApiClient, ApiError, createTaskopApi, type TokenStore } from '@taskop/api-client';
+import { ApiClient, createTaskopApi, type TokenStore } from '@taskop/api-client';
 import { type LoginResult, type Me, meSchema } from '@taskop/contracts';
 import { useSyncExternalStore } from 'react';
 import { secureStorage, STORAGE_KEYS } from './secure-storage';
@@ -32,8 +32,12 @@ const cacheMe = (me: Me) => secureStorage.set(STORAGE_KEYS.me, JSON.stringify(me
 async function loadCachedMe(): Promise<Me | null> {
   const raw = await secureStorage.get(STORAGE_KEYS.me);
   if (!raw) return null;
-  const parsed = meSchema.safeParse(JSON.parse(raw));
-  return parsed.success ? parsed.data : null;
+  try {
+    const parsed = meSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 const apiClient = new ApiClient({
@@ -59,8 +63,9 @@ export const session = {
     try {
       const result = await apiClient.refresh();
       if (!result) set({ status: 'anonymous' });
-    } catch (e) {
-      const cached = e instanceof ApiError && e.code === 'NETWORK' ? await loadCachedMe() : null;
+    } catch {
+      // refresh() only throws for non-rejections (network, 5xx, 429, internal): keep the session and go offline.
+      const cached = await loadCachedMe();
       set(cached ? { status: 'authenticated', me: cached, offline: true } : { status: 'anonymous' });
     }
   },
