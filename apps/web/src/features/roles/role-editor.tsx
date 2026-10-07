@@ -1,5 +1,5 @@
 import { DATA_SCOPES, type DataScope, type PermissionCatalog, type PermissionKey, type RoleDto } from '@taskop/contracts';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormError } from '@/components/form-error';
 import { NativeSelect } from '@/components/native-select';
@@ -27,13 +27,17 @@ interface Props {
 
 export function RoleEditor({ role, catalog, held, canManage, onSave, onToggleActive }: Props) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState<RoleDraft>({ name: '', dataScope: 'own', permissions: [] });
+  const initial = (r: RoleDto | null): RoleDraft =>
+    r ? { name: r.name, dataScope: r.dataScope, permissions: r.permissions } : { name: '', dataScope: 'own', permissions: [] };
+  const [draft, setDraft] = useState<RoleDraft>(() => initial(role));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    setDraft(role ? { name: role.name, dataScope: role.dataScope, permissions: role.permissions } : { name: '', dataScope: 'own', permissions: [] });
+  const [prevRole, setPrevRole] = useState(role);
+  if (prevRole !== role) {
+    setPrevRole(role);
+    setDraft(initial(role));
     setError(null);
-  }, [role]);
+  }
   const locked = !canManage || (role !== null && !role.editable);
   const nameLocked = locked || role?.systemKey != null;
 
