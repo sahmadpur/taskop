@@ -5,6 +5,9 @@ import { LoginPage } from '@/features/auth/login-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
 import { SignupPage } from '@/features/auth/signup-page';
 import { VerifyEmailPage } from '@/features/auth/verify-email-page';
+import { HomePage } from '@/features/home/home-page';
+import { SettingsPage } from '@/features/settings/settings-page';
+import { AppShell } from '@/layouts/app-shell';
 import { AuthLayout } from '@/layouts/auth-layout';
 import { session } from '@/lib/session';
 
@@ -24,7 +27,7 @@ export const authLayout = createRoute({
 export const appLayout = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app',
-  component: Outlet,
+  component: AppShell,
   beforeLoad: ({ location }) => {
     if (session.get().status !== 'authenticated') throw redirect({ to: '/login', search: { redirect: location.href } });
   },
@@ -42,12 +45,13 @@ const resetRoute = createRoute({ getParentRoute: () => authLayout, path: '/reset
 const acceptInviteRoute = createRoute({ getParentRoute: () => authLayout, path: '/accept-invite', component: AcceptInvitePage, validateSearch: tokenSearch });
 const verifyEmailRoute = createRoute({ getParentRoute: () => rootRoute, path: '/verify-email', component: VerifyEmailPage, validateSearch: tokenSearch });
 
-const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: () => <p className="p-8">Taskop</p> });
+const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage });
+const settingsRoute = createRoute({ getParentRoute: () => appLayout, path: '/settings', component: SettingsPage });
 
 const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
-  appLayout.addChildren([homeRoute]),
+  appLayout.addChildren([homeRoute, settingsRoute]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
