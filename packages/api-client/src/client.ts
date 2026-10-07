@@ -107,11 +107,15 @@ export class ApiClient {
       if (this.opts.client === 'mobile' && !refreshToken) break;
       const res = await this.send('POST', '/auth/refresh', { body: refreshToken ? { refreshToken } : {}, auth: false });
       if (res.ok) {
-        const result = loginResultSchema.parse(await res.json());
+        const parsed = loginResultSchema.safeParse(await res.json().catch(() => null));
+        if (!parsed.success) throw new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
+        const result = parsed.data;
         await this.opts.tokenStore.save({ accessToken: result.accessToken, refreshToken: result.refreshToken });
         this.opts.onRefreshed?.(result);
         return result;
       }
+      // Only a rejected session logs out; transient failures (5xx, 429, ...) must not.
+      if (![400, 401, 403].includes(res.status)) throw await toApiError(res);
       // Another tab may have just rotated the shared cookie: the API answers 401 within its grace window.
       if (res.status !== 401 || this.opts.client !== 'web' || attempt === 1) break;
       await sleep(this.opts.refreshRetryDelayMs ?? 300);
@@ -140,7 +144,15 @@ export class ApiClient {
   private async parse<T>(res: Response, schema?: ZodType<T>): Promise<T> {
     if (!res.ok) throw await toApiError(res);
     if (res.status === 204) return undefined as T;
-    const json: unknown = await res.json();
-    return schema ? schema.parse(json) : (json as T);
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      throw new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
+    }
+    if (!schema) return json as T;
+    const parsed = schema.safeParse(json);
+    if (!parsed.success) throw new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
+    return parsed.data;
   }
 }

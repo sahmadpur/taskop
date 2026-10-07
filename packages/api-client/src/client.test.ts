@@ -114,4 +114,24 @@ describe('ApiClient', () => {
     const { api } = setup(() => new Response(null, { status: 204 }));
     await expect(createTaskopApi(api).auth.logout()).resolves.toBeUndefined();
   });
+
+  it('keeps the session when refresh fails transiently (503)', async () => {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'old', refreshToken: null });
+    const { api, onSessionExpired } = setup((url) => (url.endsWith('/auth/refresh') ? err(503, 'INTERNAL') : err(401, 'UNAUTHENTICATED')), 'web', store);
+    await expect(createTaskopApi(api).me()).rejects.toMatchObject({ status: 503 });
+    expect(store.getAccessToken()).toBe('old');
+    expect(onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it('returns null from refresh on mobile without a stored refresh token', async () => {
+    const { api, fetchMock } = setup(() => json(200, me), 'mobile');
+    await expect(api.refresh()).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('turns a malformed success body into an INTERNAL ApiError', async () => {
+    const { api } = setup(() => new Response('<html>', { status: 200 }));
+    await expect(createTaskopApi(api).me()).rejects.toMatchObject({ code: 'INTERNAL', messageKey: 'errors.INTERNAL' });
+  });
 });
