@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import type { LoginResult, Me } from '@taskop/contracts';
+import type { LoginResult, Me, SystemRoleKey } from '@taskop/contracts';
+import { and, eq } from 'drizzle-orm';
 import { expect } from 'vitest';
+import { PasswordHasher } from '../src/auth/crypto/password-hasher';
+import { DbService } from '../src/db/db.service';
+import { roles, users } from '../src/db/schema';
 import type { TestApp } from './app';
 
 export const uniq = (prefix: string) => `${prefix}-${randomBytes(4).toString('hex')}`;
@@ -39,4 +43,70 @@ export async function signupTenant(t: TestApp, overrides: Record<string, unknown
     accessToken: result.accessToken,
     me: result.me,
   };
+}
+
+export interface DirectUserOptions {
+  kind?: 'worker' | 'staff';
+  roleKey?: SystemRoleKey;
+  roleId?: string;
+  username?: string;
+  email?: string;
+  secret?: string | null;
+  credentialKind?: 'pin' | 'password';
+  status?: 'active' | 'deactivated' | 'invited';
+  fullName?: string;
+  managerId?: string | null;
+  emailVerified?: boolean;
+}
+
+/** Inserts a user straight into the DB (bypassing the Users API, which arrives in Task 17). */
+export async function createUserDirect(t: TestApp, tenantId: string, opts: DirectUserOptions = {}) {
+  const db = t.app.get(DbService);
+  const hasher = t.app.get(PasswordHasher);
+  const kind = opts.kind ?? 'worker';
+  const credentialKind = opts.credentialKind ?? (kind === 'worker' ? 'pin' : 'password');
+  const secret = opts.secret === undefined ? (credentialKind === 'pin' ? '482915' : 'staff password 1') : opts.secret;
+  const username = kind === 'worker' ? (opts.username ?? uniq('w')).toLowerCase() : null;
+  const email = kind === 'staff' ? (opts.email ?? `${uniq('s')}@example.az`).toLowerCase() : null;
+  const credentialHash = secret ? await hasher.hash(secret) : null;
+  const id = await db.withTenant(tenantId, null, async (tx) => {
+    let roleId = opts.roleId;
+    if (!roleId) {
+      const [role] = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(and(eq(roles.tenantId, tenantId), eq(roles.systemKey, opts.roleKey ?? (kind === 'worker' ? 'worker' : 'admin'))));
+      roleId = role!.id;
+    }
+    const [row] = await tx
+      .insert(users)
+      .values({
+        tenantId,
+        fullName: opts.fullName ?? 'Test User',
+        roleId,
+        kind,
+        username,
+        email,
+        credentialHash,
+        credentialKind: secret ? credentialKind : null,
+        status: opts.status ?? 'active',
+        managerId: opts.managerId ?? null,
+        emailVerifiedAt: opts.emailVerified ? new Date() : null,
+      })
+      .returning({ id: users.id });
+    return row!.id;
+  });
+  return { id, username, email, secret: secret ?? '' };
+}
+
+export async function loginWorker(t: TestApp, orgCode: string, username: string, secret: string, client = 'mobile') {
+  const res = await t.http().post('/api/v1/auth/login/worker').send({ orgCode, username, secret, client });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return res.body as LoginResult;
+}
+
+export async function loginStaff(t: TestApp, email: string, password: string, client = 'mobile') {
+  const res = await t.http().post('/api/v1/auth/login/staff').send({ email, password, client });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return res.body as LoginResult;
 }
