@@ -62,6 +62,29 @@ describe('login', () => {
     expect(row.rows[0]).toMatchObject({ failed_login_count: 0, locked_until: null });
   });
 
+  it('concurrent wrong secrets still lock the account', async () => {
+    const s = await signupTenant(t);
+    const w = await createUserDirect(t, s.tenantId);
+    const attempt = (secret: string) =>
+      t.http().post('/api/v1/auth/login/worker').send({ orgCode: s.orgCode, username: w.username, secret, client: 'mobile' });
+    await Promise.all(Array.from({ length: 6 }, () => attempt('000001')));
+    const row = await ownerQuery('select failed_login_count, locked_until from users where id = $1', [w.id]);
+    expect(row.rows[0]!.failed_login_count).toBeGreaterThanOrEqual(5);
+    expect(row.rows[0]!.locked_until).not.toBeNull();
+    expect((await attempt(w.secret)).body.error.code).toBe('ACCOUNT_LOCKED');
+  });
+
+  it('an expired lock restarts the count', async () => {
+    const s = await signupTenant(t);
+    const w = await createUserDirect(t, s.tenantId);
+    await ownerQuery("update users set failed_login_count = 5, locked_until = now() - interval '1 second' where id = $1", [w.id]);
+    const res = await t.http().post('/api/v1/auth/login/worker').send({ orgCode: s.orgCode, username: w.username, secret: '000001', client: 'mobile' });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+    const row = await ownerQuery('select failed_login_count, locked_until from users where id = $1', [w.id]);
+    expect(row.rows[0]).toMatchObject({ failed_login_count: 1, locked_until: null });
+  });
+
   it('refuses login for a suspended tenant after correct credentials', async () => {
     const s = await signupTenant(t);
     await ownerQuery("update tenants set status = 'suspended' where id = $1", [s.tenantId]);

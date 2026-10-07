@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { LoginResult } from '@taskop/contracts';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
@@ -191,10 +191,18 @@ export class AuthService {
     return this.db.withTenant(row.tenantId, null, async (tx) => {
       let lockedUntil: Date | null = null;
       if (reason === 'bad_secret') {
-        const lockExpired = row.lockedUntil !== null && row.lockedUntil.getTime() <= Date.now();
-        const count = (lockExpired ? 0 : row.failedLoginCount) + 1;
-        lockedUntil = count >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MS) : null;
-        await tx.update(users).set({ failedLoginCount: count, lockedUntil }).where(eq(users.id, row.id));
+        // Single atomic statement: concurrent failures must each increment, never overwrite.
+        const expired = sql`(${users.lockedUntil} is not null and ${users.lockedUntil} <= now())`;
+        const nextCount = sql`(case when ${expired} then 1 else ${users.failedLoginCount} + 1 end)`;
+        const [updated] = await tx
+          .update(users)
+          .set({
+            failedLoginCount: sql`${nextCount}`,
+            lockedUntil: sql`(case when ${nextCount} >= ${MAX_FAILED_LOGINS} then now() + ${LOCK_MS / 1000} * interval '1 second' when ${expired} then null else ${users.lockedUntil} end)`,
+          })
+          .where(eq(users.id, row.id))
+          .returning({ lockedUntil: users.lockedUntil, count: users.failedLoginCount });
+        lockedUntil = updated && updated.count >= MAX_FAILED_LOGINS ? updated.lockedUntil : null;
       }
       await this.audit.record({
         action: 'auth.login_failed',
