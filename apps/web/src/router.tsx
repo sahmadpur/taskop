@@ -6,6 +6,9 @@ import { LoginPage } from '@/features/auth/login-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
 import { SignupPage } from '@/features/auth/signup-page';
 import { VerifyEmailPage } from '@/features/auth/verify-email-page';
+import { PlatformLoginPage } from '@/features/platform/platform-login-page';
+import { platformSession } from '@/features/platform/platform-session';
+import { PlatformTenantsPage } from '@/features/platform/platform-tenants-page';
 import { HomePage } from '@/features/home/home-page';
 import { RolesPage } from '@/features/roles/roles-page';
 import { SettingsPage } from '@/features/settings/settings-page';
@@ -61,9 +64,21 @@ const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles'
 
 const auditRoute = createRoute({ getParentRoute: () => appLayout, path: '/audit', component: AuditPage });
 
+const platformLoginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/platform/login', component: PlatformLoginPage });
+const platformTenantsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/platform/tenants',
+  component: PlatformTenantsPage,
+  beforeLoad: () => {
+    if (!platformSession.get()) throw redirect({ to: '/platform/login' });
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
+  platformLoginRoute,
+  platformTenantsRoute,
   appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute]),
 ]);
 
