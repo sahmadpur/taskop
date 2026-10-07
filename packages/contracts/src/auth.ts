@@ -10,7 +10,7 @@ const loginIdentifier = z.string().trim().toLowerCase().min(1).max(254);
 const tokenString = z.string().min(10).max(512);
 
 export const signupInputSchema = z.object({
-  orgName: z.string().trim().min(2).max(120),
+  orgName: z.string().trim().min(1).max(120),
   orgCode: orgCodeSchema,
   fullName: z.string().trim().min(2).max(120),
   email: emailSchema,

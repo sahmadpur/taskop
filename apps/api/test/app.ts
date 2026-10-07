@@ -7,6 +7,7 @@ import { inject } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { type AppConfig, loadConfig } from '../src/config/config';
+import { MAILER } from '../src/mail/mailer';
 import { MemoryMailer } from './memory-mailer';
 
 export interface TestApp {
@@ -47,7 +48,10 @@ export function testEnv(overrides: Record<string, string> = {}): Record<string, 
 export async function createTestApp(overrides: Record<string, string> = {}): Promise<TestApp> {
   const config = loadConfig(testEnv(overrides));
   const mailer = new MemoryMailer();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] }).compile();
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
+    .overrideProvider(MAILER)
+    .useValue(mailer)
+    .compile();
   const app = moduleRef.createNestApplication();
   configureApp(app, config);
   await app.init();
