@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
@@ -23,11 +23,18 @@ export class DbService implements OnModuleDestroy {
   readonly app: Db;
   readonly platform: Db;
   private readonly pools: pg.Pool[];
+  private readonly logger = new Logger('DbService');
 
   constructor(@Inject(APP_CONFIG) config: AppConfig) {
     const appPool = new pg.Pool({ connectionString: config.DATABASE_APP_URL, max: 20 });
     const platformPool = new pg.Pool({ connectionString: config.DATABASE_PLATFORM_URL, max: 5 });
     this.pools = [appPool, platformPool];
+    for (const [name, pool] of [['app', appPool], ['platform', platformPool]] as const) {
+      // Idle-client errors (e.g. Postgres restart) must not crash the process.
+      pool.on('error', (err: Error & { code?: string }) => {
+        this.logger.error(`Idle ${name} pool client error: ${err.name} ${err.code ?? ''} ${err.message}`.replace(/\s+/g, ' '));
+      });
+    }
     this.app = drizzle(appPool, { schema });
     this.platform = drizzle(platformPool, { schema });
   }
