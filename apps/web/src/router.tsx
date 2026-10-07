@@ -10,6 +10,7 @@ import { RolesPage } from '@/features/roles/roles-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { SitesPage } from '@/features/sites/sites-page';
 import { TeamsPage } from '@/features/teams/teams-page';
+import { UserDetailPage } from '@/features/users/user-detail-page';
 import { UsersPage } from '@/features/users/users-page';
 import { AppShell } from '@/layouts/app-shell';
 import { AuthLayout } from '@/layouts/auth-layout';
@@ -54,7 +55,7 @@ const settingsRoute = createRoute({ getParentRoute: () => appLayout, path: '/set
 const sitesRoute = createRoute({ getParentRoute: () => appLayout, path: '/sites', component: SitesPage });
 const teamsRoute = createRoute({ getParentRoute: () => appLayout, path: '/teams', component: TeamsPage });
 const usersRoute = createRoute({ getParentRoute: () => appLayout, path: '/users', component: UsersPage });
-const userDetailRoute = createRoute({ getParentRoute: () => appLayout, path: '/users/$userId', component: () => null });
+const userDetailRoute = createRoute({ getParentRoute: () => appLayout, path: '/users/$userId', component: UserDetailPage });
 const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles', component: RolesPage });
 
 const routeTree = rootRoute.addChildren([
