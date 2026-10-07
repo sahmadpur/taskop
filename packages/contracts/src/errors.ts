@@ -1,0 +1,67 @@
+import { z } from 'zod';
+
+export const ErrorCode = {
+  VALIDATION_FAILED: 'VALIDATION_FAILED',
+  UNAUTHENTICATED: 'UNAUTHENTICATED',
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
+  RATE_LIMITED: 'RATE_LIMITED',
+  TENANT_SUSPENDED: 'TENANT_SUSPENDED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  REFERENCE_NOT_FOUND: 'REFERENCE_NOT_FOUND',
+  ORG_CODE_TAKEN: 'ORG_CODE_TAKEN',
+  EMAIL_TAKEN: 'EMAIL_TAKEN',
+  USERNAME_TAKEN: 'USERNAME_TAKEN',
+  TOKEN_INVALID: 'TOKEN_INVALID',
+  EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
+  LAST_OWNER: 'LAST_OWNER',
+  OWNER_ROLE_RESTRICTED: 'OWNER_ROLE_RESTRICTED',
+  ROLE_NOT_EDITABLE: 'ROLE_NOT_EDITABLE',
+  ROLE_IN_USE: 'ROLE_IN_USE',
+  ROLE_ESCALATION: 'ROLE_ESCALATION',
+  SITE_CYCLE: 'SITE_CYCLE',
+  MANAGER_CYCLE: 'MANAGER_CYCLE',
+  SELF_MODIFICATION: 'SELF_MODIFICATION',
+  INTERNAL: 'INTERNAL',
+} as const;
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
+  VALIDATION_FAILED: 400,
+  UNAUTHENTICATED: 401,
+  INVALID_CREDENTIALS: 401,
+  ACCOUNT_LOCKED: 429,
+  RATE_LIMITED: 429,
+  TENANT_SUSPENDED: 403,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  REFERENCE_NOT_FOUND: 422,
+  ORG_CODE_TAKEN: 409,
+  EMAIL_TAKEN: 409,
+  USERNAME_TAKEN: 409,
+  TOKEN_INVALID: 400,
+  EMAIL_NOT_VERIFIED: 403,
+  LAST_OWNER: 409,
+  OWNER_ROLE_RESTRICTED: 403,
+  ROLE_NOT_EDITABLE: 409,
+  ROLE_IN_USE: 409,
+  ROLE_ESCALATION: 403,
+  SITE_CYCLE: 409,
+  MANAGER_CYCLE: 409,
+  SELF_MODIFICATION: 409,
+  INTERNAL: 500,
+};
+
+export const errorMessageKey = (code: ErrorCode): string => `errors.${code}`;
+
+export const errorBodySchema = z.object({
+  error: z.object({
+    code: z.enum(ErrorCode),
+    messageKey: z.string(),
+    fields: z.record(z.string(), z.string()).nullable(),
+    retryAfterSeconds: z.number().int().nullable(),
+    requestId: z.string().nullable(),
+  }),
+});
+export type ErrorBody = z.infer<typeof errorBodySchema>;
