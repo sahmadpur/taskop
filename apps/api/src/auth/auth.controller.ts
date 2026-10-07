@@ -1,9 +1,9 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { LoginResult } from '@taskop/contracts';
 import type { Response } from 'express';
-import { Public } from '../common/decorators';
-import type { AppRequest } from '../common/request';
+import { CurrentPrincipal, Public } from '../common/decorators';
+import type { AppRequest, Principal } from '../common/request';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { type IssuedLogin, AuthService } from './auth.service';
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from './cookies';
@@ -59,6 +59,21 @@ export class AuthController {
       if (!body.refreshToken && cookieToken) clearRefreshCookie(res, this.config);
       throw e;
     }
+  }
+
+  @ApiBearerAuth()
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@CurrentPrincipal() p: Principal, @Res({ passthrough: true }) res: Response): Promise<void> {
+    await this.auth.logout(p);
+    clearRefreshCookie(res, this.config);
+  }
+
+  @ApiBearerAuth()
+  @Post('verify-email/resend')
+  @HttpCode(204)
+  async resendVerification(@CurrentPrincipal() p: Principal): Promise<void> {
+    await this.auth.resendVerification(p);
   }
 
   private respond(issued: IssuedLogin, res: Response): LoginResult {

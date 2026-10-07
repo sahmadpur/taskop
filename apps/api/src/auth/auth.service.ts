@@ -3,6 +3,7 @@ import type { LoginResult } from '@taskop/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { AppError } from '../common/app-error';
+import type { Principal } from '../common/request';
 import { currentRequestMeta } from '../common/request-context';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { AuditService } from '../db/audit.service';
@@ -231,6 +232,25 @@ export class AuthService {
       sessionId,
       client,
     };
+  }
+
+  /** Runs inside the request's tenant transaction (authenticated route). */
+  async logout(p: Principal): Promise<void> {
+    await this.db
+      .tx()
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(sessions.id, p.sessionId), isNull(sessions.revokedAt)));
+    await this.audit.record({ action: 'auth.logout', entityType: 'session', entityId: p.sessionId });
+  }
+
+  async resendVerification(p: Principal): Promise<void> {
+    if (p.emailVerified) return;
+    await this.rateLimit.consume(`verify-resend:${p.userId}`, 3, 3600);
+    const [user] = await this.db.tx().select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, p.userId));
+    if (!user?.email) return;
+    const token = await this.oneTime.create({ tenantId: p.tenantId, userId: p.userId, purpose: 'email_verify' });
+    await this.sendMail(verifyEmailMail({ to: user.email, fullName: user.fullName, webUrl: this.config.WEB_URL, token }));
   }
 
   /** Mail failures are logged, never surfaced: the user-facing action already succeeded. */
