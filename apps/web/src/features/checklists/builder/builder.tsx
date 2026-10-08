@@ -47,8 +47,11 @@ export function Builder(props: BuilderProps) {
   const [publishing, setPublishing] = useState(false);
   const readOnly = props.readOnly || autosave.status === 'conflict';
 
+  // Keyboard undo/redo only while the canvas is editable: not read-only, not blocked by a conflict,
+  // and not behind the preview or the publish dialog.
+  const keyboardHistory = !readOnly && !preview && !publishing;
   useEffect(() => {
-    if (props.readOnly) return;
+    if (!keyboardHistory) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -58,7 +61,7 @@ export function Builder(props: BuilderProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [props.readOnly]);
+  }, [keyboardHistory]);
 
   const saveLabel = {
     saved: t('checklists.builder.save.saved'),

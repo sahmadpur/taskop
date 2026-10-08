@@ -69,4 +69,34 @@ describe('Builder', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Yenidən yüklə' }));
     expect(onReload).toHaveBeenCalled();
   });
+
+  it('ignores keyboard undo while blocked by a conflict', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { ApiError } = await import('@taskop/api-client');
+    const save = vi.fn().mockRejectedValue(new ApiError(409, 'CHECKLIST_DRAFT_CONFLICT', 'x'));
+    renderWithProviders(<Builder title="X" initialContent={validContent()} initialRevision={1} readOnly={false} save={save} onBack={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Bölmənin adı'), { target: { value: 'Z' } });
+    await act(() => vi.advanceTimersByTimeAsync(1600));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(screen.getByLabelText('Bölmənin adı')).toHaveValue('Z');
+  });
+
+  it('ignores keyboard undo while the preview is open', async () => {
+    renderWithProviders(<Builder title="X" initialContent={validContent()} initialRevision={1} readOnly={false} save={vi.fn(async () => ({ revision: 2, issues: [] }))} onBack={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Bölmənin adı'), { target: { value: 'Z' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Önizləmə' }));
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Redaktora qayıt' }));
+    expect(screen.getByLabelText('Bölmənin adı')).toHaveValue('Z');
+  });
+
+  it('ignores keyboard undo while the publish dialog is open', async () => {
+    renderWithProviders(<Builder title="X" initialContent={validContent()} initialRevision={1} readOnly={false} save={vi.fn(async () => ({ revision: 2, issues: [] }))} onPublish={vi.fn()} onBack={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Bölmənin adı'), { target: { value: 'Z' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Dərc et' }));
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Ləğv et' }));
+    expect(screen.getByLabelText('Bölmənin adı')).toHaveValue('Z');
+  });
 });
