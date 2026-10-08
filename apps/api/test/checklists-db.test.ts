@@ -1,9 +1,39 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
 import { signupTenant } from './fixtures';
 import { ownerQuery } from './owner-db';
 import pg from 'pg';
 import { inject } from 'vitest';
+
+const NEW_ADMIN_KEYS = ['checklists.view', 'checklists.manage', 'checklists.publish', 'templates.manage'];
+
+/** The permission backfill statements of migration 0004 (row_security toggle, INSERT, version bump). */
+function backfillStatements(): string[] {
+  const file = readFileSync(path.resolve(__dirname, '../drizzle/0004_checklists_security.sql'), 'utf8');
+  const stmts = file.split('--> statement-breakpoint').map((x) => x.trim());
+  const start = stmts.findIndex((x) => /row_security\s*=\s*off/i.test(x));
+  if (start < 0) throw new Error('backfill section not found in 0004');
+  return stmts.slice(start);
+}
+
+/** Runs the backfill in one transaction, optionally as another role (like the migrator would). */
+async function runBackfill(asRole?: string): Promise<void> {
+  const client = new pg.Client({ connectionString: inject('db').ownerUrl });
+  await client.connect();
+  try {
+    await client.query('begin');
+    if (asRole) await client.query(`set local role ${asRole}`);
+    for (const stmt of backfillStatements()) await client.query(stmt);
+    await client.query('commit');
+  } catch (e) {
+    await client.query('rollback');
+    throw e;
+  } finally {
+    await client.end();
+  }
+}
 
 async function asApp<T>(tenantId: string, fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
   const pool = new pg.Pool({ connectionString: inject('db').appUrl, max: 1 });
@@ -109,5 +139,24 @@ describe('checklist tables', () => {
       [s.tenantId],
     );
     expect(r.rows.map((x) => x.permission_key)).toEqual(expect.arrayContaining(['checklists.publish', 'templates.manage']));
+  });
+
+  it('re-running the permission backfill restores the admin keys and bumps the role version', async () => {
+    const s = await signupTenant(t);
+    const admin = await ownerQuery<{ id: string; version: number }>("select id, version from roles where tenant_id = $1 and system_key = 'admin'", [s.tenantId]);
+    const { id: roleId, version: before } = admin.rows[0]!;
+    const deleted = await ownerQuery('delete from role_permissions where role_id = $1 and permission_key = any($2)', [roleId, NEW_ADMIN_KEYS]);
+    expect(deleted.rowCount).toBe(4);
+
+    await runBackfill();
+
+    const keys = await ownerQuery<{ permission_key: string }>('select permission_key from role_permissions where role_id = $1', [roleId]);
+    expect(keys.rows.map((x) => x.permission_key)).toEqual(expect.arrayContaining(NEW_ADMIN_KEYS));
+    const after = await ownerQuery<{ version: number }>('select version from roles where id = $1', [roleId]);
+    expect(after.rows[0]!.version).toBeGreaterThan(before);
+  });
+
+  it('the permission backfill fails loudly for a role that RLS would filter', async () => {
+    await expect(runBackfill('taskop_app')).rejects.toThrow(/row-level security/);
   });
 });

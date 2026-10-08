@@ -41,6 +41,11 @@ END $$;
 CREATE TRIGGER checklist_versions_immutable BEFORE UPDATE OR DELETE ON checklist_versions
   FOR EACH ROW EXECUTE FUNCTION checklist_versions_guard();
 --> statement-breakpoint
+-- The backfill below must see every tenant's rows. roles/role_permissions are FORCE RLS, so a migrator that
+-- is RLS-subject (e.g. a non-superuser table owner) would silently match 0 rows. With row_security off,
+-- Postgres raises an error instead of filtering; superusers and BYPASSRLS roles are unaffected.
+SET LOCAL row_security = off;
+--> statement-breakpoint
 -- Existing tenants: Admin gets the new keys (new tenants get them from SYSTEM_ROLE_DEFAULTS).
 INSERT INTO role_permissions (tenant_id, role_id, permission_key)
   SELECT r.tenant_id, r.id, k
@@ -50,3 +55,6 @@ INSERT INTO role_permissions (tenant_id, role_id, permission_key)
 --> statement-breakpoint
 -- Bump the version so cached (roleId, version) permission sets reload.
 UPDATE roles SET version = version + 1 WHERE system_key = 'admin';
+--> statement-breakpoint
+-- Restore the default for any later statements in the same migration transaction.
+SET LOCAL row_security = on;
