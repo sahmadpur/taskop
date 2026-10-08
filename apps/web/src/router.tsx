@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
+import { ChecklistsPage, TenantWorkspaceLayout } from '@/features/checklists/routes';
 import { AuditPage } from '@/features/audit/audit-page';
 import { AcceptInvitePage } from '@/features/auth/accept-invite-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
@@ -63,6 +64,8 @@ const userDetailRoute = createRoute({ getParentRoute: () => appLayout, path: '/u
 const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles', component: RolesPage });
 
 const auditRoute = createRoute({ getParentRoute: () => appLayout, path: '/audit', component: AuditPage });
+const checklistsWs = createRoute({ getParentRoute: () => appLayout, id: 'checklists-ws', component: TenantWorkspaceLayout });
+const checklistsRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/checklists', component: ChecklistsPage });
 
 const platformLoginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/platform/login', component: PlatformLoginPage });
 const platformTenantsRoute = createRoute({
@@ -79,7 +82,7 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   platformLoginRoute,
   platformTenantsRoute,
-  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute]),
+  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute, checklistsWs.addChildren([checklistsRoute])]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
