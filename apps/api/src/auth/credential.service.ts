@@ -109,4 +109,10 @@ export class CredentialService {
       inviteMail({ to: input.email, fullName: input.fullName, orgName: tenant?.name ?? '', webUrl: this.config.WEB_URL, token }),
     );
   }
+
+  /** Admin-triggered staff reset: mails a reset link. Runs inside the current tenant transaction. */
+  async issuePasswordReset(input: { tenantId: string; userId: string; email: string; fullName: string }): Promise<void> {
+    const token = await this.oneTime.create({ tenantId: input.tenantId, userId: input.userId, purpose: 'password_reset' });
+    await this.auth.sendMail(passwordResetMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token }));
+  }
 }
