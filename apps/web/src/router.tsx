@@ -187,7 +187,7 @@ const platformTenantChildren = [
   pt('templates/$source/$templateId', TemplateEditorRoute),
 ];
 
-const routeTree = rootRoute.addChildren([
+export const routeTree = rootRoute.addChildren([
   authLayout.addChildren([loginRoute, signupRoute, forgotRoute, resetRoute, acceptInviteRoute]),
   verifyEmailRoute,
   platformLoginRoute,

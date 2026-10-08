@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Outlet, useParams } from '@tanstack/react-router';
+import { Link, Outlet, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PlatformTenantWorkspace } from '@/features/checklists/workspace';
@@ -18,9 +18,9 @@ export function PlatformTenantWorkspaceRoute() {
       <Alert className="mb-4">
         <AlertDescription className="flex items-center gap-3">
           {t('platform.workspaceBanner', { name })}
-          <a href="/platform/tenants" className="underline">
+          <Link to="/platform/tenants" className="underline">
             {t('platform.backToTenants')}
-          </a>
+          </Link>
         </AlertDescription>
       </Alert>
       <Outlet />

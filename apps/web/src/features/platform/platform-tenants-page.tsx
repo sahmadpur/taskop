@@ -2,6 +2,7 @@ import { ApiError } from '@taskop/api-client';
 import type { PlatformTenantDto } from '@taskop/contracts';
 import { formatDateTime } from '@taskop/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -17,9 +18,10 @@ interface TableProps {
   tenants: PlatformTenantDto[];
   onSuspend: (id: string) => Promise<void> | void;
   onReactivate: (id: string) => Promise<void> | void;
+  onOpenChecklists: (id: string) => void;
 }
 
-export function PlatformTenantsTable({ tenants, onSuspend, onReactivate }: TableProps) {
+export function PlatformTenantsTable({ tenants, onSuspend, onReactivate, onOpenChecklists }: TableProps) {
   const { t } = useTranslation();
   return (
     <Table>
@@ -47,9 +49,9 @@ export function PlatformTenantsTable({ tenants, onSuspend, onReactivate }: Table
               </Badge>
             </TableCell>
             <TableCell>
-              <a href={`/platform/tenants/${tn.id}/checklists`} className="text-sm hover:underline">
+              <Button variant="link" className="h-auto p-0" onClick={() => onOpenChecklists(tn.id)}>
                 {t('platform.tenants.checklists')}
-              </a>
+              </Button>
             </TableCell>
             <TableCell className="text-right">
               {tn.status === 'active' ? (
@@ -77,6 +79,7 @@ export function PlatformTenantsPage() {
   const { t } = useTranslation();
   const admin = usePlatformAdmin();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const q = useDeferredValue(search.trim());
   const tenants = useQuery({
@@ -110,6 +113,9 @@ export function PlatformTenantsPage() {
         tenants={tenants.data ?? []}
         onSuspend={(id) => act(() => platformApi.tenants.suspend(id))}
         onReactivate={(id) => act(() => platformApi.tenants.reactivate(id))}
+        onOpenChecklists={(id) =>
+          void navigate({ to: `/platform/tenants/${id}/checklists` as '/platform/tenants' })
+        }
       />
     </div>
   );
