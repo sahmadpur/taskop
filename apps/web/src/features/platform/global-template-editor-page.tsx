@@ -17,6 +17,8 @@ export function GlobalTemplateEditorPage() {
   const tpl = useQuery({
     queryKey: ['platform', 'global-templates', templateId],
     queryFn: () => platformApi.globalTemplates.get(templateId),
+    // gcTime 0: drop the cache on unmount so re-opening the editor never mounts stale content/revision (would 409 on save).
+    gcTime: 0,
   });
   const [reloadKey, setReloadKey] = useState(0);
   if (tpl.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;

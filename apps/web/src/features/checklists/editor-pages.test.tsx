@@ -1,6 +1,8 @@
 import { blankContent, newItem, newSection } from '@taskop/contracts';
-import { screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { WorkspaceProvider } from './workspace';
 import { fakeWorkspace, renderInWorkspace } from '@/test/workspace';
 import { TemplateEditorPage } from './editor-pages';
 
@@ -57,5 +59,33 @@ describe('TemplateEditorPage', () => {
     renderInWorkspace(<TemplateEditorPage source="tenant" templateId="t1" />, ws);
     expect(await screen.findByLabelText('Bölmənin adı')).toBeEnabled();
     expect(screen.queryByText('Yalnız baxış')).toBeNull();
+  });
+
+  it('re-fetches on remount instead of mounting stale cached content', async () => {
+    const ws = fakeWorkspace();
+    let resolveSecond!: (v: unknown) => void;
+    ws.templates.get
+      .mockResolvedValueOnce({ ...template('active'), name: 'Köhnə' })
+      .mockReturnValueOnce(new Promise((r) => (resolveSecond = r)));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (
+      <QueryClientProvider client={client}>
+        <WorkspaceProvider value={ws}>
+          <TemplateEditorPage source="tenant" templateId="t1" />
+        </WorkspaceProvider>
+      </QueryClientProvider>
+    );
+
+    const first = render(ui);
+    expect(await screen.findByText('Köhnə')).toBeInTheDocument();
+    first.unmount();
+    // Let the post-unmount garbage collection run (the user navigates elsewhere first).
+    await new Promise((r) => setTimeout(r, 10));
+
+    render(ui);
+    await waitFor(() => expect(ws.templates.get).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Köhnə')).toBeNull();
+    resolveSecond({ ...template('active'), name: 'Yeni', revision: 2 });
+    expect(await screen.findByText('Yeni')).toBeInTheDocument();
   });
 });
