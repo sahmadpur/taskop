@@ -19,6 +19,13 @@ pnpm dev
 - Mail catcher (Mailpit): http://localhost:8025
 - `apps/api/.env.example` sets `COOKIE_SECURE=false` so the refresh cookie works over plain `http://localhost` (Safari rejects `Secure` cookies there). Production must set `COOKIE_SECURE=true` and serve the API over HTTPS.
 
+## Mobile (Expo)
+```bash
+cp apps/mobile/.env.example apps/mobile/.env
+pnpm --filter @taskop/mobile dev
+```
+`EXPO_PUBLIC_API_URL` points the app at the API (default `http://localhost:3000`). On a physical phone use your computer's LAN IP, e.g. `http://192.168.1.20:3000`.
+
 ## Tests
 `pnpm test` (API integration tests start a disposable Postgres via Testcontainers; Docker must be running).
 
