@@ -13,7 +13,11 @@ export default {
     suspended: 'Dayandırılıb',
     suspend: 'Dayandır',
     reactivate: 'Bərpa et',
+    checklists: 'Yoxlama vərəqələri',
     confirmSuspend: '«{{name}}» dayandırılsın? Bütün istifadəçilərin sessiyaları bağlanacaq.',
   },
+  nav: { tenants: 'Təşkilatlar', templates: 'Şablonlar' },
+  workspaceBanner: 'Siz Taskop administratoru kimi «{{name}}» təşkilatında işləyirsiniz.',
+  backToTenants: 'Təşkilatlara qayıt',
   logout: 'Çıxış',
 } as const;
