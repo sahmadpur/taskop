@@ -74,4 +74,54 @@ describe('ChecklistDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Redaktə et' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Aktiv et' })).toBeInTheDocument();
   });
+
+  it('hides every management action without checklists.manage', async () => {
+    const ws = fakeWorkspace({ can: { manage: false, publish: false, templates: true } });
+    ws.checklists.get.mockResolvedValue(detail());
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    await screen.findAllByRole('row');
+    for (const name of [
+      'Redaktə et',
+      'Qaralamaya davam et',
+      'Məlumatları dəyiş',
+      'Qaralama kimi bərpa et',
+      'Deaktiv et',
+      'Kopyala',
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+  });
+
+  it('hides save-as-template without templates.manage', async () => {
+    const ws = fakeWorkspace({ can: { manage: true, publish: true, templates: false } });
+    ws.checklists.get.mockResolvedValue(detail());
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    await screen.findAllByRole('row');
+    expect(screen.queryByRole('button', { name: 'Şablon kimi saxla' })).toBeNull();
+  });
+
+  it('continues the existing draft and offers no restore', async () => {
+    const ws = fakeWorkspace();
+    ws.checklists.get.mockResolvedValue(detail({ draftRevision: 3 }));
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    expect(await screen.findByRole('button', { name: 'Qaralamaya davam et' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Redaktə et' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Qaralama kimi bərpa et' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Qaralamanı sil' })).toBeInTheDocument();
+  });
+
+  it('offers no edit, restore, details or discard when deactivated', async () => {
+    const ws = fakeWorkspace();
+    ws.checklists.get.mockResolvedValue(detail({ status: 'deactivated', draftRevision: 3 }));
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    await screen.findAllByRole('row');
+    for (const name of [
+      'Qaralama kimi bərpa et',
+      'Məlumatları dəyiş',
+      'Qaralamanı sil',
+      'Qaralamaya davam et',
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+  });
 });

@@ -38,4 +38,19 @@ describe('TemplatesPage', () => {
     await waitFor(() => expect(ws.templates.create).toHaveBeenCalledWith({ name: 'Növbə təhvili', category: 'other' }));
     expect(ws.go).toHaveBeenCalledWith('/templates/tenant/t2');
   });
+
+  it('hides template management without templates.manage', async () => {
+    const ws = fakeWorkspace({ can: { manage: true, publish: true, templates: false } });
+    ws.templates.list.mockImplementation(async (q: { source?: string }) =>
+      q.source === 'tenant'
+        ? [tpl('t1', 'tenant', 'Bizim'), tpl('t2', 'tenant', 'Digər', 'deactivated')]
+        : [],
+    );
+    renderInWorkspace(<TemplatesPage />, ws);
+    await userEvent.click(screen.getByRole('tab', { name: 'Bizim şablonlar' }));
+    await screen.findByText('Bizim');
+    expect(screen.queryByRole('button', { name: 'Yeni şablon' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deaktiv et' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktiv et' })).toBeNull();
+  });
 });

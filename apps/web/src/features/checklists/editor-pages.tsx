@@ -20,7 +20,13 @@ export function ChecklistDraftPage({ checklistId }: { checklistId: string }) {
   const ws = useWorkspace();
   const qc = useQueryClient();
   const detail = useChecklist(checklistId);
-  const draft = useQuery({ queryKey: [ws.scope, 'checklists', checklistId, 'draft'], queryFn: () => ws.checklists.draft(checklistId), retry: false });
+  const draft = useQuery({
+    queryKey: [ws.scope, 'checklists', checklistId, 'draft'],
+    queryFn: () => ws.checklists.draft(checklistId),
+    retry: false,
+    // gcTime 0: drop the cache on unmount so re-opening the editor never mounts stale content/revision (would 409 on save).
+    gcTime: 0,
+  });
   const [reloadKey, setReloadKey] = useState(0);
   const [starting, setStarting] = useState(false);
 
@@ -109,7 +115,12 @@ export function ChecklistVersionPage({ checklistId, versionId }: { checklistId: 
 export function TemplateEditorPage({ source, templateId }: { source: 'global' | 'tenant'; templateId: string }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
-  const tpl = useQuery({ queryKey: [ws.scope, 'templates', source, templateId], queryFn: () => ws.templates.get(source, templateId) });
+  const tpl = useQuery({
+    queryKey: [ws.scope, 'templates', source, templateId],
+    queryFn: () => ws.templates.get(source, templateId),
+    // gcTime 0: drop the cache on unmount so re-opening the editor never mounts stale content/revision (would 409 on save).
+    gcTime: 0,
+  });
   const [reloadKey, setReloadKey] = useState(0);
   if (tpl.isPending) return <Loading />;
   if (tpl.error) return <p className="text-destructive">{errorText(t, tpl.error)}</p>;
