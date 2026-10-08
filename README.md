@@ -17,6 +17,7 @@ pnpm dev
 ```
 - API: http://localhost:3000/api/v1 — docs at http://localhost:3000/api/docs
 - Mail catcher (Mailpit): http://localhost:8025
+- `apps/api/.env.example` sets `COOKIE_SECURE=false` so the refresh cookie works over plain `http://localhost` (Safari rejects `Secure` cookies there). Production must set `COOKIE_SECURE=true` and serve the API over HTTPS.
 
 ## Tests
 `pnpm test` (API integration tests start a disposable Postgres via Testcontainers; Docker must be running).
