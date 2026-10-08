@@ -8,17 +8,18 @@ interface Props {
   title: string;
   description: string;
   onConfirm: () => Promise<void> | void;
-  variant?: 'default' | 'destructive' | 'outline';
+  variant?: 'default' | 'destructive' | 'outline' | 'ghost';
+  size?: 'default' | 'sm';
   disabled?: boolean;
 }
 
-export function ConfirmButton({ label, title, description, onConfirm, variant = 'outline', disabled }: Props) {
+export function ConfirmButton({ label, title, description, onConfirm, variant = 'outline', size, disabled }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
     <>
-      <Button variant={variant} disabled={disabled} onClick={() => setOpen(true)}>
+      <Button variant={variant} size={size} disabled={disabled} onClick={() => setOpen(true)}>
         {label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

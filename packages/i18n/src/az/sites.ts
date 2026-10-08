@@ -17,6 +17,7 @@ export default {
     empty: 'Hələ obyekt yoxdur.',
     expand: 'Aç',
     collapse: 'Bağla',
+    confirmDeactivate: '«{{name}}» deaktiv edilsin? Alt obyektlər avtomatik dəyişməyəcək.',
   },
   form: {
     createTitle: 'Yeni obyekt',

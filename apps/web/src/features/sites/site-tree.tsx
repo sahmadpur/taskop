@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ConfirmButton } from '@/components/confirm-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { SiteNode } from './tree';
@@ -12,7 +13,7 @@ interface Props {
   onAddChild: (node: SiteNode) => void;
   onEdit: (node: SiteNode) => void;
   onMove: (node: SiteNode) => void;
-  onToggleActive: (node: SiteNode) => void;
+  onToggleActive: (node: SiteNode) => Promise<void> | void;
 }
 
 export function SiteTree(props: Props) {
@@ -55,9 +56,21 @@ function SiteTreeItem({ node, ...props }: Props & { node: SiteNode }) {
             <Button size="sm" variant="ghost" onClick={() => props.onMove(node)}>
               {t('sites.tree.move')}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => props.onToggleActive(node)}>
-              {node.active ? t('common.deactivate') : t('common.reactivate')}
-            </Button>
+            {node.active ? (
+              // Spec §4.1: deactivating warns; descendants are not changed automatically and the admin decides.
+              <ConfirmButton
+                size="sm"
+                variant="ghost"
+                label={t('common.deactivate')}
+                title={t('common.deactivate')}
+                description={t('sites.tree.confirmDeactivate', { name: node.name })}
+                onConfirm={() => props.onToggleActive(node)}
+              />
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => props.onToggleActive(node)}>
+                {t('common.reactivate')}
+              </Button>
+            )}
           </div>
         )}
       </div>
