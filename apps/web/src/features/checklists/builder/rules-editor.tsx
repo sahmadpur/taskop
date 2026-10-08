@@ -4,13 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from './number-input';
 import { Label } from '@/components/ui/label';
 import { optionLabel } from '../labels';
 import { AddItemButton } from './canvas';
 import type { BuilderAction } from './reducer';
-
-const num = (v: string): number => (v === '' || Number.isNaN(Number(v)) ? 0 : Number(v));
 
 function CheckField({ id, label, checked, disabled, onChange }: { id: string; label: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -77,18 +75,18 @@ function RuleCard({ item, rule, n, depth, dispatch, readOnly }: { item: RuleItem
           {w.kind === 'number' && (
             <>
               <Label htmlFor={`${id}-v`}>{t('checklists.builder.rules.value')}</Label>
-              <Input id={`${id}-v`} type="number" disabled={readOnly} value={w.value} onChange={(e) => update({ when: { ...w, value: num(e.target.value) } })} />
+              <NumberInput id={`${id}-v`} disabled={readOnly} value={w.value} onCommit={(n) => update({ when: { ...w, value: n } })} />
             </>
           )}
           {w.kind === 'range' && (
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1">
                 <Label htmlFor={`${id}-min`}>{t('checklists.builder.item.min')}</Label>
-                <Input id={`${id}-min`} type="number" disabled={readOnly} value={w.min} onChange={(e) => update({ when: { ...w, min: num(e.target.value) } })} />
+                <NumberInput id={`${id}-min`} disabled={readOnly} value={w.min} onCommit={(n) => update({ when: { ...w, min: n } })} />
               </div>
               <div className="grid gap-1">
                 <Label htmlFor={`${id}-max`}>{t('checklists.builder.item.max')}</Label>
-                <Input id={`${id}-max`} type="number" disabled={readOnly} value={w.max} onChange={(e) => update({ when: { ...w, max: num(e.target.value) } })} />
+                <NumberInput id={`${id}-max`} disabled={readOnly} value={w.max} onCommit={(n) => update({ when: { ...w, max: n } })} />
               </div>
             </div>
           )}

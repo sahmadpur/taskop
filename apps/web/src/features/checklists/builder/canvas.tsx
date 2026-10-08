@@ -126,6 +126,7 @@ function ItemCard(props: { item: Item; selected: boolean; containsSelection: boo
     <div
       className={cn('grid gap-2 rounded-md border p-3', props.selected && 'ring-primary ring-2', props.containsSelection && !props.selected && 'border-primary')}
       onClick={() => dispatch({ type: 'select', node: { kind: 'item', id: item.id } })}
+      onFocus={() => !props.selected && dispatch({ type: 'select', node: { kind: 'item', id: item.id } })}
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary">{t(`checklists.itemTypes.${item.type}`)}</Badge>

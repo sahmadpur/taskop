@@ -1,4 +1,4 @@
-import { blankContent, type ChecklistContent, newItem, newSection, type SingleChoiceItem, type YesNoItem } from '@taskop/contracts';
+import { blankContent, type ChecklistContent, newItem, newSection, type NumberItem, type SingleChoiceItem, type YesNoItem } from '@taskop/contracts';
 import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useReducer } from 'react';
@@ -70,5 +70,41 @@ describe('Inspector', () => {
     renderWithProviders(<Harness content={doc(item)} itemId={item.id} readOnly />);
     expect(screen.getByLabelText('Sualın mətni')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Qayda əlavə et' })).toBeNull();
+  });
+
+  it('clearing then typing a weight commits the typed number', async () => {
+    const item = newItem('yes_no');
+    const n = newItem('number');
+    renderWithProviders(<Harness content={doc(item, n)} itemId={item.id} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Qayda əlavə et' }));
+    const weight = screen.getByLabelText('Çəki (bal)');
+    await userEvent.clear(weight);
+    await userEvent.type(weight, '12');
+    expect(weight).toHaveValue(12);
+    expect((findItem(last.content, item.id)!.item as YesNoItem).weight).toBe(12);
+  });
+
+  it('types a negative rule value and clears number-item limits to null', async () => {
+    const item = newItem('number') as NumberItem;
+    item.min = 3;
+    renderWithProviders(<Harness content={doc(item)} itemId={item.id} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Qayda əlavə et' }));
+    await userEvent.selectOptions(screen.getByLabelText('Cavab'), 'eq');
+    const value = screen.getByLabelText('Dəyər');
+    await userEvent.clear(value);
+    await userEvent.type(value, '-5');
+    expect((findItem(last.content, item.id)!.item as NumberItem).rules[0]!.when).toMatchObject({ value: -5 });
+    await userEvent.clear(screen.getByLabelText('Minimum dəyər'));
+    expect((findItem(last.content, item.id)!.item as NumberItem).min).toBeNull();
+  });
+
+  it('deletes a selected follow-up from its rule', async () => {
+    const item = newItem('yes_no') as YesNoItem;
+    const followUp = newItem('comment');
+    item.rules = [{ id: crypto.randomUUID(), when: { kind: 'options', optionIds: [item.options[0].id] }, then: { problem: null, requireNote: false, requirePhoto: false, requireVideo: false, followUps: [followUp] } }];
+    renderWithProviders(<Harness content={doc(item)} itemId={followUp.id} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sil' }));
+    expect(findItem(last.content, followUp.id)).toBeNull();
+    expect((findItem(last.content, item.id)!.item as YesNoItem).rules[0]!.then.followUps).toEqual([]);
   });
 });
