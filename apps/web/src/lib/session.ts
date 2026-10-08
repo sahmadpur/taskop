@@ -17,7 +17,10 @@ export const apiClient = new ApiClient({
   baseUrl: '/api/v1',
   client: 'web',
   tokenStore,
-  onSessionExpired: () => set({ status: 'anonymous' }),
+  onSessionExpired: () => {
+    queryClient.clear();
+    set({ status: 'anonymous' });
+  },
   onRefreshed: (r) => set({ status: 'authenticated', me: r.me }),
 });
 export const api = createTaskopApi(apiClient);
@@ -39,6 +42,8 @@ export const session = {
   },
   async signedIn(result: LoginResult): Promise<void> {
     await tokenStore.save({ accessToken: result.accessToken, refreshToken: null });
+    // Never let a previous (expired or other) user's cached data survive into the new session.
+    queryClient.clear();
     set({ status: 'authenticated', me: result.me });
   },
   setMe(me: Me): void {
