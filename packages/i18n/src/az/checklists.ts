@@ -169,6 +169,8 @@ export default {
       unit: 'Vahid',
       min: 'Minimum',
       max: 'Maksimum',
+      minValue: 'Minimum dəyər',
+      maxValue: 'Maksimum dəyər',
       decimals: 'Onluq rəqəmlər',
       maxLength: 'Maksimum uzunluq',
       minCount: 'Minimum say',
