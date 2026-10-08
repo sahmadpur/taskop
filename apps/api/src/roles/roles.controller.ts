@@ -35,8 +35,8 @@ export class RolesController {
 
   @Patch('roles/:id')
   @RequirePermission('roles.manage')
-  update(@Param('id', ParseIdPipe) id: string, @Body() body: UpdateRoleDto): Promise<RoleDto> {
-    return this.roles.update(id, body);
+  update(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: UpdateRoleDto): Promise<RoleDto> {
+    return this.roles.update(p, id, body);
   }
 
   @Put('roles/:id/permissions')

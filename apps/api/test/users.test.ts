@@ -205,6 +205,76 @@ describe('users', () => {
     const foreignSite = (await as(t, other.accessToken).post('/api/v1/sites', { parentId: null, typeId: await siteTypeIdOf(other.tenantId), name: 'F' })).body;
     expect((await owner.put(`/api/v1/users/${w.id}/sites`, { siteIds: [foreignSite.id] })).status).toBe(422);
   });
+
+  describe('target privilege, owner and scope rules', () => {
+    it('refuses resetting the credential of a user whose role exceeds the actor', async () => {
+      const { s, owner } = await verified();
+      const limited = (await owner.post('/api/v1/roles', { name: 'HR', dataScope: 'all', permissions: ['users.view', 'users.manage'] })).body;
+      const hr = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: limited.id });
+      const hrApi = as(t, (await loginStaff(t, hr.email!, hr.secret)).accessToken);
+      const adminWorker = (await owner.post('/api/v1/users/workers', { fullName: 'Ad Min', username: 'admin-w', roleId: await roleIdOf(s.tenantId, 'admin') })).body.user;
+      const res = await hrApi.post(`/api/v1/users/${adminWorker.id}/reset-credential`);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ROLE_ESCALATION');
+      const plain = await createUserDirect(t, s.tenantId);
+      expect((await hrApi.post(`/api/v1/users/${plain.id}/reset-credential`)).status).toBe(200);
+    });
+
+    it('refuses granting a role with a broader data scope', async () => {
+      const { s, owner } = await verified();
+      const typeId = await siteTypeIdOf(s.tenantId);
+      const a = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: 'A' })).body;
+      const perms = ['users.view', 'users.manage'];
+      const narrow = (await owner.post('/api/v1/roles', { name: 'Site lead', dataScope: 'site_subtree', permissions: perms })).body;
+      const wide = (await owner.post('/api/v1/roles', { name: 'Wide lead', dataScope: 'all', permissions: perms })).body;
+      const w = (await owner.post('/api/v1/users/workers', { fullName: 'In A', username: 'in-a', roleId: await roleIdOf(s.tenantId, 'worker'), siteIds: [a.id] })).body.user;
+      const lead = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: narrow.id });
+      await owner.put(`/api/v1/users/${lead.id}/sites`, { siteIds: [a.id] });
+      const leadApi = as(t, (await loginStaff(t, lead.email!, lead.secret)).accessToken);
+      const res = await leadApi.patch(`/api/v1/users/${w.id}`, { roleId: wide.id });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ROLE_ESCALATION');
+    });
+
+    it('stops an admin from editing the owner', async () => {
+      const { s } = await verified();
+      const admin = await createUserDirect(t, s.tenantId, { kind: 'staff', roleKey: 'admin', emailVerified: true });
+      const adminApi = as(t, (await loginStaff(t, admin.email!, admin.secret)).accessToken);
+      const patch = await adminApi.patch(`/api/v1/users/${s.ownerId}`, { fullName: 'Hacked' });
+      expect(patch.status).toBe(403);
+      expect(patch.body.error.code).toBe('OWNER_ROLE_RESTRICTED');
+      const put = await adminApi.put(`/api/v1/users/${s.ownerId}/sites`, { siteIds: [] });
+      expect(put.status).toBe(403);
+      expect(put.body.error.code).toBe('OWNER_ROLE_RESTRICTED');
+    });
+
+    it('confines site-subtree leads to their own subtree', async () => {
+      const { s, owner } = await verified();
+      const typeId = await siteTypeIdOf(s.tenantId);
+      const a = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: 'A' })).body;
+      const a1 = (await owner.post('/api/v1/sites', { parentId: a.id, typeId, name: 'A1' })).body;
+      const b = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: 'B' })).body;
+      const role = (await owner.post('/api/v1/roles', { name: 'Site lead', dataScope: 'site_subtree', permissions: ['users.view', 'users.manage'] })).body;
+      const roleId = await roleIdOf(s.tenantId, 'worker');
+      const inA = (await owner.post('/api/v1/users/workers', { fullName: 'In A', username: 'in-a', roleId, siteIds: [a1.id] })).body.user;
+      const lead = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: role.id });
+      await owner.put(`/api/v1/users/${lead.id}/sites`, { siteIds: [a.id] });
+      const leadApi = as(t, (await loginStaff(t, lead.email!, lead.secret)).accessToken);
+
+      const self = await leadApi.put(`/api/v1/users/${lead.id}/sites`, { siteIds: [b.id] });
+      expect(self.status).toBe(409);
+      expect(self.body.error.code).toBe('SELF_MODIFICATION');
+      expect((await leadApi.put(`/api/v1/users/${inA.id}/sites`, { siteIds: [b.id] })).status).toBe(422);
+
+      const none = await leadApi.post('/api/v1/users/workers', { fullName: 'No Site', username: 'no-site', roleId });
+      expect(none.status).toBe(400);
+      expect(none.body.error.fields).toHaveProperty('siteIds');
+      const ok = await leadApi.post('/api/v1/users/workers', { fullName: 'With Site', username: 'with-site', roleId, siteIds: [a1.id] });
+      expect(ok.status).toBe(201);
+      const ids = (await leadApi.get('/api/v1/users')).body.items.map((u: { id: string }) => u.id);
+      expect(ids).toContain(ok.body.user.id);
+    });
+  });
 });
 
 function uniqEmail() {

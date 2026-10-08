@@ -73,4 +73,15 @@ describe('roles', () => {
     await owner.put(`/api/v1/roles/${await roleIdOf(s.tenantId, 'manager')}/permissions`, { permissions: ['users.view'] });
     expect((await manager.get('/api/v1/sites')).status).toBe(403);
   });
+
+  it('refuses creating a role with a broader data scope than the actor', async () => {
+    const s = await signupTenant(t);
+    const owner = as(t, s.accessToken);
+    const mid = (await owner.post('/api/v1/roles', { name: 'Role admin', dataScope: 'site_subtree', permissions: ['roles.manage'] })).body;
+    const u = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: mid.id });
+    const api = as(t, (await loginStaff(t, u.email!, u.secret)).accessToken);
+    const res = await api.post('/api/v1/roles', { name: 'Broad', dataScope: 'all', permissions: [] });
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('ROLE_ESCALATION');
+  });
 });

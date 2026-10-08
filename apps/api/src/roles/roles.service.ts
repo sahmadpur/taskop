@@ -13,6 +13,16 @@ export function assertNoEscalation(p: Principal, permissions: readonly Permissio
   if (permissions.some((k) => !p.permissions.has(k))) throw new AppError('ROLE_ESCALATION');
 }
 
+const SCOPE_RANK = { all: 3, site_subtree: 2, subordinates: 2, own: 1 } as const;
+
+/** A role may not be given a data scope broader than (or lateral to) the actor's own. */
+export function assertNoScopeEscalation(p: Pick<Principal, 'dataScope'>, scope: keyof typeof SCOPE_RANK): void {
+  if (p.dataScope === 'all') return;
+  const mine = SCOPE_RANK[p.dataScope];
+  const wanted = SCOPE_RANK[scope];
+  if (wanted > mine || (wanted === 2 && mine === 2 && scope !== p.dataScope)) throw new AppError('ROLE_ESCALATION');
+}
+
 @Injectable()
 export class RolesService {
   constructor(
@@ -34,6 +44,7 @@ export class RolesService {
   async create(p: Principal, input: CreateRoleDto): Promise<RoleDto> {
     const permissions = [...new Set(input.permissions)];
     assertNoEscalation(p, permissions);
+    assertNoScopeEscalation(p, input.dataScope);
     const tx = this.db.tx();
     const [row] = await tx.insert(roles).values({ tenantId: p.tenantId, name: input.name, dataScope: input.dataScope }).returning();
     if (permissions.length) {
@@ -44,7 +55,8 @@ export class RolesService {
     return dto;
   }
 
-  async update(id: string, input: UpdateRoleDto): Promise<RoleDto> {
+  async update(p: Principal, id: string, input: UpdateRoleDto): Promise<RoleDto> {
+    if (input.dataScope) assertNoScopeEscalation(p, input.dataScope);
     const tx = this.db.tx();
     const existing = await this.find(id);
     if (!existing.editable) throw new AppError('ROLE_NOT_EDITABLE');

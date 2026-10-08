@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Page, secretSchemaFor, type UserDto, type UserWithSecret } from '@taskop/contracts';
-import { and, asc, eq, gt, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike, inArray, or, type SQL, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { CredentialService } from '../auth/credential.service';
 import { PasswordHasher } from '../auth/crypto/password-hasher';
@@ -15,7 +15,7 @@ import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { roles, sites, teams, users, userSites, userTeams } from '../db/schema';
 import { loadRolePermissions } from '../roles/permission-resolver';
-import { assertNoEscalation } from '../roles/roles.service';
+import { assertNoEscalation, assertNoScopeEscalation } from '../roles/roles.service';
 import type { CreateWorkerDto, InviteStaffDto, ResetCredentialDto, UpdateUserDto, UserListQueryDto } from './dto';
 import { selectUsers, toUserDto } from './user-mapper';
 
@@ -57,8 +57,7 @@ export class UsersService {
   }
 
   async createWorker(p: Principal, input: CreateWorkerDto): Promise<UserWithSecret> {
-    await this.assertAssignableRole(p, input.roleId, null);
-    await this.assertProfileRefs(null, input.managerId ?? null, input.siteIds, input.teamIds);
+    const managerId = await this.prepareCreate(p, input.roleId, input.managerId ?? null, input.siteIds, input.teamIds);
     const generatedSecret = input.secret ? null : input.credentialKind === 'pin' ? generatePin() : generatePassword();
     const secret = input.secret ?? generatedSecret!;
     const id = uuidv7();
@@ -72,7 +71,7 @@ export class UsersService {
         jobTitle: input.jobTitle ?? null,
         phone: input.phone ?? null,
         roleId: input.roleId,
-        managerId: input.managerId ?? null,
+        managerId,
         kind: 'worker',
         username: input.username,
         credentialHash: await this.hasher.hash(secret),
@@ -88,8 +87,7 @@ export class UsersService {
 
   async inviteStaff(p: Principal, input: InviteStaffDto): Promise<UserDto> {
     if (!p.emailVerified) throw new AppError('EMAIL_NOT_VERIFIED');
-    await this.assertAssignableRole(p, input.roleId, null);
-    await this.assertProfileRefs(null, input.managerId ?? null, input.siteIds, input.teamIds);
+    const managerId = await this.prepareCreate(p, input.roleId, input.managerId ?? null, input.siteIds, input.teamIds);
     const id = uuidv7();
     await this.db
       .tx()
@@ -101,7 +99,7 @@ export class UsersService {
         jobTitle: input.jobTitle ?? null,
         phone: input.phone ?? null,
         roleId: input.roleId,
-        managerId: input.managerId ?? null,
+        managerId,
         kind: 'staff',
         email: input.email,
         status: 'invited',
@@ -116,12 +114,16 @@ export class UsersService {
 
   async update(p: Principal, id: string, input: UpdateUserDto): Promise<UserDto> {
     const before = await this.get(p, id);
+    if (input.roleId && input.roleId !== before.role.id && id === p.userId) throw new AppError('SELF_MODIFICATION');
+    if (id !== p.userId) await this.assertCanManageTarget(p, before);
     if (input.roleId && input.roleId !== before.role.id) {
-      if (id === p.userId) throw new AppError('SELF_MODIFICATION');
       await this.assertAssignableRole(p, input.roleId, before);
       if (before.role.systemKey === 'owner') await this.assertNotLastOwner(id);
     }
-    if (input.managerId) await this.assertProfileRefs(id, input.managerId, [], []);
+    if (input.managerId) {
+      await this.assertManagerInScope(p, input.managerId);
+      await this.assertProfileRefs(id, input.managerId, [], []);
+    }
     if (input.username !== undefined && before.kind !== 'worker') {
       throw new AppError('VALIDATION_FAILED', { fields: { username: 'errors.validation.invalid' } });
     }
@@ -146,10 +148,8 @@ export class UsersService {
   async deactivate(p: Principal, id: string): Promise<UserDto> {
     if (id === p.userId) throw new AppError('SELF_MODIFICATION');
     const before = await this.get(p, id);
-    if (before.role.systemKey === 'owner') {
-      if (p.systemRoleKey !== 'owner') throw new AppError('OWNER_ROLE_RESTRICTED');
-      await this.assertNotLastOwner(id);
-    }
+    await this.assertCanManageTarget(p, before);
+    if (before.role.systemKey === 'owner') await this.assertNotLastOwner(id);
     if (before.status === 'deactivated') return before;
     await this.db.tx().update(users).set({ status: 'deactivated', updatedAt: new Date() }).where(eq(users.id, id));
     await this.sessions.revokeAllForUser(id);
@@ -160,7 +160,7 @@ export class UsersService {
 
   async reactivate(p: Principal, id: string): Promise<UserDto> {
     const before = await this.get(p, id);
-    if (before.role.systemKey === 'owner' && p.systemRoleKey !== 'owner') throw new AppError('OWNER_ROLE_RESTRICTED');
+    await this.assertCanManageTarget(p, before);
     if (before.status !== 'deactivated') return before;
     const status = before.credentialKind === null ? 'invited' : 'active';
     await this.db
@@ -176,7 +176,7 @@ export class UsersService {
   async resetCredential(p: Principal, id: string, input: ResetCredentialDto): Promise<UserWithSecret> {
     if (id === p.userId) throw new AppError('SELF_MODIFICATION');
     const before = await this.get(p, id);
-    if (before.role.systemKey === 'owner' && p.systemRoleKey !== 'owner') throw new AppError('OWNER_ROLE_RESTRICTED');
+    await this.assertCanManageTarget(p, before);
     if (before.kind === 'staff') {
       await this.credentials.issuePasswordReset({ tenantId: p.tenantId, userId: id, email: before.email!, fullName: before.fullName });
       await this.audit.record({ action: 'user.password_reset_requested', entityType: 'user', entityId: id });
@@ -208,8 +208,10 @@ export class UsersService {
   }
 
   async setSites(p: Principal, id: string, siteIds: string[]): Promise<UserDto> {
+    if (id === p.userId && p.dataScope !== 'all') throw new AppError('SELF_MODIFICATION');
     const before = await this.get(p, id);
-    await assertIdsExist(this.db.tx(), sites, sites.id, siteIds);
+    await this.assertCanManageTarget(p, before);
+    await this.assertSitesInScope(p, siteIds);
     await this.replaceSites(p.tenantId, id, siteIds);
     const after = await this.load(id);
     await this.audit.record({ action: 'user.sites_changed', entityType: 'user', entityId: id, before: { siteIds: before.siteIds }, after: { siteIds: after.siteIds } });
@@ -217,7 +219,9 @@ export class UsersService {
   }
 
   async setTeams(p: Principal, id: string, teamIds: string[]): Promise<UserDto> {
+    if (id === p.userId && p.dataScope !== 'all') throw new AppError('SELF_MODIFICATION');
     const before = await this.get(p, id);
+    await this.assertCanManageTarget(p, before);
     await assertIdsExist(this.db.tx(), teams, teams.id, teamIds);
     await this.replaceTeams(p.tenantId, id, teamIds);
     const after = await this.load(id);
@@ -240,6 +244,54 @@ export class UsersService {
       throw new AppError('OWNER_ROLE_RESTRICTED');
     }
     assertNoEscalation(p, await loadRolePermissions(tx, role));
+    assertNoScopeEscalation(p, role.dataScope);
+  }
+
+  /** Rules shared by every write on an existing user: owner protection and no managing someone more privileged than the actor. */
+  private async assertCanManageTarget(p: Principal, target: UserDto): Promise<void> {
+    if (target.role.systemKey === 'owner' && p.systemRoleKey !== 'owner') throw new AppError('OWNER_ROLE_RESTRICTED');
+    const tx = this.db.tx();
+    const [role] = await tx.select().from(roles).where(eq(roles.id, target.role.id));
+    if (!role) throw new AppError('NOT_FOUND');
+    assertNoEscalation(p, await loadRolePermissions(tx, role));
+    assertNoScopeEscalation(p, role.dataScope);
+  }
+
+  /** Common checks for creating a user; returns the manager id to store. */
+  private async prepareCreate(p: Principal, roleId: string, managerId: string | null, siteIds: string[], teamIds: string[]): Promise<string | null> {
+    if (p.dataScope === 'own') throw new AppError('FORBIDDEN');
+    if (p.dataScope === 'site_subtree' && new Set(siteIds).size === 0) {
+      throw new AppError('VALIDATION_FAILED', { fields: { siteIds: 'errors.validation.required' } });
+    }
+    await this.assertAssignableRole(p, roleId, null);
+    const effectiveManager = managerId ?? (p.dataScope === 'subordinates' ? p.userId : null);
+    if (effectiveManager) await this.assertManagerInScope(p, effectiveManager);
+    await this.assertSitesInScope(p, siteIds);
+    await this.assertProfileRefs(null, effectiveManager, [], teamIds);
+    return effectiveManager;
+  }
+
+  private async assertManagerInScope(p: Principal, managerId: string): Promise<void> {
+    if (p.dataScope !== 'subordinates' || managerId === p.userId) return;
+    const [row] = await this.db.tx().select({ id: users.id }).from(users).where(and(eq(users.id, managerId), this.scope.usersFilter(p)));
+    if (!row) throw new AppError('REFERENCE_NOT_FOUND');
+  }
+
+  private async assertSitesInScope(p: Principal, siteIds: string[]): Promise<void> {
+    const unique = [...new Set(siteIds)];
+    await assertIdsExist(this.db.tx(), sites, sites.id, unique);
+    if (p.dataScope !== 'site_subtree' || unique.length === 0) return;
+    const rows = await this.db
+      .tx()
+      .select({ id: sites.id })
+      .from(sites)
+      .where(
+        and(
+          inArray(sites.id, unique),
+          sql`exists (select 1 from user_sites mine join sites ms on ms.id = mine.site_id where mine.user_id = ${p.userId} and ${sites.path} <@ ms.path)`,
+        ),
+      );
+    if (rows.length !== unique.length) throw new AppError('REFERENCE_NOT_FOUND');
   }
 
   private async assertProfileRefs(userId: string | null, managerId: string | null, siteIds: string[], teamIds: string[]): Promise<void> {
