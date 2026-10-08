@@ -7,6 +7,8 @@ export const PERMISSION_GROUPS = [
   { group: 'users', keys: ['users.view', 'users.manage'] },
   { group: 'roles', keys: ['roles.view', 'roles.manage'] },
   { group: 'audit', keys: ['audit.view'] },
+  { group: 'checklists', keys: ['checklists.view', 'checklists.manage', 'checklists.publish'] },
+  { group: 'templates', keys: ['templates.manage'] },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_GROUPS)[number]['keys'][number];
@@ -32,7 +34,12 @@ export interface SystemRoleDefault {
 export const SYSTEM_ROLE_DEFAULTS: Record<SystemRoleKey, SystemRoleDefault> = {
   owner: { name: 'Owner', dataScope: 'all', permissions: ALL_PERMISSIONS, editable: false },
   admin: { name: 'Admin', dataScope: 'all', permissions: ALL_PERMISSIONS, editable: true },
-  manager: { name: 'Manager', dataScope: 'site_subtree', permissions: ['sites.view', 'teams.view', 'users.view'], editable: true },
+  manager: {
+    name: 'Manager',
+    dataScope: 'site_subtree',
+    permissions: ['sites.view', 'teams.view', 'users.view', 'checklists.view', 'checklists.manage'],
+    editable: true,
+  },
   worker: { name: 'Worker', dataScope: 'own', permissions: [], editable: true },
-  auditor: { name: 'Auditor', dataScope: 'all', permissions: ['sites.view', 'users.view', 'audit.view'], editable: true },
+  auditor: { name: 'Auditor', dataScope: 'all', permissions: ['sites.view', 'users.view', 'audit.view', 'checklists.view'], editable: true },
 };
