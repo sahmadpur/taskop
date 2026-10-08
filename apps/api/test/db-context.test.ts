@@ -32,7 +32,7 @@ describe('DbService.withTenant', () => {
   it('exposes the transaction and context to nested code', async () => {
     await db.withTenant(A, 'u1', async (tx) => {
       expect(db.tx()).toBe(tx);
-      expect(db.context()).toEqual({ tenantId: A, userId: 'u1' });
+      expect(db.context()).toEqual({ tenantId: A, userId: 'u1', platformAdminId: null });
       await db.withTenant(A, 'u1', async (inner) => expect(inner).toBe(tx));
     });
   });
