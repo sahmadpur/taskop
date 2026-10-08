@@ -1,4 +1,24 @@
 import {
+  checklistDetailSchema,
+  type ChecklistListQuery,
+  checklistSummarySchema,
+  checklistVersionSchema,
+  checklistVersionSummarySchema,
+  contentSaveResultSchema,
+  type CreateChecklistInput,
+  type CreateTemplateInput,
+  globalTemplateSchema,
+  globalTemplateSummarySchema,
+  type PublishInput,
+  type SaveAsTemplateInput,
+  type SaveContentInput,
+  type StartDraftInput,
+  type TemplateListQuery,
+  templateSchema,
+  templateSummarySchema,
+  type UpdateChecklistInput,
+  type UpdateGlobalTemplateInput,
+  type UpdateTemplateInput,
   type AuditListQuery,
   auditEntryDtoSchema,
   type ChangeCredentialInput,
@@ -104,8 +124,46 @@ export function createTaskopApi(c: ApiClient) {
     audit: {
       list: (query: AuditListQuery = {}) => c.request('GET', '/audit-log', { query: q(query), schema: pageOf(auditEntryDtoSchema) }),
     },
+    checklists: createChecklistsApi(c),
+    templates: createTemplatesApi(c),
   };
 }
+/** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
+export function createChecklistsApi(c: ApiClient, base = '') {
+  const p = `${base}/checklists`;
+  return {
+    list: (query: ChecklistListQuery = {}) => c.request('GET', p, { query: q(query), schema: pageOf(checklistSummarySchema) }),
+    get: (id: string) => c.request('GET', `${p}/${id}`, { schema: checklistDetailSchema }),
+    create: (body: CreateChecklistInput) => c.request('POST', p, { body, schema: checklistDetailSchema }),
+    update: (id: string, body: UpdateChecklistInput) => c.request('PATCH', `${p}/${id}`, { body, schema: checklistDetailSchema }),
+    version: (id: string, versionId: string) => c.request('GET', `${p}/${id}/versions/${versionId}`, { schema: checklistVersionSchema }),
+    draft: (id: string) => c.request('GET', `${p}/${id}/draft`, { schema: checklistVersionSchema }),
+    startDraft: (id: string, body: StartDraftInput = {}) => c.request('POST', `${p}/${id}/draft`, { body, schema: checklistVersionSchema }),
+    saveDraft: (id: string, body: SaveContentInput) => c.request('PUT', `${p}/${id}/draft`, { body, schema: contentSaveResultSchema }),
+    discardDraft: (id: string) => c.request<void>('DELETE', `${p}/${id}/draft`),
+    publish: (id: string, body: PublishInput) => c.request('POST', `${p}/${id}/publish`, { body, schema: checklistVersionSummarySchema }),
+    deactivate: (id: string) => c.request('POST', `${p}/${id}/deactivate`, { body: {}, schema: checklistDetailSchema }),
+    reactivate: (id: string) => c.request('POST', `${p}/${id}/reactivate`, { body: {}, schema: checklistDetailSchema }),
+    saveAsTemplate: (id: string, versionId: string, body: SaveAsTemplateInput) =>
+      c.request('POST', `${p}/${id}/versions/${versionId}/save-as-template`, { body, schema: templateSchema }),
+  };
+}
+export type ChecklistsApi = ReturnType<typeof createChecklistsApi>;
+
+export function createTemplatesApi(c: ApiClient, base = '') {
+  const p = `${base}/templates`;
+  return {
+    list: (query: TemplateListQuery = {}) => c.request('GET', p, { query: q(query), schema: z.array(templateSummarySchema) }),
+    get: (source: 'global' | 'tenant', id: string) => c.request('GET', `${p}/${source}/${id}`, { schema: templateSchema }),
+    create: (body: CreateTemplateInput) => c.request('POST', p, { body, schema: templateSchema }),
+    update: (id: string, body: UpdateTemplateInput) => c.request('PATCH', `${p}/${id}`, { body, schema: templateSchema }),
+    saveContent: (id: string, body: SaveContentInput) => c.request('PUT', `${p}/${id}/content`, { body, schema: contentSaveResultSchema }),
+    deactivate: (id: string) => c.request('POST', `${p}/${id}/deactivate`, { body: {}, schema: templateSchema }),
+    reactivate: (id: string) => c.request('POST', `${p}/${id}/reactivate`, { body: {}, schema: templateSchema }),
+  };
+}
+export type TemplatesApi = ReturnType<typeof createTemplatesApi>;
+
 export type TaskopApi = ReturnType<typeof createTaskopApi>;
 
 export function createPlatformApi(c: ApiClient) {
@@ -117,6 +175,19 @@ export function createPlatformApi(c: ApiClient) {
       suspend: (id: string) => c.request('POST', `/platform/tenants/${id}/suspend`, { body: {}, schema: platformTenantDtoSchema }),
       reactivate: (id: string) => c.request('POST', `/platform/tenants/${id}/reactivate`, { body: {}, schema: platformTenantDtoSchema }),
     },
+    globalTemplates: {
+      list: () => c.request('GET', '/platform/templates', { schema: z.array(globalTemplateSummarySchema) }),
+      get: (id: string) => c.request('GET', `/platform/templates/${id}`, { schema: globalTemplateSchema }),
+      create: (body: CreateTemplateInput) => c.request('POST', '/platform/templates', { body, schema: globalTemplateSchema }),
+      update: (id: string, body: UpdateGlobalTemplateInput) => c.request('PATCH', `/platform/templates/${id}`, { body, schema: globalTemplateSchema }),
+      saveContent: (id: string, body: SaveContentInput) => c.request('PUT', `/platform/templates/${id}/content`, { body, schema: contentSaveResultSchema }),
+      publish: (id: string) => c.request('POST', `/platform/templates/${id}/publish`, { body: {}, schema: globalTemplateSchema }),
+      unpublish: (id: string) => c.request('POST', `/platform/templates/${id}/unpublish`, { body: {}, schema: globalTemplateSchema }),
+    },
+    inTenant: (tenantId: string) => ({
+      checklists: createChecklistsApi(c, `/platform/tenants/${tenantId}`),
+      templates: createTemplatesApi(c, `/platform/tenants/${tenantId}`),
+    }),
   };
 }
 export type PlatformApi = ReturnType<typeof createPlatformApi>;

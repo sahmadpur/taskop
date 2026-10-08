@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClient, ApiError, createTaskopApi, memoryTokenStore, type TokenStore } from './index.js';
+import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenStore, type TokenStore } from './index.js';
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
@@ -133,5 +133,42 @@ describe('ApiClient', () => {
   it('turns a malformed success body into an INTERNAL ApiError', async () => {
     const { api } = setup(() => new Response('<html>', { status: 200 }));
     await expect(createTaskopApi(api).me()).rejects.toMatchObject({ code: 'INTERNAL', messageKey: 'errors.INTERNAL' });
+  });
+});
+
+describe('checklist endpoints', () => {
+  const cid = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e60';
+
+  it('exposes issues and currentRevision on errors', async () => {
+    const issues = [{ path: ['sections', 0, 'title'], code: 'checklists.issues.titleRequired' }];
+    const { api } = setup(() =>
+      json(422, { error: { code: 'CHECKLIST_INVALID_CONTENT', messageKey: 'errors.CHECKLIST_INVALID_CONTENT', fields: null, retryAfterSeconds: null, requestId: 'r', issues } }),
+    );
+    const e = await createTaskopApi(api).checklists.publish(cid, { revision: 1 }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).issues).toEqual(issues);
+    const { api: api2 } = setup(() =>
+      json(409, { error: { code: 'CHECKLIST_DRAFT_CONFLICT', messageKey: 'x', fields: null, retryAfterSeconds: null, requestId: null, currentRevision: 7 } }),
+    );
+    const e2 = (await createTaskopApi(api2).checklists.saveDraft(cid, { content: {}, revision: 1 }).catch((x: unknown) => x)) as ApiError;
+    expect([e2.code, e2.currentRevision, e2.issues]).toEqual(['CHECKLIST_DRAFT_CONFLICT', 7, null]);
+  });
+
+  it('builds tenant and platform-in-tenant paths', async () => {
+    const { api, fetchMock } = setup(() => json(200, { revision: 2, issues: [] }));
+    await createTaskopApi(api).checklists.saveDraft(cid, { content: {}, revision: 1 });
+    await createPlatformApi(api).inTenant(cid).checklists.saveDraft(cid, { content: {}, revision: 1 });
+    await createPlatformApi(api).inTenant(cid).templates.saveContent(cid, { content: {}, revision: 1 });
+    expect(fetchMock.mock.calls.map((c) => `${c[1].method} ${c[0]}`)).toEqual([
+      `PUT /api/v1/checklists/${cid}/draft`,
+      `PUT /api/v1/platform/tenants/${cid}/checklists/${cid}/draft`,
+      `PUT /api/v1/platform/tenants/${cid}/templates/${cid}/content`,
+    ]);
+  });
+
+  it('discards a draft with DELETE and no body', async () => {
+    const { api, fetchMock } = setup(() => new Response(null, { status: 204 }));
+    await expect(createTaskopApi(api).checklists.discardDraft(cid)).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'DELETE', body: undefined });
   });
 });
