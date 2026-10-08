@@ -14,7 +14,7 @@ describe('roles', () => {
     const roles = (await as(t, s.accessToken).get('/api/v1/roles')).body as Array<{ systemKey: string; userCount: number; permissions: string[] }>;
     expect(roles.map((r) => r.systemKey).sort()).toEqual(['admin', 'auditor', 'manager', 'owner', 'worker']);
     expect(roles.find((r) => r.systemKey === 'owner')).toMatchObject({ userCount: 1 });
-    expect(roles.find((r) => r.systemKey === 'manager')!.permissions.sort()).toEqual(['sites.view', 'teams.view', 'users.view']);
+    expect(roles.find((r) => r.systemKey === 'manager')!.permissions.sort()).toEqual(['checklists.manage', 'checklists.view', 'sites.view', 'teams.view', 'users.view']);
   });
 
   it('returns the permission catalogue', async () => {

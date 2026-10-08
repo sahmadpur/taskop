@@ -16,3 +16,5 @@ export * from './checklist-content.js';
 export * from './checklist-validate.js';
 export * from './checklist-ids.js';
 export * from './checklist-logic.js';
+export * from './templates.js';
+export * from './checklists.js';
