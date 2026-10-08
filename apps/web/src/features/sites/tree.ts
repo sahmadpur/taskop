@@ -25,5 +25,5 @@ export function moveTargets(sites: SiteDto[], siteId: string): SiteDto[] {
   return sites.filter((s) => s.path !== self.path && !s.path.startsWith(`${self.path}.`));
 }
 
-/** Indented label for flat <select> lists of sites. */
-export const indentedName = (s: SiteDto) => `${'  '.repeat(s.depth)}${s.name}`;
+/** Indented label for flat <select> lists of sites. Non-breaking spaces: browsers collapse plain spaces in <option>. */
+export const indentedName = (s: SiteDto) => `${'\u00a0\u00a0'.repeat(s.depth)}${s.name}`;

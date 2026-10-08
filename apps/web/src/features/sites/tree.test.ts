@@ -1,6 +1,6 @@
 import type { SiteDto } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
-import { buildTree, moveTargets } from './tree';
+import { buildTree, indentedName, moveTargets } from './tree';
 
 const site = (id: string, path: string, name: string, parentId: string | null): SiteDto => ({
   id,
@@ -32,5 +32,13 @@ describe('moveTargets', () => {
   it('move targets exclude the site and its descendants (but not path-prefix lookalikes)', () => {
     expect(moveTargets(sites, 'a').map((s) => s.id).sort()).toEqual(['ab', 'b']);
     expect(moveTargets(sites, 'a1').map((s) => s.id).sort()).toEqual(['a', 'ab', 'b']);
+  });
+});
+
+describe('indentedName', () => {
+  it('indents with two non-breaking spaces per depth so <option> lists show the hierarchy', () => {
+    expect(indentedName(sites[1]!)).toBe('Alfa');
+    expect(indentedName(sites[2]!)).toBe('\u00a0\u00a0Zona 1');
+    expect(indentedName(sites[3]!)).toBe('\u00a0\u00a0\u00a0\u00a0Bölmə');
   });
 });
