@@ -18,6 +18,12 @@ describe('dropAction', () => {
     expect(dropAction(f.content, { kind: 'section', sectionId: f.s2.id, index: 1, itemCount: 1 }, { kind: 'section', sectionId: f.s1.id, index: 0, itemCount: 2 })).toEqual({
       type: 'moveSection', sectionId: f.s2.id, index: 0,
     });
+    const sec1 = { kind: 'section' as const, sectionId: f.s1.id, index: 0, itemCount: 2 };
+    const sec2 = { kind: 'section' as const, sectionId: f.s2.id, index: 1, itemCount: 1 };
+    expect(dropAction(f.content, sec2, { kind: 'item', itemId: f.a11.id, container: { kind: 'rule', itemId: f.a1.id, ruleId: f.rule1.id }, index: 0 })).toEqual({ type: 'moveSection', sectionId: f.s2.id, index: 0 });
+    expect(dropAction(f.content, sec1, { kind: 'item', itemId: f.c.id, container: s2, index: 0 })).toEqual({ type: 'moveSection', sectionId: f.s1.id, index: 1 });
+    expect(dropAction(f.content, sec1, { kind: 'container', container: s2, length: 1 })).toEqual({ type: 'moveSection', sectionId: f.s1.id, index: 1 });
+    expect(dropAction(f.content, sec1, { kind: 'item', itemId: f.b.id, container: s1, index: 1 })).toBeNull();
     const own = { kind: 'rule' as const, itemId: f.a1.id, ruleId: f.rule1.id };
     expect(dropAction(f.content, { kind: 'item', itemId: f.a.id, container: s1, index: 0 }, { kind: 'container', container: own, length: 1 })).toBeNull();
   });

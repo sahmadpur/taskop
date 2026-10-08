@@ -1,5 +1,3 @@
-// dnd-kit hooks return ref callbacks that the React Compiler lint misreads as ref reads during render.
-/* eslint-disable react-hooks/refs */
 import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -12,7 +10,7 @@ import { cn } from '@/lib/utils';
 import type { IssueIndex } from './issues';
 import { MoveToDialog } from './move-to-dialog';
 import type { BuilderAction } from './reducer';
-import { canMoveTo, type ContainerRef, containerKey, type NodeRef } from './tree';
+import { canMoveTo, type ContainerRef, containerKey, findItem, type NodeRef } from './tree';
 
 export type DragData =
   | { kind: 'section'; sectionId: string; index: number; itemCount: number }
@@ -21,7 +19,15 @@ export type DragData =
 
 /** Turns a drop (active dragged onto over) into a reducer action, or null when not allowed. */
 export function dropAction(content: ChecklistContent, active: DragData, over: DragData): BuilderAction | null {
-  if (active.kind === 'section') return over.kind === 'section' ? { type: 'moveSection', sectionId: active.sectionId, index: over.index } : null;
+  if (active.kind === 'section') {
+    if (over.kind === 'section') return { type: 'moveSection', sectionId: active.sectionId, index: over.index };
+    // Dragging a section often hovers a child item or drop slot: resolve its owning section.
+    const container = over.container;
+    const owner = container.kind === 'section' ? container.sectionId : findItem(content, container.itemId)?.sectionId;
+    const index = content.sections.findIndex((s) => s.id === owner);
+    if (index < 0 || owner === active.sectionId) return null;
+    return { type: 'moveSection', sectionId: active.sectionId, index };
+  }
   if (active.kind !== 'item') return null;
   const target =
     over.kind === 'item'
@@ -143,6 +149,7 @@ function SectionNode({ section, index, ctx }: { section: Section; index: number;
   const label = section.title || t('checklists.builder.untitledSection');
   const isSelected = ctx.selected.kind === 'section' && ctx.selected.id === section.id;
   return (
+    // eslint-disable-next-line react-hooks/refs -- dnd-kit ref callbacks are misread as ref reads
     <li ref={s.setNodeRef} style={{ transform: CSS.Transform.toString(s.transform), transition: s.transition }} role="treeitem" aria-label={label} aria-selected={isSelected} aria-expanded>
       <NodeRow
         label={label}
@@ -151,6 +158,7 @@ function SectionNode({ section, index, ctx }: { section: Section; index: number;
         issueCount={ctx.issues.byNode.get(section.id)?.length ?? 0}
         onSelect={() => ctx.dispatch({ type: 'select', node: { kind: 'section', id: section.id } })}
         onMove={() => ctx.onMove({ kind: 'section', id: section.id })}
+        // eslint-disable-next-line react-hooks/refs -- dnd-kit ref callbacks are misread as ref reads
         handle={<DragHandle attributes={s.attributes} listeners={s.listeners} />}
         readOnly={ctx.readOnly}
       />
@@ -167,6 +175,7 @@ function ItemList({ container, items, ctx }: { container: ContainerRef; items: I
         {items.map((item, index) => (
           <ItemNode key={item.id} item={item} index={index} container={container} ctx={ctx} />
         ))}
+        {/* eslint-disable-next-line react-hooks/refs -- dnd-kit ref callbacks are misread as ref reads */}
         <li ref={drop.setNodeRef} aria-hidden className={cn('h-1.5 rounded', drop.isOver && 'bg-primary/30')} />
       </ul>
     </SortableContext>
@@ -179,6 +188,7 @@ function ItemNode({ item, index, container, ctx }: { item: Item; index: number; 
   const label = item.label || t('checklists.builder.untitledItem');
   const isSelected = ctx.selected.kind === 'item' && ctx.selected.id === item.id;
   return (
+    // eslint-disable-next-line react-hooks/refs -- dnd-kit ref callbacks are misread as ref reads
     <li ref={s.setNodeRef} style={{ transform: CSS.Transform.toString(s.transform), transition: s.transition }} role="treeitem" aria-label={label} aria-selected={isSelected}>
       <NodeRow
         label={label}
@@ -186,6 +196,7 @@ function ItemNode({ item, index, container, ctx }: { item: Item; index: number; 
         issueCount={ctx.issues.byNode.get(item.id)?.length ?? 0}
         onSelect={() => ctx.dispatch({ type: 'select', node: { kind: 'item', id: item.id } })}
         onMove={() => ctx.onMove({ kind: 'item', id: item.id })}
+        // eslint-disable-next-line react-hooks/refs -- dnd-kit ref callbacks are misread as ref reads
         handle={<DragHandle attributes={s.attributes} listeners={s.listeners} />}
         readOnly={ctx.readOnly}
       />
