@@ -105,3 +105,29 @@ export function ChecklistVersionPage({ checklistId, versionId }: { checklistId: 
     />
   );
 }
+
+export function TemplateEditorPage({ source, templateId }: { source: 'global' | 'tenant'; templateId: string }) {
+  const { t } = useTranslation();
+  const ws = useWorkspace();
+  const tpl = useQuery({ queryKey: [ws.scope, 'templates', source, templateId], queryFn: () => ws.templates.get(source, templateId) });
+  const [reloadKey, setReloadKey] = useState(0);
+  if (tpl.isPending) return <Loading />;
+  if (tpl.error) return <p className="text-destructive">{errorText(t, tpl.error)}</p>;
+  const editable = source === 'tenant' && ws.can.templates && tpl.data.status === 'active';
+  return (
+    <Builder
+      key={`${tpl.data.id}:${reloadKey}`}
+      title={tpl.data.name}
+      badge={<Badge variant="outline">{source === 'global' ? t('checklists.templates.taskop') : t('checklists.templates.template')}</Badge>}
+      initialContent={tpl.data.content}
+      initialRevision={tpl.data.revision}
+      readOnly={!editable}
+      save={(content, revision) => ws.templates.saveContent(templateId, { content, revision })}
+      onReload={async () => {
+        await tpl.refetch();
+        setReloadKey((k) => k + 1);
+      }}
+      onBack={() => ws.go('/templates')}
+    />
+  );
+}

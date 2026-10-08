@@ -1,5 +1,5 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
-import { ChecklistDraftRoute, ChecklistsPage, ChecklistVersionRoute, TenantWorkspaceLayout } from '@/features/checklists/routes';
+import { ChecklistDetailRoute, ChecklistDraftRoute, ChecklistsPage, ChecklistVersionRoute, TemplateEditorRoute, TemplatesPage, TenantWorkspaceLayout } from '@/features/checklists/routes';
 import { AuditPage } from '@/features/audit/audit-page';
 import { AcceptInvitePage } from '@/features/auth/accept-invite-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
@@ -66,6 +66,9 @@ const rolesRoute = createRoute({ getParentRoute: () => appLayout, path: '/roles'
 const auditRoute = createRoute({ getParentRoute: () => appLayout, path: '/audit', component: AuditPage });
 const checklistsWs = createRoute({ getParentRoute: () => appLayout, id: 'checklists-ws', component: TenantWorkspaceLayout });
 const checklistsRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/checklists', component: ChecklistsPage });
+const checklistDetailRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/checklists/$checklistId', component: ChecklistDetailRoute });
+const templatesRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/templates', component: TemplatesPage });
+const templateEditorRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/templates/$source/$templateId', component: TemplateEditorRoute });
 const checklistDraftRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/checklists/$checklistId/draft', component: ChecklistDraftRoute });
 const checklistVersionRoute = createRoute({ getParentRoute: () => checklistsWs, path: '/checklists/$checklistId/versions/$versionId', component: ChecklistVersionRoute });
 
@@ -84,7 +87,7 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   platformLoginRoute,
   platformTenantsRoute,
-  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute, checklistsWs.addChildren([checklistsRoute, checklistDraftRoute, checklistVersionRoute])]),
+  appLayout.addChildren([homeRoute, settingsRoute, sitesRoute, teamsRoute, rolesRoute, usersRoute, userDetailRoute, auditRoute, checklistsWs.addChildren([checklistsRoute, checklistDetailRoute, checklistDraftRoute, checklistVersionRoute, templatesRoute, templateEditorRoute])]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });
