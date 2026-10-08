@@ -16,4 +16,5 @@ export interface Principal {
 
 export interface AppRequest extends Request {
   principal?: Principal;
+  platformAdminId?: string;
 }
