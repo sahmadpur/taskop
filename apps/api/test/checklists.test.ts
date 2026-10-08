@@ -64,6 +64,39 @@ describe('checklists lifecycle', () => {
     expect(pub.body.error).toMatchObject({ code: 'CHECKLIST_DRAFT_CONFLICT', currentRevision: 2 });
   });
 
+  it('concurrent publishes produce distinct consecutive numbers', async () => {
+    const { api } = await owner();
+    const id = (await api.post(B, { name: 'X' })).body.id;
+    await api.put(`${B}/${id}/draft`, { content: sampleContent(), revision: 1 });
+    expect((await api.post(`${B}/${id}/publish`, { revision: 2 })).body.number).toBe(1);
+    await api.post(`${B}/${id}/draft`, {});
+    expect((await api.put(`${B}/${id}/draft`, { content: sampleContent(), revision: 1 })).body.revision).toBe(2);
+
+    const results = await Promise.all([api.post(`${B}/${id}/publish`, { revision: 2 }), api.post(`${B}/${id}/publish`, { revision: 2 })]);
+    const statuses = results.map((r) => r.status).sort();
+    // Publishes serialise on the checklist row lock; the loser finds the draft already published.
+    expect(statuses, JSON.stringify(results.map((r) => r.body))).toEqual([200, 404]);
+    const loser = results.find((r) => r.status !== 200)!;
+    expect(loser.body.error.code).toBe('CHECKLIST_NO_DRAFT');
+    expect(results.find((r) => r.status === 200)!.body.number).toBe(2);
+
+    const detail = (await api.get(`${B}/${id}`)).body;
+    expect(detail.versions.map((v: { number: number }) => v.number)).toEqual([2, 1]);
+    expect(detail).toMatchObject({ currentVersionNumber: 2, draftRevision: null });
+  });
+
+  it('concurrent saves with the same revision: one wins, the other conflicts', async () => {
+    const { api } = await owner();
+    const id = (await api.post(B, { name: 'X' })).body.id;
+    const results = await Promise.all([
+      api.put(`${B}/${id}/draft`, { content: sampleContent(), revision: 1 }),
+      api.put(`${B}/${id}/draft`, { content: sampleContent(), revision: 1 }),
+    ]);
+    expect(results.map((r) => r.status).sort(), JSON.stringify(results.map((r) => r.body))).toEqual([200, 409]);
+    expect(results.find((r) => r.status === 200)!.body.revision).toBe(2);
+    expect(results.find((r) => r.status === 409)!.body.error).toMatchObject({ code: 'CHECKLIST_DRAFT_CONFLICT', currentRevision: 2 });
+  });
+
   it('returns strict issues on save and refuses to publish invalid content', async () => {
     const { api } = await owner();
     const id = (await api.post(B, { name: 'X' })).body.id;
