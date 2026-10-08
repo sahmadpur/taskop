@@ -8,3 +8,7 @@ allowBuilds:
   esbuild: true
   protobufjs: false
   ssh2: false
+# One React in the repo, pinned to the version the Expo SDK (apps/mobile) requires.
+overrides:
+  react: 19.2.3
+  react-dom: 19.2.3
