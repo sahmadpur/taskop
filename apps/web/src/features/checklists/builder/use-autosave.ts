@@ -75,6 +75,18 @@ export function useAutosave({ content, version, initialRevision, save, delayMs =
     timer.current = setTimeout(() => void flush(), delayMs);
   }, [version, canSave, delayMs, flush]);
 
+  // Closing the tab while edits are unsaved or still saving asks the browser to confirm.
+  const unsaved = canSave && (status === 'dirty' || status === 'saving');
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [unsaved]);
+
   useEffect(() => {
     const onHidden = () => {
       if (document.visibilityState === 'hidden') void flush();

@@ -101,4 +101,40 @@ describe('useAutosave', () => {
     await act(async () => window.dispatchEvent(new Event('pagehide')));
     expect(save).toHaveBeenCalledTimes(1);
   });
+
+  it('warns before unloading while edits are unsaved, not once saved or after unmount', async () => {
+    const pending = deferred<{ revision: number; issues: [] }>();
+    const save = vi.fn(() => pending.promise);
+    const unload = () => {
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const { result, rerender, unmount } = renderHook((p: { content: ChecklistContent; version: number }) => useAutosave({ ...p, initialRevision: 1, save }), {
+      initialProps: { content: c('a'), version: 0 },
+    });
+    expect(unload()).toBe(false);
+    rerender({ content: c('b'), version: 1 });
+    expect(result.current.status).toBe('dirty');
+    expect(unload()).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(1500));
+    expect(result.current.status).toBe('saving');
+    expect(unload()).toBe(true);
+    await act(async () => pending.resolve({ revision: 2, issues: [] }));
+    expect(result.current.status).toBe('saved');
+    expect(unload()).toBe(false);
+    rerender({ content: c('c'), version: 2 });
+    unmount();
+    expect(unload()).toBe(false);
+  });
+
+  it('never warns before unloading when it cannot save (read-only)', () => {
+    const { rerender } = renderHook((p: { content: ChecklistContent; version: number }) => useAutosave({ ...p, initialRevision: 1 }), {
+      initialProps: { content: c('a'), version: 0 },
+    });
+    rerender({ content: c('b'), version: 1 });
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
 });
