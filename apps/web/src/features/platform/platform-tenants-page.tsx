@@ -6,7 +6,6 @@ import { useDeferredValue, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
-import { Logo } from '@/components/logo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +31,7 @@ export function PlatformTenantsTable({ tenants, onSuspend, onReactivate }: Table
           <TableHead>{t('platform.tenants.created')}</TableHead>
           <TableHead>{t('platform.tenants.status')}</TableHead>
           <TableHead />
+          <TableHead />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -42,7 +42,14 @@ export function PlatformTenantsTable({ tenants, onSuspend, onReactivate }: Table
             <TableCell>{tn.userCount}</TableCell>
             <TableCell>{formatDateTime(tn.createdAt, { locale: 'az', timeZone: 'Asia/Baku' })}</TableCell>
             <TableCell>
-              <Badge variant={tn.status === 'active' ? 'default' : 'destructive'}>{t(`platform.tenants.${tn.status}`)}</Badge>
+              <Badge variant={tn.status === 'active' ? 'default' : 'destructive'}>
+                {t(`platform.tenants.${tn.status}`)}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <a href={`/platform/tenants/${tn.id}/checklists`} className="text-sm hover:underline">
+                {t('platform.tenants.checklists')}
+              </a>
             </TableCell>
             <TableCell className="text-right">
               {tn.status === 'active' ? (
@@ -78,7 +85,8 @@ export function PlatformTenantsPage() {
     enabled: admin !== null,
   });
   useEffect(() => {
-    if (tenants.error instanceof ApiError && tenants.error.code === 'UNAUTHENTICATED') void platformSession.signOut();
+    if (tenants.error instanceof ApiError && tenants.error.code === 'UNAUTHENTICATED')
+      void platformSession.signOut();
   }, [tenants.error]);
   const act = async (fn: () => Promise<unknown>) => {
     try {
@@ -89,25 +97,20 @@ export function PlatformTenantsPage() {
     }
   };
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between bg-slate-900 px-6 py-3 text-white">
-        <Logo className="text-white" />
-        <div className="flex items-center gap-3 text-sm">
-          <span>{admin?.fullName}</span>
-          <Button size="sm" variant="secondary" onClick={() => void platformSession.signOut()}>
-            {t('platform.logout')}
-          </Button>
-        </div>
-      </header>
-      <main className="grid gap-4 p-6">
-        <h1 className="text-2xl font-semibold">{t('platform.tenants.title')}</h1>
-        <Input type="search" className="max-w-sm" placeholder={t('platform.tenants.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <PlatformTenantsTable
-          tenants={tenants.data ?? []}
-          onSuspend={(id) => act(() => platformApi.tenants.suspend(id))}
-          onReactivate={(id) => act(() => platformApi.tenants.reactivate(id))}
-        />
-      </main>
+    <div className="grid gap-4">
+      <h1 className="text-2xl font-semibold">{t('platform.tenants.title')}</h1>
+      <Input
+        type="search"
+        className="max-w-sm"
+        placeholder={t('platform.tenants.search')}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      <PlatformTenantsTable
+        tenants={tenants.data ?? []}
+        onSuspend={(id) => act(() => platformApi.tenants.suspend(id))}
+        onReactivate={(id) => act(() => platformApi.tenants.reactivate(id))}
+      />
     </div>
   );
 }
