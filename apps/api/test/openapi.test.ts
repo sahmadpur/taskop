@@ -12,7 +12,7 @@ describe('OpenAPI', () => {
     const res = await t.http().get('/api/docs-json');
     expect(res.status).toBe(200);
     expect(Object.keys(res.body.paths)).toEqual(
-      expect.arrayContaining(['/api/v1/auth/signup', '/api/v1/users', '/api/v1/sites', '/api/v1/roles', '/api/v1/audit-log']),
+      expect.arrayContaining(['/api/v1/auth/signup', '/api/v1/users', '/api/v1/sites', '/api/v1/roles', '/api/v1/audit-log', '/api/v1/checklists', '/api/v1/templates', '/api/v1/platform/templates', '/api/v1/platform/tenants/{tenantId}/checklists']),
     );
   });
 });

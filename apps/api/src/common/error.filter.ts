@@ -73,6 +73,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         fields: err.fields,
         retryAfterSeconds: err.retryAfterSeconds,
         requestId,
+        ...(err.details ?? {}),
       },
     });
   }

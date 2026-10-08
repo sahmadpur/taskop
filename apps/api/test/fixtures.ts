@@ -127,6 +127,7 @@ export function as(t: TestApp, token: string) {
     post: (url: string, body: object = {}) => t.http().post(url).set(bearer(token)).send(body),
     patch: (url: string, body: object = {}) => t.http().patch(url).set(bearer(token)).send(body),
     put: (url: string, body: object = {}) => t.http().put(url).set(bearer(token)).send(body),
+    delete: (url: string) => t.http().delete(url).set(bearer(token)),
   };
 }
 

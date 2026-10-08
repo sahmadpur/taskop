@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   foreignKey,
@@ -8,10 +9,12 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  pgView,
   primaryKey,
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
@@ -234,7 +237,8 @@ export const auditLog = pgTable(
   'audit_log',
   {
     id: id(),
-    tenantId: tenantId(),
+    // null only for platform-scope entries (global templates); see audit_log_scope_ck.
+    tenantId: uuid('tenant_id').references(() => tenants.id),
     actorUserId: uuid('actor_user_id'),
     actorPlatformAdminId: uuid('actor_platform_admin_id'),
     action: text('action').notNull(),
@@ -246,7 +250,10 @@ export const auditLog = pgTable(
     userAgent: text('user_agent'),
     occurredAt: ts('occurred_at').notNull().defaultNow(),
   },
-  (t) => [index('audit_log_tenant_time_idx').on(t.tenantId, t.occurredAt)],
+  (t) => [
+    index('audit_log_tenant_time_idx').on(t.tenantId, t.occurredAt),
+    check('audit_log_scope_ck', sql`${t.tenantId} is not null or ${t.actorPlatformAdminId} is not null`),
+  ],
 );
 
 export const platformAdmins = pgTable('platform_admins', {
@@ -263,3 +270,136 @@ export const rateLimits = pgTable('rate_limits', {
   count: integer('count').notNull(),
   expiresAt: ts('expires_at').notNull(),
 });
+
+export const checklistStatus = pgEnum('checklist_status', ['active', 'deactivated']);
+export const checklistVersionState = pgEnum('checklist_version_state', ['draft', 'published']);
+// Must match TEMPLATE_CATEGORIES in @taskop/contracts.
+export const templateCategory = pgEnum('template_category', ['cleaning', 'restaurant', 'retail', 'safety', 'production', 'warehouse', 'quality', 'maintenance', 'other']);
+export const templateSourceKind = pgEnum('template_source_kind', ['global', 'tenant']);
+
+const createdByUser = () => uuid('created_by_user_id');
+const createdByPlatform = () => uuid('created_by_platform_admin_id');
+const oneCreator = (name: string, t: { createdByUserId: AnyPgColumn; createdByPlatformAdminId: AnyPgColumn }) =>
+  check(name, sql`num_nonnulls(${t.createdByUserId}, ${t.createdByPlatformAdminId}) = 1`);
+
+export const checklists = pgTable(
+  'checklists',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    description: text('description'),
+    category: templateCategory('category'),
+    status: checklistStatus('status').notNull().default('active'),
+    // FK to checklist_versions (tenant_id, id) is added in 0004 (circular reference).
+    currentVersionId: uuid('current_version_id'),
+    latestVersionNumber: integer('latest_version_number').notNull().default(0),
+    sourceTemplateKind: templateSourceKind('source_template_kind'),
+    sourceTemplateId: uuid('source_template_id'),
+    sourceVersionId: uuid('source_version_id'),
+    createdByUserId: createdByUser(),
+    createdByPlatformAdminId: createdByPlatform(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('checklists_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.createdByUserId], foreignColumns: [users.tenantId, users.id], name: 'checklists_created_by_fk' }),
+    oneCreator('checklists_creator_ck', t),
+    index('checklists_tenant_idx').on(t.tenantId, t.id),
+  ],
+);
+
+export const checklistVersions = pgTable(
+  'checklist_versions',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    checklistId: uuid('checklist_id').notNull(),
+    state: checklistVersionState('state').notNull(),
+    number: integer('number'),
+    content: jsonb('content').notNull(),
+    changeNote: text('change_note'),
+    revision: integer('revision').notNull().default(1),
+    createdByUserId: createdByUser(),
+    createdByPlatformAdminId: createdByPlatform(),
+    publishedByUserId: uuid('published_by_user_id'),
+    publishedByPlatformAdminId: uuid('published_by_platform_admin_id'),
+    publishedAt: ts('published_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('checklist_versions_tenant_id_uq').on(t.tenantId, t.id),
+    unique('checklist_versions_number_uq').on(t.checklistId, t.number),
+    uniqueIndex('checklist_versions_one_draft_uq').on(t.checklistId).where(sql`${t.state} = 'draft'`),
+    foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'checklist_versions_checklist_fk' }),
+    foreignKey({ columns: [t.tenantId, t.createdByUserId], foreignColumns: [users.tenantId, users.id], name: 'checklist_versions_created_by_fk' }),
+    foreignKey({ columns: [t.tenantId, t.publishedByUserId], foreignColumns: [users.tenantId, users.id], name: 'checklist_versions_published_by_fk' }),
+    oneCreator('checklist_versions_creator_ck', t),
+    check(
+      'checklist_versions_published_ck',
+      sql`(${t.state} = 'draft' and ${t.number} is null and ${t.publishedAt} is null and ${t.publishedByUserId} is null and ${t.publishedByPlatformAdminId} is null)
+       or (${t.state} = 'published' and ${t.number} is not null and ${t.publishedAt} is not null and num_nonnulls(${t.publishedByUserId}, ${t.publishedByPlatformAdminId}) = 1)`,
+    ),
+    index('checklist_versions_checklist_idx').on(t.tenantId, t.checklistId),
+  ],
+);
+
+export const tenantTemplates = pgTable(
+  'tenant_templates',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    description: text('description'),
+    category: templateCategory('category').notNull(),
+    content: jsonb('content').notNull(),
+    revision: integer('revision').notNull().default(1),
+    itemCount: integer('item_count').notNull(),
+    status: checklistStatus('status').notNull().default('active'),
+    sourceChecklistId: uuid('source_checklist_id'),
+    sourceVersionId: uuid('source_version_id'),
+    createdByUserId: createdByUser(),
+    createdByPlatformAdminId: createdByPlatform(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('tenant_templates_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.createdByUserId], foreignColumns: [users.tenantId, users.id], name: 'tenant_templates_created_by_fk' }),
+    oneCreator('tenant_templates_creator_ck', t),
+    index('tenant_templates_tenant_idx').on(t.tenantId),
+  ],
+);
+
+/** Taskop's library. No tenant_id and no RLS: tenants read it only through `global_templates_published`. */
+export const globalTemplates = pgTable('global_templates', {
+  id: id(),
+  name: text('name').notNull(),
+  description: text('description'),
+  category: templateCategory('category').notNull(),
+  content: jsonb('content').notNull(),
+  revision: integer('revision').notNull().default(1),
+  itemCount: integer('item_count').notNull(),
+  published: boolean('published').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  // null = inserted by the seed script.
+  createdByPlatformAdminId: uuid('created_by_platform_admin_id').references(() => platformAdmins.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/** Created by hand in 0004 (drizzle-kit does not manage it). */
+export const globalTemplatesPublished = pgView('global_templates_published', {
+  id: uuid('id').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  category: templateCategory('category').notNull(),
+  content: jsonb('content').notNull(),
+  revision: integer('revision').notNull(),
+  itemCount: integer('item_count').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+  createdAt: ts('created_at').notNull(),
+  updatedAt: ts('updated_at').notNull(),
+}).existing();
