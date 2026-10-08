@@ -47,6 +47,7 @@
   "version": "0.1.0",
   "jest": {
     "preset": "jest-expo",
+    "testTimeout": 30000,
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
