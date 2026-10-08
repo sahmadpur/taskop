@@ -101,18 +101,21 @@ export class CredentialService {
     });
   }
 
-  /** Creates an invite token and mails it. Runs inside the current tenant transaction. */
+  /**
+   * Creates an invite token inside the current tenant transaction; the mail goes out only after it commits,
+   * so SMTP latency never holds the transaction open and a rolled-back invite never mails a dead link.
+   */
   async issueInvite(input: { tenantId: string; userId: string; email: string; fullName: string }): Promise<void> {
     const [tenant] = await this.db.tx().select({ name: tenants.name }).from(tenants).where(eq(tenants.id, input.tenantId));
     const token = await this.oneTime.create({ tenantId: input.tenantId, userId: input.userId, purpose: 'invite' });
-    await this.auth.sendMail(
-      inviteMail({ to: input.email, fullName: input.fullName, orgName: tenant?.name ?? '', webUrl: this.config.WEB_URL, token }),
-    );
+    const mail = inviteMail({ to: input.email, fullName: input.fullName, orgName: tenant?.name ?? '', webUrl: this.config.WEB_URL, token });
+    this.db.afterCommit(() => this.auth.sendMail(mail));
   }
 
-  /** Admin-triggered staff reset: mails a reset link. Runs inside the current tenant transaction. */
+  /** Admin-triggered staff reset: creates a reset token in the current tenant transaction and mails it after commit. */
   async issuePasswordReset(input: { tenantId: string; userId: string; email: string; fullName: string }): Promise<void> {
     const token = await this.oneTime.create({ tenantId: input.tenantId, userId: input.userId, purpose: 'password_reset' });
-    await this.auth.sendMail(passwordResetMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token }));
+    const mail = passwordResetMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token });
+    this.db.afterCommit(() => this.auth.sendMail(mail));
   }
 }

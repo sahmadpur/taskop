@@ -1,6 +1,7 @@
 import { ALL_PERMISSIONS } from '@taskop/contracts';
 import { uuidv7 } from 'uuidv7';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { CredentialService } from '../src/auth/credential.service';
 import type { Principal } from '../src/common/request';
 import { DbService } from '../src/db/db.service';
 import { UsersService } from '../src/users/users.service';
@@ -191,6 +192,27 @@ describe('users', () => {
     const staffReset = await owner.post(`/api/v1/users/${staff.id}/reset-credential`);
     expect(staffReset.body.generatedSecret).toBeNull();
     expect(t.mailer.lastTo(staff.email!)?.subject).toContain('şifrənin bərpası');
+  });
+
+  it('mails an invite only after the transaction commits, and never when it rolls back', async () => {
+    const { s } = await verified();
+    const db = t.app.get(DbService);
+    const credentials = t.app.get(CredentialService);
+    const rolledBack = await createUserDirect(t, s.tenantId, { kind: 'staff', roleKey: 'manager', status: 'invited', secret: null });
+    await expect(
+      db.withTenant(s.tenantId, null, async () => {
+        await credentials.issueInvite({ tenantId: s.tenantId, userId: rolledBack.id, email: rolledBack.email!, fullName: 'X' });
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    expect(t.mailer.lastTo(rolledBack.email!)).toBeUndefined();
+
+    const committed = await createUserDirect(t, s.tenantId, { kind: 'staff', roleKey: 'manager', status: 'invited', secret: null });
+    await db.withTenant(s.tenantId, null, async () => {
+      await credentials.issueInvite({ tenantId: s.tenantId, userId: committed.id, email: committed.email!, fullName: 'Y' });
+      expect(t.mailer.lastTo(committed.email!)).toBeUndefined();
+    });
+    await vi.waitFor(() => expect(t.mailer.lastTo(committed.email!)).toBeDefined());
   });
 
   it('assigns sites and teams, rejecting foreign ids', async () => {

@@ -14,6 +14,7 @@ interface TenantStore {
   tx: Tx;
   tenantId: string;
   userId: string | null;
+  afterCommit: (() => unknown)[];
 }
 
 const storage = new AsyncLocalStorage<TenantStore>();
@@ -46,12 +47,34 @@ export class DbService implements OnModuleDestroy {
       if (current.tenantId !== tenantId) throw new Error('Cannot open a transaction for a different tenant');
       return fn(current.tx);
     }
-    return this.app.transaction(async (tx) => {
+    const afterCommit: (() => unknown)[] = [];
+    const result = await this.app.transaction(async (tx) => {
       await tx.execute(
         sql`select set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${userId ?? ''}, true)`,
       );
-      return storage.run({ tx, tenantId, userId }, () => fn(tx));
+      return storage.run({ tx, tenantId, userId, afterCommit }, () => fn(tx));
     });
+    // Outside the transaction's async context, so callbacks cannot touch the committed tx.
+    storage.exit(() => afterCommit.forEach((cb) => this.runAfterCommit(cb)));
+    return result;
+  }
+
+  /**
+   * Schedules a side effect (e.g. sending mail) for after the enclosing tenant transaction commits.
+   * Not awaited by the request; dropped if the transaction rolls back. Runs at once outside a transaction.
+   */
+  afterCommit(cb: () => unknown): void {
+    const current = storage.getStore();
+    if (current) current.afterCommit.push(cb);
+    else this.runAfterCommit(cb);
+  }
+
+  private runAfterCommit(cb: () => unknown): void {
+    try {
+      void Promise.resolve(cb()).catch((err: unknown) => this.logger.error(`After-commit callback failed: ${String(err)}`));
+    } catch (err) {
+      this.logger.error(`After-commit callback failed: ${String(err)}`);
+    }
   }
 
   tx(): Tx {
