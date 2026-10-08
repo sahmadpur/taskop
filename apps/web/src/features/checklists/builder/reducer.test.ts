@@ -1,3 +1,4 @@
+import { newItem, newRule, type YesNoItem } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
 import { builderReducer, type BuilderAction, type BuilderState, HISTORY_LIMIT, initialState } from './reducer';
 import { findItem } from './tree';
@@ -55,8 +56,8 @@ describe('builderReducer', () => {
     const newRule = (findItem(s.content, f.a.id)!.item as typeof f.a).rules[1]!;
     s = run(s, { type: 'updateRule', itemId: f.a.id, ruleId: newRule.id, patch: { then: { problem: 'critical' } } });
     expect((findItem(s.content, f.a.id)!.item as typeof f.a).rules[1]!.then).toMatchObject({ problem: 'critical', followUps: [] });
-    const depth3 = { kind: 'rule' as const, itemId: f.a1.id, ruleId: f.rule1.id };
-    s = run(s, { type: 'addItem', container: depth3, itemType: 'text' });
+    const depth2 = { kind: 'rule' as const, itemId: f.a1.id, ruleId: f.rule1.id };
+    s = run(s, { type: 'addItem', container: depth2, itemType: 'text' });
     expect(findItem(s.content, f.a1.id)!.item).toMatchObject({ rules: [{ then: { followUps: [{}, {}] } }] });
     s = run(s, { type: 'removeRule', itemId: f.a.id, ruleId: f.rule.id });
     expect(findItem(s.content, f.a1.id)).toBeNull();
@@ -68,5 +69,27 @@ describe('builderReducer', () => {
     expect(s.selected).toEqual({ kind: 'section', id: f.s1.id });
     const u = builderReducer(s, { type: 'undo' });
     expect(findItem(u.content, f.b.id)).not.toBeNull();
+  });
+
+  it('refuses addItem into a depth-4 container', () => {
+    const f = treeFixture();
+    const y = newItem('yes_no') as YesNoItem;
+    const r3 = newRule(y);
+    y.rules.push(r3);
+    const z = newItem('yes_no') as YesNoItem;
+    const r4 = newRule(z);
+    z.rules.push(r4);
+    r3.then.followUps.push(z);
+    f.rule1.then.followUps[0] = y;
+    const s = initialState(f.content);
+    expect(builderReducer(s, { type: 'addItem', container: { kind: 'rule', itemId: z.id, ruleId: r4.id }, itemType: 'text' })).toBe(s);
+    const ok = builderReducer(s, { type: 'addItem', container: { kind: 'rule', itemId: y.id, ruleId: r3.id }, itemType: 'text' });
+    expect(ok).not.toBe(s);
+  });
+
+  it('resets the selection when removing its parent rule', () => {
+    const f = treeFixture();
+    const s = run(initialState(f.content), { type: 'select', node: { kind: 'item', id: f.a1.id } }, { type: 'removeRule', itemId: f.a.id, ruleId: f.rule.id });
+    expect(s.selected).toEqual({ kind: 'settings' });
   });
 });

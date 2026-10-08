@@ -67,7 +67,7 @@ function commit(state: BuilderState, content: ChecklistContent, opts: { key?: st
     content,
     past: coalesce ? state.past : [...state.past, state.content].slice(-HISTORY_LIMIT),
     future: [],
-    selected: opts.selected ?? state.selected,
+    selected: validSelection(content, opts.selected ?? state.selected),
     version: state.version + 1,
     lastKey: opts.key ?? null,
   };
