@@ -70,4 +70,8 @@ describe('ScopeService.usersFilter', () => {
     expect(await visible(ids.w2!, 'own')).toEqual([ids.w2!]);
     expect((await visible(ids.owner!, 'all')).length).toBe(8);
   });
+
+  it('fails closed on an unknown data scope', () => {
+    expect(() => scope.usersFilter({ userId: ids.owner!, dataScope: 'everyone' as DataScope })).toThrow(/Unhandled data scope/);
+  });
 });

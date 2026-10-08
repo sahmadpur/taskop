@@ -40,6 +40,7 @@ export class SitesService {
 
   async create(input: CreateSiteDto): Promise<SiteDto> {
     const { tenantId } = this.db.context();
+    await this.lockTree();
     await this.requireActiveType(input.typeId);
     const parent = input.parentId ? await this.find(input.parentId, 'REFERENCE_NOT_FOUND') : null;
     const id = uuidv7();
@@ -77,6 +78,7 @@ export class SitesService {
 
   async move(id: string, input: MoveSiteDto): Promise<SiteDto> {
     const tx = this.db.tx();
+    await this.lockTree();
     const node = await this.find(id, 'NOT_FOUND');
     const parent = input.parentId ? await this.find(input.parentId, 'REFERENCE_NOT_FOUND') : null;
     if (parent && isSameOrDescendant(parent.path, node.path)) throw new AppError('SITE_CYCLE');
@@ -103,6 +105,15 @@ export class SitesService {
       after: { parentId: dto.parentId },
     });
     return dto;
+  }
+
+  /**
+   * Serialises path-changing writes within the tenant until the transaction ends, so two
+   * concurrent moves can't both pass the cycle check and a create can't read a stale parent path.
+   */
+  private async lockTree(): Promise<void> {
+    const { tenantId } = this.db.context();
+    await this.db.tx().execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-tree:${tenantId}`}, 0))`);
   }
 
   private async find(id: string, missing: 'NOT_FOUND' | 'REFERENCE_NOT_FOUND') {

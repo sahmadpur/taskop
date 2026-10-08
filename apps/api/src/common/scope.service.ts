@@ -31,6 +31,11 @@ export class ScopeService {
                 join sites ms on ms.id = mine.site_id
                 where mine.user_id = ${p.userId} and s.path <@ ms.path))`,
         );
+      default: {
+        // Fail closed: a new data scope must be handled here before it can be used.
+        const unhandled: never = p.dataScope;
+        throw new Error(`Unhandled data scope: ${String(unhandled)}`);
+      }
     }
   }
 }

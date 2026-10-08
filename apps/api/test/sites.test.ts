@@ -80,6 +80,26 @@ describe('site types and sites', () => {
     expect((await owner.post(`/api/v1/sites/${a.id}/move`, { parentId: a.id })).body.error.code).toBe('SITE_CYCLE');
   });
 
+  it('serialises concurrent moves so two sites cannot be moved under each other', async () => {
+    const s = await signupTenant(t);
+    const owner = as(t, s.accessToken);
+    const typeId = await siteTypeIdOf(s.tenantId);
+    const pairs = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: `A${i}` })).body;
+      const b = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: `B${i}` })).body;
+      pairs.push([a.id as string, b.id as string] as const);
+    }
+    const results = await Promise.all(
+      pairs.map(async ([a, b]) =>
+        Promise.all([owner.post(`/api/v1/sites/${a}/move`, { parentId: b }), owner.post(`/api/v1/sites/${b}/move`, { parentId: a })]),
+      ),
+    );
+    for (const pair of results) {
+      expect(pair.map((r) => r.status).sort()).toEqual([200, 409]);
+    }
+  });
+
   it('rejects inactive or foreign site types', async () => {
     const s = await signupTenant(t);
     const other = await signupTenant(t);

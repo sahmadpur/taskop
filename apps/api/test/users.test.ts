@@ -320,6 +320,31 @@ describe('users', () => {
       expect(put.body.error.code).toBe('OWNER_ROLE_RESTRICTED');
     });
 
+    it('stops a site lead managing a peer whose sites reach beyond their subtree', async () => {
+      const { s, owner } = await verified();
+      const typeId = await siteTypeIdOf(s.tenantId);
+      const a = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: 'A' })).body;
+      const a1 = (await owner.post('/api/v1/sites', { parentId: a.id, typeId, name: 'A1' })).body;
+      const b = (await owner.post('/api/v1/sites', { parentId: null, typeId, name: 'B' })).body;
+      const role = (await owner.post('/api/v1/roles', { name: 'Site lead', dataScope: 'site_subtree', permissions: ['users.view', 'users.manage'] })).body;
+      const lead = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: role.id });
+      await owner.put(`/api/v1/users/${lead.id}/sites`, { siteIds: [a1.id] });
+      const peer = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: role.id });
+      await owner.put(`/api/v1/users/${peer.id}/sites`, { siteIds: [a1.id, b.id] });
+      const leadApi = as(t, (await loginStaff(t, lead.email!, lead.secret)).accessToken);
+
+      expect((await leadApi.get(`/api/v1/users/${peer.id}`)).status).toBe(200);
+      const reset = await leadApi.post(`/api/v1/users/${peer.id}/reset-credential`);
+      expect(reset.status).toBe(403);
+      expect(reset.body.error.code).toBe('FORBIDDEN');
+      expect((await leadApi.put(`/api/v1/users/${peer.id}/sites`, { siteIds: [a1.id] })).status).toBe(403);
+      expect((await leadApi.post(`/api/v1/users/${peer.id}/deactivate`)).status).toBe(403);
+
+      const contained = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: role.id });
+      await owner.put(`/api/v1/users/${contained.id}/sites`, { siteIds: [a1.id] });
+      expect((await leadApi.patch(`/api/v1/users/${contained.id}`, { fullName: 'Renamed' })).status).toBe(200);
+    });
+
     it('confines site-subtree leads to their own subtree', async () => {
       const { s, owner } = await verified();
       const typeId = await siteTypeIdOf(s.tenantId);

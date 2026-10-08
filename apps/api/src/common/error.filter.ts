@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { errorMessageKey } from '@taskop/contracts';
+import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 import type { Response } from 'express';
 import { ZodSerializationException, ZodValidationException } from 'nestjs-zod';
 import type { ZodError } from 'zod';
@@ -35,19 +36,23 @@ export function toAppError(e: unknown): AppError {
   return new AppError('INTERNAL');
 }
 
+const isDrizzleError = (e: Error): boolean =>
+  e instanceof DrizzleQueryError || e instanceof DrizzleError || e.message.startsWith('Failed query:');
+
 /** Never log driver/ORM errors verbatim: their messages embed SQL and bound parameters. */
 export function sanitiseForLog(exception: unknown, requestId: string | null): Record<string, unknown> {
   const pg = pgErrorOf(exception);
   const error = exception instanceof Error ? exception : null;
+  const sensitive = pg !== null || (error !== null && isDrizzleError(error));
   const payload: Record<string, unknown> = {
     requestId,
     errorName: error?.name ?? typeof exception,
     pgCode: pg?.code ?? null,
     pgConstraint: pg?.constraint ?? null,
   };
-  if (!pg && error) payload.message = error.message;
+  if (!sensitive && error) payload.message = error.message;
   if (error?.stack) {
-    payload.stack = pg ? error.stack.split('\n').filter((l) => l.trimStart().startsWith('at ')).join('\n') : error.stack;
+    payload.stack = sensitive ? error.stack.split('\n').filter((l) => l.trimStart().startsWith('at ')).join('\n') : error.stack;
   }
   return payload;
 }
