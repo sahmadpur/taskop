@@ -1,0 +1,3 @@
+CREATE EXTENSION IF NOT EXISTS ltree;
+--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS citext;

@@ -1,0 +1,18 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestApp, type TestApp } from './app';
+
+describe('OpenAPI', () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = await createTestApp();
+  });
+  afterAll(() => t.close());
+
+  it('serves the document with the Foundation paths', async () => {
+    const res = await t.http().get('/api/docs-json');
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.paths)).toEqual(
+      expect.arrayContaining(['/api/v1/auth/signup', '/api/v1/users', '/api/v1/sites', '/api/v1/roles', '/api/v1/audit-log']),
+    );
+  });
+});
