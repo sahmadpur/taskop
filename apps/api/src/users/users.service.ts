@@ -264,6 +264,8 @@ export class UsersService {
     if (!role) throw new AppError('NOT_FOUND');
     assertNoEscalation(p, await loadRolePermissions(tx, role));
     assertNoScopeEscalation(p, role.dataScope);
+    // Equal scope rank isn't enough: a site lead must cover every site the target has.
+    if (p.dataScope === 'site_subtree' && !(await this.allInSubtree(p, target.siteIds))) throw new AppError('FORBIDDEN');
   }
 
   /** Common checks for creating a user; returns the manager id to store. */
@@ -287,9 +289,14 @@ export class UsersService {
   }
 
   private async assertSitesInScope(p: Principal, siteIds: string[]): Promise<void> {
+    await assertIdsExist(this.db.tx(), sites, sites.id, [...new Set(siteIds)]);
+    if (p.dataScope === 'site_subtree' && !(await this.allInSubtree(p, siteIds))) throw new AppError('REFERENCE_NOT_FOUND');
+  }
+
+  /** Whether every given site lies at or below one of the principal's own sites. */
+  private async allInSubtree(p: Principal, siteIds: string[]): Promise<boolean> {
     const unique = [...new Set(siteIds)];
-    await assertIdsExist(this.db.tx(), sites, sites.id, unique);
-    if (p.dataScope !== 'site_subtree' || unique.length === 0) return;
+    if (unique.length === 0) return true;
     const rows = await this.db
       .tx()
       .select({ id: sites.id })
@@ -300,7 +307,7 @@ export class UsersService {
           sql`exists (select 1 from user_sites mine join sites ms on ms.id = mine.site_id where mine.user_id = ${p.userId} and ${sites.path} <@ ms.path)`,
         ),
       );
-    if (rows.length !== unique.length) throw new AppError('REFERENCE_NOT_FOUND');
+    return rows.length === unique.length;
   }
 
   private async assertProfileRefs(userId: string | null, managerId: string | null, siteIds: string[], teamIds: string[]): Promise<void> {

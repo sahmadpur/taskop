@@ -56,10 +56,11 @@ export class RolesService {
   }
 
   async update(p: Principal, id: string, input: UpdateRoleDto): Promise<RoleDto> {
-    if (input.dataScope) assertNoScopeEscalation(p, input.dataScope);
     const tx = this.db.tx();
     const existing = await this.find(id);
     if (!existing.editable) throw new AppError('ROLE_NOT_EDITABLE');
+    await this.assertCanEdit(p, existing);
+    if (input.dataScope) assertNoScopeEscalation(p, input.dataScope);
     if (existing.systemKey && ((input.name !== undefined && input.name !== existing.name) || input.active === false)) {
       throw new AppError('ROLE_NOT_EDITABLE');
     }
@@ -79,6 +80,7 @@ export class RolesService {
     const tx = this.db.tx();
     const existing = await this.find(id);
     if (!existing.editable) throw new AppError('ROLE_NOT_EDITABLE');
+    await this.assertCanEdit(p, existing);
     const permissions = [...new Set(input.permissions)];
     assertNoEscalation(p, permissions);
     const before = await loadRolePermissions(tx, existing);
@@ -99,6 +101,12 @@ export class RolesService {
       after: { permissions },
     });
     return this.toDto(row!);
+  }
+
+  /** An actor may only edit roles that do not exceed their own permissions or data scope. */
+  private async assertCanEdit(p: Principal, role: typeof roles.$inferSelect): Promise<void> {
+    assertNoEscalation(p, await loadRolePermissions(this.db.tx(), role));
+    assertNoScopeEscalation(p, role.dataScope);
   }
 
   private async find(id: string) {

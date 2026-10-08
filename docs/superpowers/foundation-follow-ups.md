@@ -1,15 +1,10 @@
 # Foundation follow-ups
 
-Non-blocking findings from the Foundation (sub-project 1) task reviews and final whole-branch review, 2026-10-08. None blocked the merge. Schedule them into a later sub-project or a hardening pass. Items marked ⚑ were flagged for final review as the most worth doing.
+Non-blocking findings from the Foundation (sub-project 1) task reviews and final whole-branch review, 2026-10-08. None blocked the merge. Schedule them into a later sub-project or a hardening pass. The five items flagged as most worth doing (scope coverage for site leads, role edits by scoped actors, concurrent site moves, the fail-open scope switch and the log sanitiser gap) have been fixed and are no longer listed.
 
 ## Security and privilege model (API)
 
-- ⚑ **Scope breadth, not coverage.** `assertNoScopeEscalation` compares scope *rank*, not actual site coverage. A `site_subtree` lead can manage a peer lead with the same permissions whose sites reach further, so they can reset that peer's credential, or replace or empty the peer's sites. Fix: require the target's sites ⊆ the actor's subtree for site-scoped actors.
-- ⚑ **Role edits by scoped actors.** `RolesService.update`/`setPermissions` check only the *new* values, not the existing role's scope. A `site_subtree` actor with `roles.manage` can narrow or strip Admin/Auditor, or add their own permissions to an `all`-scope role. Also, the scope check runs before `find`, so a missing role returns 403, not 404.
 - **Manager outside scope.** `site_subtree` and `all` actors can set `managerId` to someone outside their scope; only `subordinates` actors are checked.
-- ⚑ **Concurrent site moves.** `SitesService.move` takes no row lock, so moving A under B and B under A at the same moment can both pass the cycle check. Fix: `SELECT … FOR UPDATE` on the node and the target, or a per-tenant advisory lock.
-- ⚑ **Fail-open scope switch.** `ScopeService.usersFilter` has no exhaustive `default`. If `DataScope` grows, the new value means "no filter". Add `default: never` or throw.
-- ⚑ **Log sanitiser gap.** It logs message and stack for non-pg errors. A Drizzle "Failed query … params" error wrapping a non-pg cause (e.g. `ECONNREFUSED`) could leak bind params. Drop the message for any Drizzle error.
 - **Account enumeration (parked by ruling).** `ACCOUNT_LOCKED` after 5 failures confirms that an account exists. This is intended UX per spec §5.4 and bounded by rate limits.
 - **Rate-limit and lockout gaps.**
   - Forgot-password is limited per IP only (add a per-email key).

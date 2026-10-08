@@ -84,4 +84,26 @@ describe('roles', () => {
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('ROLE_ESCALATION');
   });
+
+  it('stops a scoped role admin from editing roles that exceed them', async () => {
+    const s = await signupTenant(t);
+    const owner = as(t, s.accessToken);
+    const mid = (await owner.post('/api/v1/roles', { name: 'Role admin', dataScope: 'site_subtree', permissions: ['roles.view', 'roles.manage'] })).body;
+    const wide = (await owner.post('/api/v1/roles', { name: 'Wide', dataScope: 'all', permissions: ['roles.view'] })).body;
+    const narrow = (await owner.post('/api/v1/roles', { name: 'Narrow', dataScope: 'site_subtree', permissions: ['roles.view'] })).body;
+    const u = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: mid.id });
+    const api = as(t, (await loginStaff(t, u.email!, u.secret)).accessToken);
+    const adminRole = await roleIdOf(s.tenantId, 'admin');
+
+    const stripAdmin = await api.put(`/api/v1/roles/${adminRole}/permissions`, { permissions: [] });
+    expect(stripAdmin.status).toBe(403);
+    expect(stripAdmin.body.error.code).toBe('ROLE_ESCALATION');
+    const narrowAdmin = await api.patch(`/api/v1/roles/${adminRole}`, { dataScope: 'own' });
+    expect(narrowAdmin.body.error.code).toBe('ROLE_ESCALATION');
+    const boostWide = await api.put(`/api/v1/roles/${wide.id}/permissions`, { permissions: ['roles.view', 'roles.manage'] });
+    expect(boostWide.body.error.code).toBe('ROLE_ESCALATION');
+
+    expect((await api.put(`/api/v1/roles/${narrow.id}/permissions`, { permissions: ['roles.view', 'roles.manage'] })).status).toBe(200);
+    expect((await api.patch('/api/v1/roles/0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f', { dataScope: 'all' })).status).toBe(404);
+  });
 });

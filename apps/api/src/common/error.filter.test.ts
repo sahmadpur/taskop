@@ -1,10 +1,11 @@
 import { Logger, NotFoundException } from '@nestjs/common';
+import { DrizzleQueryError } from 'drizzle-orm';
 import { ZodValidationException } from 'nestjs-zod';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import '@taskop/contracts';
 import { AppError } from './app-error';
-import { AllExceptionsFilter, toAppError } from './error.filter';
+import { AllExceptionsFilter, sanitiseForLog, toAppError } from './error.filter';
 
 describe('toAppError', () => {
   it('passes AppError through', () => {
@@ -54,5 +55,16 @@ describe('AllExceptionsFilter logging', () => {
     expect(logged).toContain('42P01');
     expect(res.status).toHaveBeenCalledWith(500);
     spy.mockRestore();
+  });
+
+  it('drops the message of a Drizzle error wrapping a non-pg cause', () => {
+    const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' });
+    const logged = JSON.stringify(sanitiseForLog(new DrizzleQueryError('select * from users where email = $1', ['secret@example.az'], cause), 'r1'));
+    expect(logged).not.toContain('secret@example.az');
+    expect(logged).not.toContain('Failed query');
+  });
+
+  it('keeps the message of ordinary errors', () => {
+    expect(sanitiseForLog(new Error('boom'), null)).toMatchObject({ message: 'boom' });
   });
 });
