@@ -13,3 +13,4 @@ export * from './users.js';
 export * from './audit.js';
 export * from './platform.js';
 export * from './checklist-content.js';
+export * from './checklist-validate.js';
