@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { currentRequestMeta } from '../common/request-context';
-import { DbService } from './db.service';
+import { DbService, type Executor } from './db.service';
 import { auditLog } from './schema';
 
 export interface AuditEvent {
@@ -26,39 +26,41 @@ export function redactSecrets(value: unknown): unknown {
   return value;
 }
 
+type AuditRow = typeof auditLog.$inferInsert;
+
+function toRow(e: AuditEvent, tenantId: string | null, actorUserId: string | null, actorPlatformAdminId: string | null): AuditRow {
+  const meta = currentRequestMeta();
+  return {
+    tenantId,
+    actorUserId,
+    actorPlatformAdminId,
+    action: e.action,
+    entityType: e.entityType,
+    entityId: e.entityId ?? null,
+    before: e.before === undefined ? null : redactSecrets(e.before),
+    after: e.after === undefined ? null : redactSecrets(e.after),
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  };
+}
+
 @Injectable()
 export class AuditService {
   constructor(private readonly db: DbService) {}
 
   /** Writes inside the current tenant transaction, so it commits or rolls back with the change. */
   async record(e: AuditEvent): Promise<void> {
-    const { tenantId, userId } = this.db.context();
-    const meta = currentRequestMeta();
-    await this.db.tx().insert(auditLog).values({
-      tenantId,
-      actorUserId: e.actorUserId === undefined ? userId : e.actorUserId,
-      action: e.action,
-      entityType: e.entityType,
-      entityId: e.entityId ?? null,
-      before: e.before === undefined ? null : redactSecrets(e.before),
-      after: e.after === undefined ? null : redactSecrets(e.after),
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    });
+    const { tenantId, userId, platformAdminId } = this.db.context();
+    const actorUserId = e.actorUserId === undefined ? userId : e.actorUserId;
+    await this.db.tx().insert(auditLog).values(toRow(e, tenantId, actorUserId, platformAdminId));
   }
 
   async recordAsPlatform(e: AuditEvent & { tenantId: string; actorPlatformAdminId: string }): Promise<void> {
-    const meta = currentRequestMeta();
-    await this.db.platform.insert(auditLog).values({
-      tenantId: e.tenantId,
-      actorPlatformAdminId: e.actorPlatformAdminId,
-      action: e.action,
-      entityType: e.entityType,
-      entityId: e.entityId ?? null,
-      before: e.before === undefined ? null : redactSecrets(e.before),
-      after: e.after === undefined ? null : redactSecrets(e.after),
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    });
+    await this.db.platform.insert(auditLog).values(toRow(e, e.tenantId, null, e.actorPlatformAdminId));
+  }
+
+  /** Writes on a caller-supplied executor (e.g. a platform-connection transaction for global templates). */
+  async recordIn(executor: Executor, e: AuditEvent & { tenantId: string | null; actorPlatformAdminId: string | null }): Promise<void> {
+    await executor.insert(auditLog).values(toRow(e, e.tenantId, null, e.actorPlatformAdminId));
   }
 }
