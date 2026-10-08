@@ -8,6 +8,7 @@ import type { AppConfig } from './config/config';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { TenancyModule } from './tenancy/tenancy.module';
+import { TeamsModule } from './teams/teams.module';
 import { ConfigModule } from './config/config.module';
 import { DbModule } from './db/db.module';
 import { MailModule } from './mail/mail.module';
@@ -18,7 +19,7 @@ export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(config), LoggerModule.forRoot(loggerParams(config)), DbModule, MailModule, CommonModule, AuthModule, TenancyModule],
+      imports: [ConfigModule.forRoot(config), LoggerModule.forRoot(loggerParams(config)), DbModule, MailModule, CommonModule, AuthModule, TenancyModule, TeamsModule],
       controllers: [HealthController],
       providers: [
         { provide: APP_PIPE, useClass: ZodValidationPipe },
