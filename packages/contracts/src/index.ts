@@ -12,3 +12,4 @@ export * from './roles.js';
 export * from './users.js';
 export * from './audit.js';
 export * from './platform.js';
+export * from './checklist-content.js';
