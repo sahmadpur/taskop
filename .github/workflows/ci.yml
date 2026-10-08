@@ -17,3 +17,49 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: taskop
+          POSTGRES_USER: taskop_owner
+          POSTGRES_PASSWORD: owner_ci_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U taskop_owner -d taskop" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_OWNER_URL: postgres://taskop_owner:owner_ci_password@localhost:5432/taskop
+      DATABASE_APP_URL: postgres://taskop_app:app_ci_password@localhost:5432/taskop
+      DATABASE_PLATFORM_URL: postgres://taskop_platform:platform_ci_password@localhost:5432/taskop
+      APP_DB_PASSWORD: app_ci_password
+      PLATFORM_DB_PASSWORD: platform_ci_password
+      WEB_URL: http://localhost:5173
+      SMTP_URL: smtp://localhost:1025
+      MAIL_FROM: Taskop <no-reply@taskop.ci>
+      COOKIE_SECURE: 'false'
+      LOG_LEVEL: warn
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Prepare database and JWT keys
+        run: |
+          cd apps/api
+          touch .env
+          pnpm exec tsx src/db/scripts/setup.ts
+          pnpm exec tsx src/scripts/generate-keys.ts | sed 's/"//g' >> "$GITHUB_ENV"
+      - run: pnpm --filter @taskop/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @taskop/web e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/test-results
