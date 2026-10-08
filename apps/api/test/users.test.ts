@@ -7,6 +7,7 @@ import { DbService } from '../src/db/db.service';
 import { UsersService } from '../src/users/users.service';
 import { createTestApp, type TestApp } from './app';
 import { as, createUserDirect, loginStaff, loginWorker, roleIdOf, signupTenant, siteTypeIdOf } from './fixtures';
+import { ownerQuery } from './owner-db';
 
 describe('users', () => {
   let t: TestApp;
@@ -192,6 +193,29 @@ describe('users', () => {
     const staffReset = await owner.post(`/api/v1/users/${staff.id}/reset-credential`);
     expect(staffReset.body.generatedSecret).toBeNull();
     expect(t.mailer.lastTo(staff.email!)?.subject).toContain('şifrənin bərpası');
+  });
+
+  it('a staff reset invalidates the old password and sessions at once, and the mailed link still works', async () => {
+    const { s, owner } = await verified();
+    const staff = await createUserDirect(t, s.tenantId, { kind: 'staff', roleKey: 'manager' });
+    const before = await loginStaff(t, staff.email!, staff.secret);
+    await ownerQuery('update users set failed_login_count = 3 where id = $1', [staff.id]);
+
+    expect((await owner.post(`/api/v1/users/${staff.id}/reset-credential`)).status).toBe(200);
+    const [row] = (await ownerQuery('select credential_hash, failed_login_count, locked_until from users where id = $1', [staff.id])).rows;
+    expect(row).toMatchObject({ credential_hash: null, failed_login_count: 0, locked_until: null });
+
+    const oldLogin = await t.http().post('/api/v1/auth/login/staff').send({ email: staff.email, password: staff.secret, client: 'mobile' });
+    expect(oldLogin.status).toBe(401);
+    expect(oldLogin.body.error.code).toBe('INVALID_CREDENTIALS');
+    expect((await t.http().post('/api/v1/auth/refresh').send({ refreshToken: before.refreshToken })).status).toBe(401);
+    const audit = (await ownerQuery("select before, after from audit_log where entity_id = $1 and action = 'user.password_reset_requested'", [staff.id])).rows;
+    expect(audit).toHaveLength(1);
+    expect(JSON.stringify(audit[0])).not.toMatch(/credential_?hash|token/i);
+
+    const token = t.mailer.tokenFor(staff.email!);
+    expect((await t.http().post('/api/v1/auth/password/reset').send({ token, password: 'fresh password 1' })).status).toBe(204);
+    await loginStaff(t, staff.email!, 'fresh password 1');
   });
 
   it('mails an invite only after the transaction commits, and never when it rolls back', async () => {

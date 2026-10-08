@@ -178,9 +178,16 @@ export class UsersService {
     const before = await this.get(p, id);
     await this.assertCanManageTarget(p, before);
     if (before.kind === 'staff') {
+      // The old password stops working immediately; the mailed link sets a new one.
+      await this.db
+        .tx()
+        .update(users)
+        .set({ credentialHash: null, failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() })
+        .where(eq(users.id, id));
+      await this.sessions.revokeAllForUser(id);
       await this.credentials.issuePasswordReset({ tenantId: p.tenantId, userId: id, email: before.email!, fullName: before.fullName });
       await this.audit.record({ action: 'user.password_reset_requested', entityType: 'user', entityId: id });
-      return { user: before, generatedSecret: null };
+      return { user: await this.load(id), generatedSecret: null };
     }
     const kind = input.credentialKind ?? before.credentialKind ?? 'pin';
     if (input.secret) {
