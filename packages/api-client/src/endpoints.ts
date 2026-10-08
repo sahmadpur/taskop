@@ -1,0 +1,122 @@
+import {
+  type AuditListQuery,
+  auditEntryDtoSchema,
+  type ChangeCredentialInput,
+  type CreateRoleInput,
+  type CreateSiteInput,
+  type CreateSiteTypeInput,
+  type CreateTeamInput,
+  type CreateWorkerInput,
+  type InviteAcceptInput,
+  type InviteStaffInput,
+  type LoginStaffInput,
+  type LoginWorkerInput,
+  loginResultSchema,
+  meSchema,
+  type MoveSiteInput,
+  pageOf,
+  permissionCatalogSchema,
+  type PlatformLoginInput,
+  platformLoginResultSchema,
+  platformTenantDtoSchema,
+  type PlatformTenantListQuery,
+  type ResetCredentialInput,
+  roleDtoSchema,
+  type SignupInput,
+  siteDtoSchema,
+  siteTypeDtoSchema,
+  teamDtoSchema,
+  tenantDtoSchema,
+  type UpdateRoleInput,
+  type UpdateSiteInput,
+  type UpdateSiteTypeInput,
+  type UpdateTeamInput,
+  type UpdateTenantInput,
+  type UpdateUserInput,
+  userDtoSchema,
+  type UserListQuery,
+  userWithSecretSchema,
+  type PermissionKey,
+} from '@taskop/contracts';
+import { z } from 'zod';
+import type { ApiClient, QueryParams } from './client.js';
+
+const q = (query: object) => query as QueryParams;
+
+export function createTaskopApi(c: ApiClient) {
+  return {
+    auth: {
+      signup: (body: SignupInput) => c.request('POST', '/auth/signup', { body, schema: loginResultSchema, auth: false }),
+      loginStaff: (body: LoginStaffInput) => c.request('POST', '/auth/login/staff', { body, schema: loginResultSchema, auth: false }),
+      loginWorker: (body: LoginWorkerInput) => c.request('POST', '/auth/login/worker', { body, schema: loginResultSchema, auth: false }),
+      verifyEmail: (token: string) => c.request<void>('POST', '/auth/verify-email', { body: { token }, auth: false }),
+      resendVerification: () => c.request<void>('POST', '/auth/verify-email/resend', { body: {} }),
+      acceptInvite: (body: InviteAcceptInput) => c.request('POST', '/auth/invite/accept', { body, schema: loginResultSchema, auth: false }),
+      forgotPassword: (email: string) => c.request<void>('POST', '/auth/password/forgot', { body: { email }, auth: false }),
+      resetPassword: (token: string, password: string) =>
+        c.request<void>('POST', '/auth/password/reset', { body: { token, password }, auth: false }),
+      changeCredential: (body: ChangeCredentialInput) => c.request<void>('POST', '/auth/credential/change', { body }),
+      logout: () => c.request<void>('POST', '/auth/logout', { body: {} }),
+    },
+    me: () => c.request('GET', '/me', { schema: meSchema }),
+    tenant: {
+      get: () => c.request('GET', '/tenant', { schema: tenantDtoSchema }),
+      update: (body: UpdateTenantInput) => c.request('PATCH', '/tenant', { body, schema: tenantDtoSchema }),
+    },
+    siteTypes: {
+      list: () => c.request('GET', '/site-types', { schema: z.array(siteTypeDtoSchema) }),
+      create: (body: CreateSiteTypeInput) => c.request('POST', '/site-types', { body, schema: siteTypeDtoSchema }),
+      update: (id: string, body: UpdateSiteTypeInput) => c.request('PATCH', `/site-types/${id}`, { body, schema: siteTypeDtoSchema }),
+    },
+    sites: {
+      list: () => c.request('GET', '/sites', { schema: z.array(siteDtoSchema) }),
+      create: (body: CreateSiteInput) => c.request('POST', '/sites', { body, schema: siteDtoSchema }),
+      update: (id: string, body: UpdateSiteInput) => c.request('PATCH', `/sites/${id}`, { body, schema: siteDtoSchema }),
+      move: (id: string, body: MoveSiteInput) => c.request('POST', `/sites/${id}/move`, { body, schema: siteDtoSchema }),
+    },
+    teams: {
+      list: () => c.request('GET', '/teams', { schema: z.array(teamDtoSchema) }),
+      create: (body: CreateTeamInput) => c.request('POST', '/teams', { body, schema: teamDtoSchema }),
+      update: (id: string, body: UpdateTeamInput) => c.request('PATCH', `/teams/${id}`, { body, schema: teamDtoSchema }),
+      setMembers: (id: string, userIds: string[]) => c.request('PUT', `/teams/${id}/members`, { body: { userIds }, schema: teamDtoSchema }),
+    },
+    roles: {
+      list: () => c.request('GET', '/roles', { schema: z.array(roleDtoSchema) }),
+      catalog: () => c.request('GET', '/permissions', { schema: permissionCatalogSchema }),
+      create: (body: CreateRoleInput) => c.request('POST', '/roles', { body, schema: roleDtoSchema }),
+      update: (id: string, body: UpdateRoleInput) => c.request('PATCH', `/roles/${id}`, { body, schema: roleDtoSchema }),
+      setPermissions: (id: string, permissions: PermissionKey[]) =>
+        c.request('PUT', `/roles/${id}/permissions`, { body: { permissions }, schema: roleDtoSchema }),
+    },
+    users: {
+      list: (query: UserListQuery = {}) => c.request('GET', '/users', { query: q(query), schema: pageOf(userDtoSchema) }),
+      get: (id: string) => c.request('GET', `/users/${id}`, { schema: userDtoSchema }),
+      createWorker: (body: CreateWorkerInput) => c.request('POST', '/users/workers', { body, schema: userWithSecretSchema }),
+      invite: (body: InviteStaffInput) => c.request('POST', '/users/invite', { body, schema: userDtoSchema }),
+      update: (id: string, body: UpdateUserInput) => c.request('PATCH', `/users/${id}`, { body, schema: userDtoSchema }),
+      deactivate: (id: string) => c.request('POST', `/users/${id}/deactivate`, { body: {}, schema: userDtoSchema }),
+      reactivate: (id: string) => c.request('POST', `/users/${id}/reactivate`, { body: {}, schema: userDtoSchema }),
+      resetCredential: (id: string, body: ResetCredentialInput = {}) =>
+        c.request('POST', `/users/${id}/reset-credential`, { body, schema: userWithSecretSchema }),
+      setSites: (id: string, siteIds: string[]) => c.request('PUT', `/users/${id}/sites`, { body: { siteIds }, schema: userDtoSchema }),
+      setTeams: (id: string, teamIds: string[]) => c.request('PUT', `/users/${id}/teams`, { body: { teamIds }, schema: userDtoSchema }),
+    },
+    audit: {
+      list: (query: AuditListQuery = {}) => c.request('GET', '/audit-log', { query: q(query), schema: pageOf(auditEntryDtoSchema) }),
+    },
+  };
+}
+export type TaskopApi = ReturnType<typeof createTaskopApi>;
+
+export function createPlatformApi(c: ApiClient) {
+  return {
+    login: (body: PlatformLoginInput) => c.request('POST', '/platform/auth/login', { body, schema: platformLoginResultSchema, auth: false }),
+    tenants: {
+      list: (query: PlatformTenantListQuery = {}) =>
+        c.request('GET', '/platform/tenants', { query: q(query), schema: pageOf(platformTenantDtoSchema) }),
+      suspend: (id: string) => c.request('POST', `/platform/tenants/${id}/suspend`, { body: {}, schema: platformTenantDtoSchema }),
+      reactivate: (id: string) => c.request('POST', `/platform/tenants/${id}/reactivate`, { body: {}, schema: platformTenantDtoSchema }),
+    },
+  };
+}
+export type PlatformApi = ReturnType<typeof createPlatformApi>;

@@ -1,0 +1,20 @@
+export default {
+  title: 'Audit jurnalı',
+  filters: { action: 'Əməliyyat (məs. user.created)', entityType: 'Element növü', from: 'Başlanğıc tarixi', to: 'Son tarix' },
+  columns: { time: 'Vaxt', actor: 'İcraçı', action: 'Əməliyyat', entity: 'Element' },
+  actorPlatform: 'Taskop dəstəyi',
+  actorSystem: 'Sistem',
+  before: 'Əvvəl',
+  after: 'Sonra',
+  noChanges: 'Əlavə məlumat yoxdur.',
+  showChanges: 'Dəyişikliklər',
+  entityTypes: {
+    user: 'İstifadəçi',
+    role: 'Rol',
+    site: 'Obyekt',
+    site_type: 'Obyekt növü',
+    team: 'Komanda',
+    tenant: 'Təşkilat',
+    session: 'Sessiya',
+  },
+} as const;
