@@ -1,4 +1,4 @@
-import { newItem, newRule, type YesNoItem } from '@taskop/contracts';
+import { CONTENT_LIMITS, newItem, newRule, newSection, type YesNoItem } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
 import { builderReducer, type BuilderAction, type BuilderState, HISTORY_LIMIT, initialState } from './reducer';
 import { findItem } from './tree';
@@ -91,5 +91,47 @@ describe('builderReducer', () => {
     const f = treeFixture();
     const s = run(initialState(f.content), { type: 'select', node: { kind: 'item', id: f.a1.id } }, { type: 'removeRule', itemId: f.a.id, ruleId: f.rule.id });
     expect(s.selected).toEqual({ kind: 'settings' });
+  });
+
+  describe('content caps', () => {
+    /** Fixture (5 items) padded with text items in S2 up to `total` items. */
+    function withItems(total: number) {
+      const f = treeFixture();
+      while (f.s2.items.length < total - 4) f.s2.items.push(newItem('text'));
+      return f;
+    }
+
+    it('refuses addSection beyond the section cap', () => {
+      const f = treeFixture();
+      while (f.content.sections.length < CONTENT_LIMITS.sections - 1) f.content.sections.push(newSection('S'));
+      const ok = builderReducer(initialState(f.content), { type: 'addSection' });
+      expect(ok.content.sections).toHaveLength(CONTENT_LIMITS.sections);
+      expect(builderReducer(ok, { type: 'addSection' })).toBe(ok);
+    });
+
+    it('refuses addItem beyond the total item cap', () => {
+      const f = withItems(CONTENT_LIMITS.items - 1);
+      const container = { kind: 'section' as const, sectionId: f.s1.id };
+      const ok = builderReducer(initialState(f.content), { type: 'addItem', container, itemType: 'text' });
+      expect(ok.version).toBe(1);
+      expect(builderReducer(ok, { type: 'addItem', container, itemType: 'text' })).toBe(ok);
+    });
+
+    it('refuses duplicateItem when the copied subtree would exceed the item cap', () => {
+      const f = withItems(CONTENT_LIMITS.items - 2);
+      const s = initialState(f.content);
+      // A has two follow-up levels: duplicating it adds 3 items (500 - 2 + 3 > 500).
+      expect(builderReducer(s, { type: 'duplicateItem', itemId: f.a.id })).toBe(s);
+      // B alone adds 1 item (499).
+      expect(builderReducer(s, { type: 'duplicateItem', itemId: f.b.id }).version).toBe(1);
+    });
+
+    it('refuses addRule beyond the per-item rule cap', () => {
+      const f = treeFixture();
+      while (f.a.rules.length < CONTENT_LIMITS.rulesPerItem - 1) f.a.rules.push(newRule(f.a));
+      const ok = builderReducer(initialState(f.content), { type: 'addRule', itemId: f.a.id });
+      expect((findItem(ok.content, f.a.id)!.item as YesNoItem).rules).toHaveLength(CONTENT_LIMITS.rulesPerItem);
+      expect(builderReducer(ok, { type: 'addRule', itemId: f.a.id })).toBe(ok);
+    });
   });
 });

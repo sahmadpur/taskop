@@ -1,6 +1,7 @@
 import {
   type ChecklistContent,
   CONTENT_LIMITS,
+  countItems,
   hasRules,
   type Item,
   type ItemType,
@@ -79,6 +80,9 @@ function validSelection(content: ChecklistContent, sel: NodeRef): NodeRef {
   return sel;
 }
 
+/** Items in `item`'s subtree, itself included. */
+const subtreeSize = (item: Item) => countItems({ sections: [{ ...newSection(), items: [item] }] });
+
 function editRule(content: ChecklistContent, itemId: string, fn: (rules: Rule[]) => void): ChecklistContent {
   const found = findItem(content, itemId);
   if (!found || !hasRules(found.item)) return content;
@@ -106,6 +110,7 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     case 'updateSettings':
       return commit(state, edit(c, (d) => Object.assign(d, action.patch)), { key: keyOf('settings', action.patch) });
     case 'addSection': {
+      if (c.sections.length >= CONTENT_LIMITS.sections) return state;
       const s = newSection();
       return commit(state, edit(c, (d) => void d.sections.push(s)), { selected: { kind: 'section', id: s.id } });
     }
@@ -125,6 +130,7 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
     case 'addItem': {
       const depth = containerDepth(c, action.container);
       if (depth === null || depth > CONTENT_LIMITS.followUpDepth) return state;
+      if (countItems(c) >= CONTENT_LIMITS.items) return state;
       const item = newItem(action.itemType);
       const length = containerItems(c, action.container)!.length;
       return commit(state, insertItem(c, action.container, action.index ?? length, item), { selected: { kind: 'item', id: item.id } });
@@ -141,13 +147,14 @@ export function builderReducer(state: BuilderState, action: BuilderAction): Buil
       const found = findItem(c, action.itemId);
       if (!found) return state;
       const copy = regenerateItemIds(found.item);
+      if (countItems(c) + subtreeSize(copy) > CONTENT_LIMITS.items) return state;
       return commit(state, insertItem(c, found.container, found.index + 1, copy), { selected: { kind: 'item', id: copy.id } });
     }
     case 'moveItem':
       return commit(state, moveItem(c, action.itemId, action.to, action.index));
     case 'addRule': {
       const found = findItem(c, action.itemId);
-      if (!found || !hasRules(found.item)) return state;
+      if (!found || !hasRules(found.item) || found.item.rules.length >= CONTENT_LIMITS.rulesPerItem) return state;
       const rule = newRule(found.item);
       return commit(state, editRule(c, action.itemId, (rules) => void rules.push(rule)));
     }
