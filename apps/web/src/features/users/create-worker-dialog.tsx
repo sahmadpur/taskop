@@ -36,9 +36,11 @@ export function CreateWorkerDialog({ open, onOpenChange, orgCode, onCreated }: P
   const { t } = useTranslation();
   const canSeeSites = useCan('sites.view');
   const canSeeTeams = useCan('teams.view');
-  const roles = useRoles();
-  const sites = useSites();
-  const teams = useTeams();
+  // roleId is required by the API, so without roles.view a worker cannot be created from here.
+  const canSeeRoles = useCan('roles.view');
+  const roles = useRoles(canSeeRoles);
+  const sites = useSites(canSeeSites);
+  const teams = useTeams(canSeeTeams);
   const managers = useActiveUsers(true);
   const activeRoles = (roles.data ?? []).filter((r) => r.active && r.systemKey !== 'owner');
   const defaultRole = activeRoles.find((r) => r.systemKey === 'worker') ?? activeRoles[0];
@@ -107,16 +109,18 @@ export function CreateWorkerDialog({ open, onOpenChange, orgCode, onCreated }: P
                 <Label htmlFor="phone">{t('users.form.phone')}</Label>
                 <input id="phone" type="tel" className="border-input h-9 rounded-md border px-3 text-sm" {...form.register('phone', { setValueAs: emptyToNull })} />
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="roleId">{t('users.form.role')}</Label>
-                <NativeSelect id="roleId" {...form.register('roleId')}>
-                  {activeRoles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {roleDisplayName(t, r)}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
+              {canSeeRoles && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="roleId">{t('users.form.role')}</Label>
+                  <NativeSelect id="roleId" {...form.register('roleId')}>
+                    {activeRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {roleDisplayName(t, r)}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
               <div className="grid gap-1.5">
                 <Label htmlFor="managerId">{t('users.form.manager')}</Label>
                 <NativeSelect id="managerId" {...form.register('managerId', { setValueAs: emptyToNull })}>
@@ -179,12 +183,12 @@ export function CreateWorkerDialog({ open, onOpenChange, orgCode, onCreated }: P
                 )}
               />
             )}
-            <FormError message={error} />
+            <FormError message={canSeeRoles ? error : t('users.form.rolesViewRequired')} />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => close(false)}>
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+              <Button type="submit" disabled={!canSeeRoles || form.formState.isSubmitting}>
                 {t('common.create')}
               </Button>
             </DialogFooter>

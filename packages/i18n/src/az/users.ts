@@ -25,6 +25,7 @@ export default {
     secretHint: 'Boş saxlasanız, sistem avtomatik yaradacaq.',
     sites: 'Obyektlər',
     teams: 'Komandalar',
+    rolesViewRequired: 'İşçi yaratmaq üçün «Rollara baxmaq» icazəsi lazımdır.',
   },
   createWorkerTitle: 'Yeni işçi',
   inviteTitle: 'Əməkdaşı dəvət et',

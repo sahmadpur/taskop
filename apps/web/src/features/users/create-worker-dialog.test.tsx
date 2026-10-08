@@ -5,22 +5,31 @@ import { renderWithProviders } from '@/test/render';
 
 const roleId = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const createWorker = vi.fn();
+const granted = new Set<string>();
+const useRoles = vi.fn((enabled = true) => ({
+  data: enabled ? [{ id: roleId, name: 'Worker', systemKey: 'worker', active: true, permissions: [], dataScope: 'own', editable: true, userCount: 0 }] : undefined,
+}));
+const useSites = vi.fn((_enabled = true) => ({ data: [] }));
+const useTeams = vi.fn((_enabled = true) => ({ data: [] }));
 vi.mock('@/lib/session', () => ({
   api: { users: { createWorker: (...a: unknown[]) => createWorker(...a) } },
-  useCan: () => true,
+  useCan: (...keys: string[]) => keys.every((k) => granted.has(k)),
 }));
 vi.mock('@/features/roles/queries', () => ({
-  useRoles: () => ({ data: [{ id: roleId, name: 'Worker', systemKey: 'worker', active: true, permissions: [], dataScope: 'own', editable: true, userCount: 0 }] }),
+  useRoles: (enabled?: boolean) => useRoles(enabled),
   roleDisplayName: (_t: unknown, r: { name: string }) => r.name,
 }));
-vi.mock('@/features/sites/queries', () => ({ useSites: () => ({ data: [] }) }));
-vi.mock('@/features/teams/queries', () => ({ useTeams: () => ({ data: [] }), useActiveUsers: () => ({ data: [] }) }));
+vi.mock('@/features/sites/queries', () => ({ useSites: (enabled?: boolean) => useSites(enabled) }));
+vi.mock('@/features/teams/queries', () => ({ useTeams: (enabled?: boolean) => useTeams(enabled), useActiveUsers: () => ({ data: [] }) }));
 
 const { CreateWorkerDialog } = await import('./create-worker-dialog');
 
 describe('CreateWorkerDialog', () => {
   beforeEach(() => {
     createWorker.mockReset();
+    [useRoles, useSites, useTeams].forEach((m) => m.mockClear());
+    granted.clear();
+    ['roles.view', 'sites.view', 'teams.view', 'users.view'].forEach((k) => granted.add(k));
   });
 
   it('creates a worker and shows the generated PIN once', async () => {
@@ -48,5 +57,23 @@ describe('CreateWorkerDialog', () => {
     await userEvent.type(screen.getByLabelText('İstifadəçi adı'), 'elvin');
     await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
     expect(await screen.findByText('Bu istifadəçi adı artıq mövcuddur.')).toBeInTheDocument();
+  });
+
+  it('does not query sites, teams or roles the actor may not view', () => {
+    granted.clear();
+    granted.add('users.view');
+    renderWithProviders(<CreateWorkerDialog open onOpenChange={vi.fn()} orgCode="acme" onCreated={vi.fn()} />);
+    expect(useSites).toHaveBeenCalled();
+    expect(useSites.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+    expect(useTeams.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+    expect(useRoles.mock.calls.every(([enabled]) => enabled === false)).toBe(true);
+  });
+
+  it('explains that roles.view is required and blocks submit without it', async () => {
+    granted.delete('roles.view');
+    renderWithProviders(<CreateWorkerDialog open onOpenChange={vi.fn()} orgCode="acme" onCreated={vi.fn()} />);
+    expect(screen.getByText('İşçi yaratmaq üçün «Rollara baxmaq» icazəsi lazımdır.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rol')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yarat' })).toBeDisabled();
   });
 });
