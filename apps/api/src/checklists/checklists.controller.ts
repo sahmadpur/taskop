@@ -1,8 +1,9 @@
 import { Body, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
-import type { ChecklistDetail, ChecklistSummary, ChecklistVersion, ChecklistVersionSummary, ContentSaveResult, Page } from '@taskop/contracts';
+import type { ChecklistDetail, ChecklistSummary, ChecklistVersion, ChecklistVersionSummary, ContentSaveResult, Page, TemplateDto } from '@taskop/contracts';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { ChecklistsService } from './checklists.service';
+import { TemplatesService } from './templates.service';
 import {
   ChecklistDetailResponse,
   ChecklistListQueryDto,
@@ -12,8 +13,10 @@ import {
   ContentSaveResultResponse,
   CreateChecklistDto,
   PublishDto,
+  SaveAsTemplateDto,
   SaveContentDto,
   StartDraftDto,
+  TemplateResponse,
   UpdateChecklistDto,
 } from './dto';
 import { controllerDecorators, named, perm, type RouteMode } from './route-mode';
@@ -25,7 +28,10 @@ export function checklistsControllerFor(mode: RouteMode) {
 
   @controllerDecorators(mode, 'checklists', 'checklists')
   class ChecklistsController {
-    constructor(@Inject(ChecklistsService) private readonly checklists: ChecklistsService) {}
+    constructor(
+      @Inject(ChecklistsService) private readonly checklists: ChecklistsService,
+      @Inject(TemplatesService) private readonly templates: TemplatesService,
+    ) {}
 
     @Get()
     @view
@@ -112,6 +118,17 @@ export function checklistsControllerFor(mode: RouteMode) {
     @ApiOkResponse({ type: ChecklistDetailResponse })
     reactivate(@Param('id', ParseIdPipe) id: string): Promise<ChecklistDetail> {
       return this.checklists.reactivate(id);
+    }
+
+    @Post(':id/versions/:versionId/save-as-template')
+    @(perm(mode, 'checklists.view', 'templates.manage'))
+    @ApiOkResponse({ type: TemplateResponse })
+    saveAsTemplate(
+      @Param('id', ParseIdPipe) id: string,
+      @Param('versionId', ParseIdPipe) versionId: string,
+      @Body() body: SaveAsTemplateDto,
+    ): Promise<TemplateDto> {
+      return this.templates.saveVersionAsTemplate(id, versionId, body);
     }
   }
   return named(ChecklistsController, mode === 'tenant' ? 'ChecklistsController' : 'PlatformTenantChecklistsController');

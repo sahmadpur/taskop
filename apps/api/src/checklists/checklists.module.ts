@@ -1,12 +1,19 @@
 import { Module } from '@nestjs/common';
 import { PlatformModule } from '../platform/platform.module';
 import { TenantChecklistsController } from './checklists.controller';
-import { ChecklistsService } from './checklists.service';
+import { ChecklistContentSource, ChecklistsService } from './checklists.service';
 import { PlatformTenantInterceptor } from './platform-tenant.interceptor';
+import { TenantTemplatesController } from './templates.controller';
+import { TemplatesService } from './templates.service';
 
 @Module({
   imports: [PlatformModule],
-  controllers: [TenantChecklistsController],
-  providers: [ChecklistsService, PlatformTenantInterceptor],
+  controllers: [TenantChecklistsController, TenantTemplatesController],
+  providers: [
+    ChecklistsService,
+    TemplatesService,
+    { provide: ChecklistContentSource, useExisting: TemplatesService },
+    PlatformTenantInterceptor,
+  ],
 })
 export class ChecklistsModule {}
