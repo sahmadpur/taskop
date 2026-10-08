@@ -218,6 +218,32 @@ describe('users', () => {
     await loginStaff(t, staff.email!, 'fresh password 1');
   });
 
+  it('refuses to reactivate a user onto an inactive role', async () => {
+    const { s, owner } = await verified();
+    const role = (await owner.post('/api/v1/roles', { name: uniqEmail(), dataScope: 'own', permissions: [] })).body;
+    const w = await createUserDirect(t, s.tenantId, { roleId: role.id, status: 'deactivated' });
+    expect((await owner.patch(`/api/v1/roles/${role.id}`, { active: false })).status).toBe(200);
+    const res = await owner.post(`/api/v1/users/${w.id}/reactivate`);
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('REFERENCE_NOT_FOUND');
+    expect((await owner.get(`/api/v1/users/${w.id}`)).body.status).toBe('deactivated');
+  });
+
+  it('a user whose role became inactive has no permissions and own scope', async () => {
+    const { s, owner } = await verified();
+    const role = (await owner.post('/api/v1/roles', { name: uniqEmail(), dataScope: 'all', permissions: ['users.view'] })).body;
+    const staff = await createUserDirect(t, s.tenantId, { kind: 'staff', roleId: role.id });
+    const login = await loginStaff(t, staff.email!, staff.secret);
+    const api = as(t, login.accessToken);
+    expect((await api.get('/api/v1/users')).status).toBe(200);
+    // Simulates a role deactivated by any path (the API itself refuses while the role is in use).
+    await ownerQuery('update roles set active = false, version = version + 1 where id = $1', [role.id]);
+    expect((await api.get('/api/v1/users')).status).toBe(403);
+    const me = (await api.get('/api/v1/me')).body;
+    expect(me.permissions).toEqual([]);
+    expect(me.role.dataScope).toBe('own');
+  });
+
   it('mails an invite only after the transaction commits, and never when it rolls back', async () => {
     const { s } = await verified();
     const db = t.app.get(DbService);

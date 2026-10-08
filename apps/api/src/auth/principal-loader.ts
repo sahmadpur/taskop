@@ -8,6 +8,8 @@ import { roles, tenants, users } from '../db/schema';
 import { loadRolePermissions } from '../roles/permission-resolver';
 import type { AccessClaims } from './crypto/token.service';
 
+const NO_PERMISSIONS: ReadonlySet<PermissionKey> = new Set();
+
 @Injectable()
 export class PrincipalLoader {
   private readonly permissionCache = new Map<string, ReadonlySet<PermissionKey>>();
@@ -25,6 +27,7 @@ export class PrincipalLoader {
           roleVersion: roles.version,
           systemKey: roles.systemKey,
           dataScope: roles.dataScope,
+          roleActive: roles.active,
           tenantStatus: tenants.status,
         })
         .from(users)
@@ -33,8 +36,9 @@ export class PrincipalLoader {
         .where(eq(users.id, claims.sub));
       if (!row || row.status !== 'active') throw new AppError('UNAUTHENTICATED');
       if (row.tenantStatus !== 'active') throw new AppError('TENANT_SUSPENDED');
+      // An inactive role grants nothing, whatever permissions it still lists.
       const cacheKey = `${row.roleId}:${row.roleVersion}`;
-      let permissions = this.permissionCache.get(cacheKey);
+      let permissions = row.roleActive ? this.permissionCache.get(cacheKey) : NO_PERMISSIONS;
       if (!permissions) {
         permissions = new Set(await loadRolePermissions(tx, { id: row.roleId, systemKey: row.systemKey }));
         if (this.permissionCache.size > 1000) this.permissionCache.clear();
@@ -48,7 +52,7 @@ export class PrincipalLoader {
         systemRoleKey: row.systemKey,
         sessionId: claims.sid,
         kind: row.kind,
-        dataScope: row.dataScope,
+        dataScope: row.roleActive ? row.dataScope : 'own',
         permissions,
         emailVerified: row.emailVerifiedAt !== null,
       };

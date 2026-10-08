@@ -19,7 +19,9 @@ export class MeService {
       .innerJoin(tenants, eq(tenants.id, users.tenantId))
       .where(eq(users.id, userId));
     if (!row) throw new AppError('UNAUTHENTICATED');
-    const permissions = await loadRolePermissions(tx, row.role);
+    // Mirrors PrincipalLoader: an inactive role grants nothing and narrows the scope to 'own'.
+    const permissions = row.role.active ? await loadRolePermissions(tx, row.role) : [];
+    const dataScope = row.role.active ? row.role.dataScope : 'own';
     return {
       user: {
         id: row.user.id,
@@ -31,7 +33,7 @@ export class MeService {
         emailVerified: row.user.emailVerifiedAt !== null,
         credentialKind: row.user.credentialKind,
       },
-      role: { id: row.role.id, name: row.role.name, systemKey: row.role.systemKey, dataScope: row.role.dataScope },
+      role: { id: row.role.id, name: row.role.name, systemKey: row.role.systemKey, dataScope },
       permissions,
       tenant: {
         id: row.tenant.id,

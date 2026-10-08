@@ -162,6 +162,8 @@ export class UsersService {
     const before = await this.get(p, id);
     await this.assertCanManageTarget(p, before);
     if (before.status !== 'deactivated') return before;
+    const [role] = await this.db.tx().select({ active: roles.active }).from(roles).where(eq(roles.id, before.role.id));
+    if (!role?.active) throw new AppError('REFERENCE_NOT_FOUND');
     const status = before.credentialKind === null ? 'invited' : 'active';
     await this.db
       .tx()
