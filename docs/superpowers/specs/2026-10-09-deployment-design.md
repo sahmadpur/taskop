@@ -16,7 +16,7 @@
 | Deploy method | **Docker Compose + Caddy** on the server. **GitHub Actions** builds the images, pushes them to GitHub's container registry (GHCR) and deploys over SSH. No Coolify or Dokploy. |
 | Repository | **Make `sahmadpur/taskop` private** (it is public today). |
 | Domain | **`taskop.app`**. The `.app` domain requires HTTPS in every browser; Caddy provides it automatically. |
-| URLs | One host: **`app.taskop.app`**. Caddy serves the web app at `/` and proxies `/api/*` to the API. This matches the web client, which already calls `/api/v1` on its own origin, so no CORS or cross-site cookie changes are needed. |
+| URLs | One host, the bare domain: **`taskop.app`**. `www.taskop.app` redirects to it. Caddy serves the web app at `/` and proxies `/api/*` to the API. This matches the web client, which already calls `/api/v1` on its own origin, so no CORS or cross-site cookie changes are needed. |
 | File storage | **SeaweedFS**, self-hosted on the same server (and locally in place of MinIO). It is used through the S3 API, so a move to Hetzner Object Storage later only changes config and copies the data. **Not MinIO**: its Community Edition is archived and no longer publishes images. |
 | Email | **Resend** (SMTP), sending from your domain with SPF and DKIM. Mailpit stays for local development. |
 | Mobile builds | **Local builds** with `eas build --local` on a free Expo account. No paid Expo plan. `eas submit` uploads to TestFlight and Google Play internal testing. |
@@ -112,7 +112,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 | `DATABASE_OWNER_URL` / `DATABASE_APP_URL` / `DATABASE_PLATFORM_URL` | `postgres://…@postgres:5432/taskop` with strong random passwords |
 | `APP_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` | random, 32+ characters |
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | generated once with `pnpm --filter @taskop/api keys:generate` |
-| `WEB_URL` | `https://app.taskop.app` |
+| `WEB_URL` | `https://taskop.app` |
 | `SMTP_URL` | Resend SMTP (`smtps://resend:<api-key>@smtp.resend.com:465`) |
 | `MAIL_FROM` | `Taskop <no-reply@taskop.app>` |
 | `COOKIE_SECURE` | `true` |
@@ -169,7 +169,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 - **Restore test:** restore the database dump and the files onto a temporary server **before the pilot**, then once a quarter.
 
 **Monitoring**
-- **Uptime:** an external monitor on `https://app.taskop.app/api/v1/health` (UptimeRobot or Better Stack free tier) that emails or pings you.
+- **Uptime:** an external monitor on `https://taskop.app/api/v1/health` (UptimeRobot or Better Stack free tier) that emails or pings you.
 - **Disk:** a cron script alerts at 80% disk use, and also reports a failed nightly backup (through healthchecks.io's free tier or a Resend email).
 - **Logs:** the API logs JSON with pino to Docker's rotated logs, read with `docker compose logs`. A log service can come later if needed.
 - **Job failures:** pg-boss dead-letter jobs are logged at error level (sub-project 3). Check them with `docker compose logs api | grep -i dead`. Alerting can come later.
@@ -186,9 +186,9 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 - **Expo account:** free. Builds run on your Mac with `eas build --local`, and uploads use `eas submit`.
 - **`apps/mobile/eas.json` profiles:**
   - `development`: dev client, local API.
-  - `preview`: internal distribution against `https://app.taskop.app`.
-  - `production`: store builds against `https://app.taskop.app`.
-- **API URL:** `EXPO_PUBLIC_API_URL=https://app.taskop.app` for the preview and production profiles. The API base path stays `/api/v1`.
+  - `preview`: internal distribution against `https://taskop.app`.
+  - `production`: store builds against `https://taskop.app`.
+- **API URL:** `EXPO_PUBLIC_API_URL=https://taskop.app` for the preview and production profiles. The API base path stays `/api/v1`.
 - **Version numbers:** `version` set in `app.json`; build numbers increased automatically by EAS (`autoIncrement`).
 - **Mac requirements:**
   - iOS: Xcode, with the `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` workaround.
@@ -212,7 +212,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 |---|---|---|
 | 1 | **Data residency:** do Azerbaijani clients require personal data stored in-country? This could rule out Hetzner's EU locations for production. | Before the pilot (ask the client early) |
 | 2 | **Video limits:** maximum length and resolution, and whether to compress on the phone. | Sub-project 4 design |
-| 3 | **The public host for presigned uploads** (`files.taskop.app` vs a path on `app.taskop.app`). | Sub-project 4 design |
+| 3 | **The public host for presigned uploads** (`files.taskop.app` vs a path on `taskop.app`). | Sub-project 4 design |
 | 4 | **Is GitHub's native Arm runner available on the private repo?** If not, use the QEMU fallback (§9). | First CI run |
 | 5 | **Uptime and alert tools:** UptimeRobot vs Better Stack, healthchecks.io vs email only. | Deployment |
 
@@ -221,7 +221,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 - [ ] Make the GitHub repo private.
 - [ ] Hetzner: create the project and the Arm server (4 vCPU / 6 GB / 80 GB, Ubuntu 24.04, EU), add your SSH key, set up the Cloud Firewall (22/80/443), enable backups.
 - [ ] Hetzner: order a Storage Box (smallest size) for off-server backups.
-- [ ] DNS: an `A` (and `AAAA`) record for `app.taskop.app` (and `files.taskop.app` if chosen) pointing at the server.
+- [ ] DNS: `A` and `AAAA` records for `taskop.app` and `www.taskop.app` (and `files.taskop.app` if chosen) pointing at the server.
 - [ ] Resend: create an account, verify the domain (SPF, DKIM, DMARC records), create an API key.
 - [ ] Expo: create a free account.
 - [ ] App Store Connect: register `az.taskop.app` and create the app record.
