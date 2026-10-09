@@ -1,4 +1,25 @@
 import {
+  assignmentDetailSchema,
+  type AssignmentListQuery,
+  assignmentDtoSchema,
+  assignmentPreviewSchema,
+  type CancelOccurrenceInput,
+  type CopyRosterInput,
+  type CreateAssignmentInput,
+  type CreateShiftInput,
+  type MyOccurrenceQuery,
+  occurrenceDetailSchema,
+  occurrenceDtoSchema,
+  type OccurrenceListQuery,
+  type PreviewAssignmentInput,
+  type PutRosterInput,
+  rosterCopyResultSchema,
+  rosterDtoSchema,
+  type RosterQuery,
+  shiftDtoSchema,
+  type ShiftListQuery,
+  type UpdateAssignmentInput,
+  type UpdateShiftInput,
   checklistDetailSchema,
   type ChecklistListQuery,
   checklistSummarySchema,
@@ -126,6 +147,7 @@ export function createTaskopApi(c: ApiClient) {
     },
     checklists: createChecklistsApi(c),
     templates: createTemplatesApi(c),
+    ...createSchedulingApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -191,3 +213,35 @@ export function createPlatformApi(c: ApiClient) {
   };
 }
 export type PlatformApi = ReturnType<typeof createPlatformApi>;
+
+export function createSchedulingApi(c: ApiClient) {
+  return {
+    shifts: {
+      list: (query: ShiftListQuery = {}) => c.request('GET', '/shifts', { query: q(query), schema: z.array(shiftDtoSchema) }),
+      create: (body: CreateShiftInput) => c.request('POST', '/shifts', { body, schema: shiftDtoSchema }),
+      update: (id: string, body: UpdateShiftInput) => c.request('PATCH', `/shifts/${id}`, { body, schema: shiftDtoSchema }),
+    },
+    roster: {
+      get: (query: RosterQuery) => c.request('GET', '/roster', { query: q(query), schema: rosterDtoSchema }),
+      put: (body: PutRosterInput) => c.request('PUT', '/roster', { body, schema: rosterDtoSchema }),
+      copy: (body: CopyRosterInput) => c.request('POST', '/roster/copy', { body, schema: rosterCopyResultSchema }),
+    },
+    assignments: {
+      list: (query: AssignmentListQuery = {}) => c.request('GET', '/assignments', { query: q(query), schema: pageOf(assignmentDtoSchema) }),
+      get: (id: string) => c.request('GET', `/assignments/${id}`, { schema: assignmentDetailSchema }),
+      create: (body: CreateAssignmentInput) => c.request('POST', '/assignments', { body, schema: assignmentDetailSchema }),
+      update: (id: string, body: UpdateAssignmentInput) => c.request('PUT', `/assignments/${id}`, { body, schema: assignmentDetailSchema }),
+      preview: (body: PreviewAssignmentInput) => c.request('POST', '/assignments/preview', { body, schema: assignmentPreviewSchema }),
+      pause: (id: string) => c.request('POST', `/assignments/${id}/pause`, { body: {}, schema: assignmentDetailSchema }),
+      resume: (id: string) => c.request('POST', `/assignments/${id}/resume`, { body: {}, schema: assignmentDetailSchema }),
+      end: (id: string) => c.request('POST', `/assignments/${id}/end`, { body: {}, schema: assignmentDetailSchema }),
+    },
+    occurrences: {
+      list: (query: OccurrenceListQuery) => c.request('GET', '/occurrences', { query: q(query), schema: pageOf(occurrenceDtoSchema) }),
+      get: (id: string) => c.request('GET', `/occurrences/${id}`, { schema: occurrenceDetailSchema }),
+      cancel: (id: string, body: CancelOccurrenceInput) => c.request('POST', `/occurrences/${id}/cancel`, { body, schema: occurrenceDetailSchema }),
+      mine: (query: MyOccurrenceQuery) => c.request('GET', '/me/occurrences', { query: q(query), schema: pageOf(occurrenceDtoSchema) }),
+    },
+  };
+}
+export type SchedulingApi = ReturnType<typeof createSchedulingApi>;
