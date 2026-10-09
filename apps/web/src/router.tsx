@@ -28,6 +28,7 @@ import { RolesPage } from '@/features/roles/roles-page';
 import { AssignmentsPage } from '@/features/scheduling/assignment-pages';
 import { AssignmentDetailRoute, NewAssignmentRoute } from '@/features/scheduling/routes';
 import { RosterPage } from '@/features/scheduling/roster-page';
+import { SchedulePage } from '@/features/scheduling/schedule-page';
 import { ShiftsPage } from '@/features/scheduling/shifts-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { SitesPage } from '@/features/sites/sites-page';
@@ -108,6 +109,7 @@ const rosterRoute = createRoute({
   component: () => <RosterPage />,
 });
 const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shifts', component: ShiftsPage });
+const scheduleRoute = createRoute({ getParentRoute: () => appLayout, path: '/schedule', component: () => <SchedulePage /> });
 const assignmentsRoute = createRoute({ getParentRoute: () => appLayout, path: '/assignments', component: AssignmentsPage });
 const newAssignmentRoute = createRoute({
   getParentRoute: () => appLayout,
@@ -228,6 +230,7 @@ export const routeTree = rootRoute.addChildren([
     assignmentsRoute,
     newAssignmentRoute,
     assignmentDetailRoute,
+    scheduleRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,
