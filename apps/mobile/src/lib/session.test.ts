@@ -91,6 +91,35 @@ describe('mobile session', () => {
     expect(mockStore.has('taskop.refreshToken')).toBe(false);
   });
 
+  it('gives up on a request that never settles after 30 s and goes offline', async () => {
+    jest.useFakeTimers();
+    try {
+      mockStore.set('taskop.refreshToken', 'r1');
+      mockStore.set('taskop.me', JSON.stringify(me));
+      (global.fetch as jest.Mock).mockImplementation(
+        (_url: string, init: RequestInit) => new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))),
+      );
+      const booting = session.bootstrap();
+      await jest.advanceTimersByTimeAsync(29_999);
+      expect(session.get()).toEqual({ status: 'loading' });
+      await jest.advanceTimersByTimeAsync(1);
+      await booting;
+      expect(session.get()).toMatchObject({ status: 'authenticated', offline: true });
+      expect(mockStore.get('taskop.refreshToken')).toBe('r1');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('can end the session in memory when secure storage fails', async () => {
+    await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
+    const { secureStorage } = jest.requireMock('./secure-storage') as { secureStorage: { remove: jest.Mock } };
+    secureStorage.remove.mockRejectedValueOnce(new Error('keychain'));
+    session.forceSignedOut();
+    expect(session.get()).toEqual({ status: 'anonymous' });
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
   it('remembers the org code', async () => {
     await session.rememberOrgCode('acme');
     expect(await session.getOrgCode()).toBe('acme');

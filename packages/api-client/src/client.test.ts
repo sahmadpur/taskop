@@ -104,6 +104,53 @@ describe('ApiClient', () => {
     expect(store.getAccessToken()).toBe('a');
   });
 
+  describe('timeoutMs', () => {
+    /** A fetch that never answers until its signal aborts. */
+    const hanging = (_url: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+
+    it('aborts a request that does not settle in time and throws a NETWORK error', async () => {
+      vi.useFakeTimers();
+      try {
+        const fetchMock = vi.fn(hanging);
+        const api = new ApiClient({ baseUrl: '/api/v1', client: 'mobile', tokenStore: memoryTokenStore(), fetch: fetchMock as unknown as typeof fetch, timeoutMs: 30_000 });
+        const pending = createTaskopApi(api).me();
+        const outcome = expect(pending).rejects.toMatchObject({ code: 'NETWORK', messageKey: 'errors.NETWORK', status: 0 });
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(fetchMock.mock.calls[0]![1].signal?.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await outcome;
+        expect(fetchMock.mock.calls[0]![1].signal?.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('also bounds a response body that never finishes', async () => {
+      vi.useFakeTimers();
+      try {
+        const body = new ReadableStream({ start: () => undefined }); // headers arrive, the body never does
+        const api = new ApiClient({
+          baseUrl: '/api/v1', client: 'mobile', tokenStore: memoryTokenStore(), timeoutMs: 1_000,
+          fetch: (async () => new Response(body, { status: 200 })) as unknown as typeof fetch,
+        });
+        const outcome = expect(createTaskopApi(api).me()).rejects.toMatchObject({ code: 'NETWORK' });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await outcome;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sends no abort signal and never times out without the option (web)', async () => {
+      const { api, fetchMock } = setup(() => json(200, me));
+      await createTaskopApi(api).me();
+      expect(fetchMock.mock.calls[0]![1].signal).toBeUndefined();
+    });
+  });
+
   it('serialises query parameters and skips empty ones', async () => {
     const { api, fetchMock } = setup(() => json(200, { items: [], nextCursor: null }));
     await createTaskopApi(api).users.list({ q: 'elvin', status: undefined, limit: 20 });

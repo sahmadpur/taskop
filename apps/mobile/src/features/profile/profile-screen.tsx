@@ -32,8 +32,10 @@ export function ProfileScreen() {
       setBusy(false);
     };
     const finish = async () => {
+      let cleared = false;
       try {
         await services.clearAll();
+        cleared = true;
       } catch (e) {
         // The worker already confirmed; the next sign-in clears another user's data anyway (ensureUser).
         console.error('[offline] Could not clear local data on logout', e instanceof Error ? e.message : 'unknown error');
@@ -43,6 +45,8 @@ export function ProfileScreen() {
       } catch (e) {
         console.error('[session] Sign-out failed', e instanceof Error ? e.message : 'unknown error');
         Alert.alert(t('errors.INTERNAL', { requestId: '—' }));
+        // The local data is gone and the services are stopped: staying signed in would silently lose later work.
+        if (cleared) session.forceSignedOut();
       } finally {
         release();
       }

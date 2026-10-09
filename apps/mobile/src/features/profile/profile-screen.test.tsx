@@ -7,9 +7,10 @@ import { createTestServices } from '@/offline/testing/test-services';
 import { ProfileScreen } from './profile-screen';
 
 const mockSignOut = jest.fn(async () => undefined);
+const mockForceSignedOut = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/lib/session', () => ({
-  session: { signOut: () => mockSignOut() },
+  session: { signOut: () => mockSignOut(), forceSignedOut: () => mockForceSignedOut() },
   useSession: () => ({
     status: 'authenticated',
     offline: false,
@@ -23,7 +24,10 @@ jest.mock('@/lib/session', () => ({
 
 const press = (buttons: AlertButton[] | undefined, text: string) => act(async () => buttons!.find((b) => b.text === text)!.onPress?.());
 
-beforeEach(() => mockSignOut.mockClear());
+beforeEach(() => {
+  mockSignOut.mockClear();
+  mockForceSignedOut.mockClear();
+});
 
 describe('logout', () => {
   it('warns twice before deleting unsynced data', async () => {
@@ -127,6 +131,23 @@ describe('logout', () => {
     await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
     await eventually(async () => expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(false));
     expect(error).toHaveBeenCalled();
+    // The local data is already gone and the services stopped: staying signed in would lose later work.
+    expect(mockForceSignedOut).toHaveBeenCalledTimes(1);
+    alert.mockRestore();
+    error.mockRestore();
+  });
+
+  it('does not force a sign-out when neither clearing nor signing out worked', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest.spyOn(t.services, 'clearAll').mockRejectedValue(new Error('disk'));
+    mockSignOut.mockRejectedValueOnce(new Error('keychain'));
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    expect(mockForceSignedOut).not.toHaveBeenCalled();
     alert.mockRestore();
     error.mockRestore();
   });
