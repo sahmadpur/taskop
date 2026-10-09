@@ -15,6 +15,7 @@ import { uuidv7 } from 'uuidv7';
 import { expect } from 'vitest';
 import { as, createUserDirect, loginWorker, type SignedUpTenant, signupTenant, siteTypeIdOf } from './fixtures';
 import type { TestApp } from './app';
+import type { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
 import { type Api, daily, fixed, TODAY } from './scheduling-fixtures';
 
@@ -216,3 +217,21 @@ export async function registerPhoto(api: Api, executionId: string, itemId: strin
 }
 
 export const answersBody = (rev: number, answers: Answers, deviceTime: string, extra: Record<string, unknown> = {}) => ({ rev, answers, deviceTime, clientOffsetMs: 0, ...extra });
+
+/** A world whose first worker claimed the occurrence at 08:10 Baku (the clock reads 08:20). */
+export async function startedExecution(t: TestApp, clock: FakeClock) {
+  const w = await executionWorld(t);
+  clock.set('2026-11-02T04:20:00Z');
+  const executionId = await claimOk(w.workers[0].api, w.occurrenceId, '2026-11-02T04:10:00.000Z');
+  return { w, executionId, api: w.workers[0].api };
+}
+
+/** Everything required: no problem, 5 °C, one photo. */
+export const fullAnswers = (w: ExecutionWorld, photoId: string): Answers => ({
+  [w.c.problem.id]: { optionIds: [w.c.no.id] },
+  [w.c.temp.id]: { number: 5 },
+  [w.c.photo.id]: { photos: [photoId] },
+});
+
+export const completeExecution = (api: Api, id: string, rev: number, answers: Answers, completedAt: string) =>
+  api.post(`/api/v1/executions/${id}/complete`, { rev, answers, completedAt, deviceTime: completedAt, clientOffsetMs: 0 });

@@ -1,10 +1,10 @@
 import { Body, Controller, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
+import type { ClaimResult, CompleteResult, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
 import { ExecutionsService } from './executions.service';
 import { MediaService } from './media.service';
 
@@ -37,5 +37,12 @@ export class ExecutionsController {
   @ApiOkResponse({ type: SaveAnswersResultResponse })
   saveAnswers(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: SaveAnswersCommandDto): Promise<SaveAnswersResult> {
     return this.executions.saveAnswers(p, id, body);
+  }
+
+  @Post(':id/complete')
+  @HttpCode(200)
+  @ApiOkResponse({ type: CompleteResultResponse })
+  complete(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: CompleteCommandDto): Promise<CompleteResult> {
+    return this.executions.complete(p, id, body);
   }
 }

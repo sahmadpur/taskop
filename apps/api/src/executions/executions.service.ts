@@ -5,10 +5,13 @@ import {
   type ChecklistContent,
   type ClaimRejectionReason,
   type ClaimResult,
+  type CompleteResult,
   computeScore,
   type ExecutionProgress,
   progress,
+  requirements,
   type SaveAnswersResult,
+  type ScoreResult,
 } from '@taskop/contracts';
 import { desc, eq, sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
@@ -19,7 +22,7 @@ import { checklists, checklistVersions, executions, occurrences } from '../db/sc
 import { EligibilityService } from '../scheduling/eligibility.service';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import { assertDeviceTimes, clampStart } from './device-time';
-import type { ClaimCommandDto, SaveAnswersCommandDto } from './dto';
+import type { ClaimCommandDto, CompleteCommandDto, SaveAnswersCommandDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
 import { ProblemWriter } from './problem-writer';
 
@@ -128,12 +131,7 @@ export class ExecutionsService {
       .tx()
       .update(executions)
       .set({
-        answers: cmd.answers,
-        answersRev: cmd.rev,
-        lastSyncedAt: receivedAt,
-        clockOffsetMs: cmd.clientOffsetMs,
-        clockSuspect: e.clockSuspect || bounds.clockSuspect,
-        updatedAt: receivedAt,
+        ...this.answersColumns(e, cmd.answers, cmd.rev, cmd.clientOffsetMs, bounds.clockSuspect, receivedAt),
         // Rejected executions keep the answers only: stored, never counted.
         ...(counted ? { progress: progress(content, cmd.answers), score: computeScore(content, cmd.answers) } : {}),
       })
@@ -146,6 +144,78 @@ export class ExecutionsService {
       }
     }
     return this.answersResult(row!, false);
+  }
+
+  /**
+   * Spec §6.4. Saves the answers (when newer), checks requirements on the pinned version, then decides by device time:
+   * completedAt < closes_at → completed (reviving a swept partial), otherwise partial. Score and problems are frozen.
+   */
+  async complete(p: Principal, id: string, cmd: CompleteCommandDto): Promise<CompleteResult> {
+    const receivedAt = this.clock.now();
+    const { e, o } = await this.lockForCommand(p, id);
+    const bounds = assertDeviceTimes([new Date(cmd.deviceTime), new Date(cmd.completedAt)], receivedAt, cmd.clientOffsetMs);
+    if (e.completedAt) return this.completeResult(e);
+    const content = await this.lookups.content(e.checklistVersionId);
+    const fresh = cmd.rev > e.answersRev;
+    if (fresh) await this.assertValidAnswers(content, e.id, cmd.answers);
+    const answers: Answers = fresh ? cmd.answers : (e.answers as Answers);
+    const completedAt = new Date(Math.max(+new Date(cmd.completedAt), +e.startedAt));
+    const base = {
+      ...this.answersColumns(e, answers, fresh ? cmd.rev : e.answersRev, cmd.clientOffsetMs, bounds.clockSuspect, receivedAt),
+      completedAt,
+      completedReceivedAt: receivedAt,
+    };
+    const tx = this.db.tx();
+    if (e.state === 'rejected') {
+      const [row] = await tx.update(executions).set(base).where(eq(executions.id, id)).returning();
+      return this.completeResult(row!);
+    }
+    const missing = requirements(content, answers);
+    if (missing.length) throw new AppError('REQUIREMENTS_UNMET', { details: { missing } });
+    const inWindow = completedAt < o.closesAt;
+    const [row] = await tx
+      .update(executions)
+      .set({
+        ...base,
+        state: inWindow ? 'completed' : 'partial',
+        progress: progress(content, answers),
+        score: computeScore(content, answers),
+        late: completedAt >= o.dueAt,
+      })
+      .where(eq(executions.id, id))
+      .returning();
+    await this.problems.rewrite(e, o, content, answers, receivedAt);
+    if (inWindow) {
+      await this.writer.applyTransitions([
+        { occurrenceId: o.id, from: o.status, to: 'completed', at: completedAt, reason: o.status === 'partial' ? 'late_sync' : null },
+      ]);
+    } else if (o.status !== 'partial') {
+      await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: 'partial', at: o.closesAt }]);
+    }
+    return this.completeResult(row!);
+  }
+
+  private completeResult(e: ExecutionRow): CompleteResult {
+    return {
+      executionId: e.id,
+      state: e.state,
+      completedAt: e.completedAt?.toISOString() ?? null,
+      late: e.late,
+      progress: e.progress as ExecutionProgress,
+      score: (e.score as ScoreResult | null) ?? null,
+    };
+  }
+
+  /** The columns every accepted answers save (PUT or complete) writes. */
+  private answersColumns(e: ExecutionRow, answers: Answers, rev: number, clientOffsetMs: number, suspect: boolean, receivedAt: Date) {
+    return {
+      answers,
+      answersRev: rev,
+      lastSyncedAt: receivedAt,
+      clockOffsetMs: clientOffsetMs,
+      clockSuspect: e.clockSuspect || suspect,
+      updatedAt: receivedAt,
+    };
   }
 
   /** Locks the occurrence, then the execution (the order every command uses), and checks the executor. */
