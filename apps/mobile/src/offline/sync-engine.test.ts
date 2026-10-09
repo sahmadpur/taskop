@@ -2,7 +2,7 @@ import { ApiError } from '@taskop/api-client';
 import type { Db } from './db';
 import { ExecutionLockedError } from './execution-store';
 import { listCommands, outboxCounts } from './outbox';
-import { backoffDelay, indicatorOf, type SyncStatus } from './sync-engine';
+import { backoffDelay, createSyncEngine, indicatorOf, type SyncStatus } from './sync-engine';
 import { capturedPhoto } from './testing/fake-transport';
 import { ME, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, T, VERSION, versionOf } from './testing/fixtures';
 import { createHarness, type Harness } from './testing/harness';
@@ -173,10 +173,11 @@ describe('media registration', () => {
     expect(h.engine.status()).toMatchObject({ pending: 0, failed: 0 });
   });
 
-  it('a permanently refused registration fails the medium and drops it from the answers sent next', async () => {
+  it('a permanently refused registration deletes the medium and drops it from the answers sent next', async () => {
     const h = await createHarness();
     const id = await h.store.start(OCC, ME);
-    const mediaId = await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    const photo = capturedPhoto(h.transport);
+    await h.store.attachMedia(id, photo, { itemId: h.c.photo.id, field: 'evidence' });
     await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
     h.api.on('registerMedia', async () => {
       throw new ApiError(422, 'MEDIA_TOO_LARGE', 'errors.MEDIA_TOO_LARGE');
@@ -186,10 +187,12 @@ describe('media registration', () => {
     expect(bodyOf(h, 'saveAnswers')).toMatchObject({ rev: 3, answers: { [h.c.temp.id]: { number: 5 } } });
     expect((bodyOf(h, 'saveAnswers').answers as Record<string, unknown>)[h.c.photo.id]).toBeUndefined();
     expect(await h.store.execution(id)).toMatchObject({ rev: 3, syncedRev: 3, answers: { [h.c.temp.id]: { number: 5 } } });
-    expect((await h.store.media(id)).find((m) => m.id === mediaId)).toMatchObject({ failedCode: 'MEDIA_TOO_LARGE', registeredAt: null });
+    expect(await h.store.media(id)).toEqual([]);
+    expect(h.transport.removed).toEqual([photo.localUri]);
     expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
-    expect(h.engine.status()).toMatchObject({ failed: 1 });
-    expect(indicatorOf(h.engine.status())).toBe('failed');
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
+    expect(h.engine.status()).toMatchObject({ pending: 0, failed: 0 });
+    expect(indicatorOf(h.engine.status())).toBe('synced');
   });
 
   it('a refused registration is also dropped from a queued completion', async () => {
@@ -209,6 +212,7 @@ describe('media registration', () => {
     expect(bodyOf(h, 'saveAnswers')).toMatchObject({ rev: 5, answers: { [h.c.photo.id]: { photos: [kept] } } });
     expect(bodyOf(h, 'complete')).toMatchObject({ rev: 5, answers: { [h.c.photo.id]: { photos: [kept] } } });
     expect(await h.store.execution(id)).toMatchObject({ state: 'completed', rev: 5, syncedRev: 5, answers: { [h.c.photo.id]: { photos: [kept] } } });
+    expect((await h.store.media(id)).map((m) => m.id)).toEqual([kept]);
     expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
   });
 
@@ -324,6 +328,68 @@ describe('failures', () => {
     expect(revs(h)).toEqual([1]);
   });
 
+  it('an error before the push (the local lock) backs off like a network failure', async () => {
+    jest.useFakeTimers();
+    try {
+      const h = await createHarness();
+      let calls = 0;
+      const engine = createSyncEngine({
+        db: h.db, api: h.api.api, clock: h.clock, feed: h.feed, mediaQueue: h.mediaQueue, files: h.transport,
+        isOnline: () => true,
+        onClaimRejected: () => undefined,
+        beforeRun: async () => {
+          if (++calls <= 2) throw new Error('database is locked');
+        },
+      });
+      await h.store.start(OCC, ME);
+      await expect(engine.run('manual')).resolves.toBeUndefined();
+      expect(methods(h)).toEqual([]);
+      // The retry fired by the backoff timer fails too, without an unhandled rejection.
+      await jest.advanceTimersByTimeAsync(5_000);
+      await engine.idle();
+      expect(methods(h)).toEqual([]);
+      await jest.advanceTimersByTimeAsync(10_000);
+      await engine.idle();
+      expect(methods(h)).toEqual(['claim', 'pull']);
+      engine.stop();
+      h.engine.stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a completion refused for unmet requirements reopens the execution while its window is open', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.problem.id, { optionIds: [h.c.no.id] });
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    expect(await h.store.complete(id)).toEqual({ ok: true });
+    h.api.on('complete', async () => {
+      throw new ApiError(422, 'REQUIREMENTS_UNMET', 'errors.REQUIREMENTS_UNMET');
+    });
+    await h.engine.run('manual');
+    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed', errorCode: 'REQUIREMENTS_UNMET' }]);
+    expect(await h.store.execution(id)).toMatchObject({ state: 'active', completedAt: null, finishedSyncedAt: null });
+    await h.store.patchAnswer(id, h.c.note.id, { text: 'Düzəldildi' });
+  });
+
+  it('a completion refused after closes_at stays completed', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.problem.id, { optionIds: [h.c.no.id] });
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    expect(await h.store.complete(id)).toEqual({ ok: true });
+    h.api.on('complete', async () => {
+      throw new ApiError(422, 'REQUIREMENTS_UNMET', 'errors.REQUIREMENTS_UNMET');
+    });
+    h.clock.set('2026-11-02T07:05:00.000Z');
+    await h.engine.run('manual');
+    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed' }]);
+    expect(await h.store.execution(id)).toMatchObject({ state: 'completed', completedAt: T.open });
+  });
+
   it('a failed answers command is superseded by the next revision', async () => {
     const h = await createHarness();
     const id = await h.store.start(OCC, ME);
@@ -402,6 +468,46 @@ describe('claims and the pull', () => {
     expect((await h.store.occurrence(OCC))!.claim).toEqual(mine);
     await h.store.patchAnswer(OTHER_EXECUTION, h.c.temp.id, { number: 6 });
     expect(await listCommands(h.db)).toMatchObject([{ executionId: OTHER_EXECUTION, kind: 'answers', rev: 3 }]);
+  });
+
+  it('after adopting, answers the server ignores as stale are sent again above its revision and survive the pull', async () => {
+    const h = await createHarness();
+    const mine = { executionId: OTHER_EXECUTION, executorUserId: ME, executorName: 'Aysel Əliyeva' };
+    h.api.on('claim', async (b) => ({ ...(await h.api.defaults.claim(b)), executionId: OTHER_EXECUTION, state: 'rejected', reason: 'ALREADY_CLAIMED', claim: mine }));
+    // The server holds revision 4 from my other install.
+    const server = { rev: 4, answers: { [h.c.temp.id]: { number: 1 } } as Record<string, unknown> };
+    h.api.on('saveAnswers', async (executionId, b) => {
+      if (b.rev <= server.rev) return { ...(await h.api.defaults.saveAnswers(executionId, b)), rev: server.rev, stale: true };
+      Object.assign(server, { rev: b.rev, answers: b.answers });
+      return h.api.defaults.saveAnswers(executionId, b);
+    });
+    h.api.on('pull', async () =>
+      syncResponse({
+        occurrences: [occurrence({ status: 'started', claim: mine })],
+        executions: [myExecution({ id: OTHER_EXECUTION, answersRev: server.rev, answers: server.answers as never })],
+      }));
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.engine.run('manual');
+    expect(revs(h)).toEqual([1, 5]);
+    expect(server).toEqual({ rev: 5, answers: { [h.c.temp.id]: { number: 5 } } });
+    expect(await h.store.execution(OTHER_EXECUTION)).toMatchObject({ rev: 5, syncedRev: 5, answers: { [h.c.temp.id]: { number: 5 } } });
+    await h.engine.run('manual');
+    expect(await h.store.execution(OTHER_EXECUTION)).toMatchObject({ rev: 5, answers: { [h.c.temp.id]: { number: 5 } } });
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+  });
+
+  it('adopting renumbers local revisions above a copy of the execution pulled earlier', async () => {
+    const h = await createHarness();
+    const mine = { executionId: OTHER_EXECUTION, executorUserId: ME, executorName: 'Aysel Əliyeva' };
+    h.api.on('claim', async (b) => ({ ...(await h.api.defaults.claim(b)), executionId: OTHER_EXECUTION, state: 'rejected', reason: 'ALREADY_CLAIMED', claim: mine }));
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.seed(syncResponse({ executions: [myExecution({ id: OTHER_EXECUTION, answersRev: 4, answers: { [h.c.temp.id]: { number: 1 } } })] }));
+    await h.engine.run('manual');
+    expect(revs(h)).toEqual([5]);
+    expect(await h.store.execution(OTHER_EXECUTION)).toMatchObject({ rev: 5, syncedRev: 5, answers: { [h.c.temp.id]: { number: 5 } } });
+    expect(await h.store.execution(id)).toBeNull();
   });
 
   it('pulls claims, new occurrences and executions started on another phone', async () => {

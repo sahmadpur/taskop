@@ -8,6 +8,7 @@ import type {
   MediaUploadTicket,
   RegisterMediaCommand,
   SaveAnswersCommand,
+  SaveAnswersResult,
   SyncResponse,
 } from '@taskop/contracts';
 import type { ChangeFeed } from './change-feed';
@@ -19,6 +20,7 @@ import type { MediaQueue } from './media-queue';
 import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
 import { classifyError, type SyncApi } from './sync-api';
 import { applyPull, knownVersionIds } from './sync-pull';
+import type { FileRemover } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
 
@@ -66,6 +68,8 @@ export interface SyncEngineDeps {
   clock: Clock;
   feed: ChangeFeed;
   mediaQueue: Pick<MediaQueue, 'drain' | 'cleanup' | 'counts' | 'retryFailed'>;
+  /** Deletes the local file of a medium the server refused. */
+  files: FileRemover;
   isOnline: () => boolean;
   onClaimRejected: (r: ClaimRejection) => void;
   /** Runs at the start of every run, online or not: the local closes_at lock. */
@@ -100,54 +104,108 @@ export async function markFinishedSynced(db: Db, now: number): Promise<void> {
 const refersTo = (answers: Answers, mediaId: string): boolean =>
   Object.values(answers).some((a) => a?.photos?.includes(mediaId) || a?.videos?.includes(mediaId) || a?.problem?.mediaIds.includes(mediaId));
 
+/** Gives every queued answers/complete command of an execution a new revision (payload and column alike). */
+async function requeueRevision(tx: Db, executionId: string, rev: number, answers: Answers | null): Promise<number> {
+  const queued = await tx.all<{ seq: number; payload: string }>(
+    `SELECT seq, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
+    [executionId],
+  );
+  for (const q of queued) {
+    const payload = { ...(JSON.parse(q.payload) as Record<string, unknown>), rev, ...(answers ? { answers } : {}) };
+    await tx.run('UPDATE outbox SET rev = ?, payload = ? WHERE seq = ?', [rev, JSON.stringify(payload), q.seq]);
+  }
+  return queued.length;
+}
+
 /**
- * The server refused a medium for good (MEDIA_TOO_LARGE, EVIDENCE_LIVE_ONLY, …). It is marked failed and dropped
- * from the answers, under a new revision, so the answers and completion still queued do not fail on an unknown medium.
+ * The server refused a medium for good (MEDIA_TOO_LARGE, EVIDENCE_LIVE_ONLY, …). The medium is deleted and dropped
+ * from the answers under a new revision, so the answers and completion still queued do not fail on an unknown medium;
+ * the item's evidence requirement shows as missing again, the worker's signal to retake it.
  * Registration always precedes the answers that reference a medium, so every revision naming it is still queued: those
  * commands are rewritten in place, keeping their action time (an answer made before closes_at stays before it) and
  * their order before a completion. Only when none is queued is a new answers command appended.
+ * Returns the local file to delete after the transaction commits.
  */
-async function dropRefusedMedium(tx: Db, cmd: OutboxCommand, code: string, now: number): Promise<void> {
+async function dropRefusedMedium(tx: Db, cmd: OutboxCommand, now: number): Promise<string | null> {
   await ackCommand(tx, cmd.seq);
   const mediaId = cmd.refId;
-  if (!mediaId) return;
+  if (!mediaId) return null;
   // The worker may have removed the medium meanwhile: removeMedia already dropped it from the answers.
-  if ((await tx.run('UPDATE media SET failed_code = ?, attempts = attempts + 1 WHERE id = ?', [code, mediaId])) === 0) return;
+  const medium = await tx.first<{ local_uri: string }>('SELECT local_uri FROM media WHERE id = ?', [mediaId]);
+  if (!medium) return null;
+  await tx.run('DELETE FROM media WHERE id = ?', [mediaId]);
   const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.executionId]);
-  if (!row) return;
+  if (!row) return medium.local_uri;
   const e = toExecution(row);
-  if (!refersTo(e.answers, mediaId)) return;
+  if (!refersTo(e.answers, mediaId)) return medium.local_uri;
   const answers = withoutMedia(e.answers, mediaId);
   const rev = e.rev + 1;
   await tx.run('UPDATE executions SET answers = ?, rev = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), rev, iso(now), e.id]);
-  const queued = await tx.all<{ seq: number; payload: string }>(
-    `SELECT seq, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
-    [e.id],
-  );
-  if (queued.length === 0) {
+  if ((await requeueRevision(tx, e.id, rev, answers)) === 0) {
     await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
-    return;
   }
-  for (const q of queued) {
-    const payload = { ...(JSON.parse(q.payload) as Record<string, unknown>), rev, answers };
-    await tx.run('UPDATE outbox SET rev = ?, payload = ? WHERE seq = ?', [rev, JSON.stringify(payload), q.seq]);
-  }
+  return medium.local_uri;
 }
 
 /**
  * My other install already holds the claim: this phone continues that execution instead of losing its work.
  * The local execution, its media and its queued commands move to the server's execution ID. A copy of that execution
- * pulled earlier is replaced, since the local one carries the queued work.
+ * pulled earlier is replaced, since the local one carries the queued work; the local revisions are renumbered above
+ * the copy's so the server does not ignore them as stale (same user: this phone's later edits win).
  */
 async function adoptExecution(tx: Db, from: string, to: string, now: number): Promise<void> {
+  const pulled = await tx.first<{ rev: number }>('SELECT rev FROM executions WHERE id = ?', [to]);
   await tx.run('DELETE FROM executions WHERE id = ?', [to]);
   await tx.run(`UPDATE executions SET id = ?, claim = 'accepted', updated_at = ? WHERE id = ?`, [to, iso(now), from]);
   await tx.run('UPDATE media SET execution_id = ? WHERE execution_id = ?', [to, from]);
   await tx.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [to, from]);
+  const shift = pulled?.rev ?? 0;
+  if (shift === 0) return;
+  await tx.run('UPDATE executions SET rev = rev + ?, synced_rev = ? WHERE id = ?', [shift, shift, to]);
+  const queued = await tx.all<{ seq: number; rev: number; payload: string }>(
+    `SELECT seq, rev, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
+    [to],
+  );
+  for (const q of queued) {
+    const rev = q.rev + shift;
+    await tx.run('UPDATE outbox SET rev = ?, payload = ? WHERE seq = ?', [rev, JSON.stringify({ ...(JSON.parse(q.payload) as Record<string, unknown>), rev }), q.seq]);
+  }
+}
+
+/**
+ * The server ignored an answers revision because it already holds a newer one (another install of mine). This phone's
+ * answers are sent again above the server's revision instead of being marked synced, so the next pull cannot overwrite them.
+ */
+async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number): Promise<void> {
+  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.executionId]);
+  if (!row) return void (await ackCommand(tx, cmd.seq));
+  const e = toExecution(row);
+  // A newer local revision above the server's is already queued: it carries these answers.
+  if (e.rev > serverRev) return void (await ackCommand(tx, cmd.seq));
+  const rev = serverRev + 1;
+  await tx.run('UPDATE executions SET rev = ? WHERE id = ?', [rev, e.id]);
+  // The command stays where it is (its action time and its place before a completion), now with the new revision.
+  if ((await requeueRevision(tx, e.id, rev, e.answers)) === 0) {
+    await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
+  }
+}
+
+/**
+ * A completion refused for unmet requirements (e.g. a refused medium left an item without evidence) reopens the
+ * execution while its window is still open, so the worker can fix it and complete again. After closes_at the
+ * server's sweep makes it partial.
+ */
+async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: number): Promise<void> {
+  await tx.run(
+    `UPDATE executions SET state = 'active', completed_at = NULL, finished_synced_at = NULL, updated_at = ?
+     WHERE id = ? AND state = 'completed'
+       AND EXISTS (SELECT 1 FROM occurrences o WHERE o.id = executions.occurrence_id AND o.closes_at > ?)`,
+    [iso(now), cmd.executionId, iso(now)],
+  );
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
-  const { db, api, clock, feed, mediaQueue, isOnline, onClaimRejected, beforeRun } = deps;
+  const { db, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, beforeRun } = deps;
   let status: SyncStatus = { pending: 0, failed: 0, running: false, online: isOnline(), lastSyncedAt: null, clockOffsetMs: 0, blockedByAuth: false };
   const listeners = new Set<() => void>();
   let running: Promise<void> | null = null;
@@ -172,7 +230,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       clockOffsetMs: await readOffset(db),
     });
   }
-  const unsubscribeFeed = feed.subscribe(() => void refresh());
+  const unsubscribeFeed = feed.subscribe(() => void refresh().catch(() => undefined));
+
+  function removeFile(uri: string): void {
+    try {
+      files.remove(uri);
+    } catch {
+      // Already gone.
+    }
+  }
 
   function clearRetry(): void {
     if (retryTimer) clearTimeout(retryTimer);
@@ -262,13 +328,25 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       } catch (e) {
         const f = classifyError(e);
         if (f.kind === 'permanent') {
-          if (cmd.kind === 'media') await db.transaction((tx) => dropRefusedMedium(tx, cmd, f.code, clock.now()));
-          else await failCommand(db, cmd.seq, f.code, f.messageKey);
+          if (cmd.kind === 'media') {
+            const uri = await db.transaction((tx) => dropRefusedMedium(tx, cmd, clock.now()));
+            if (uri) removeFile(uri);
+          } else {
+            await db.transaction(async (tx) => {
+              await failCommand(tx, cmd.seq, f.code, f.messageKey);
+              if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET') await reopenRefusedCompletion(tx, cmd, clock.now());
+            });
+          }
           feed.emit();
           continue;
         }
         if (f.kind === 'retry') await noteAttempt(db, cmd.seq);
         return f.kind;
+      }
+      if (cmd.kind === 'answers' && (result as SaveAnswersResult).stale) {
+        await db.transaction((tx) => requeueStaleAnswers(tx, cmd, (result as SaveAnswersResult).rev));
+        feed.emit();
+        continue;
       }
       // If the worker superseded or removed this command while it was in flight, ack deletes nothing and the newer one goes next.
       const rejection = await db.transaction(async (tx) => {
@@ -321,9 +399,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       try {
         do {
           again = false;
-          await beforeRun?.();
-          if (!isOnline()) break;
-          const outcome = await cycle().catch((): Outcome => 'retry');
+          let outcome: Outcome;
+          try {
+            await beforeRun?.();
+            if (!isOnline()) break;
+            outcome = await cycle();
+          } catch {
+            // Anything unexpected (a local error included) backs off like a network failure, never an unhandled rejection.
+            outcome = 'retry';
+          }
           if (outcome === 'retry') {
             scheduleRetry();
             break;
@@ -339,7 +423,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       } finally {
         running = null;
         publish({ running: false });
-        await refresh();
+        await refresh().catch(() => undefined);
       }
     })();
     return running;

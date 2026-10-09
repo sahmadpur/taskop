@@ -43,7 +43,7 @@ export async function createHarness(o: { at?: string; db?: Db } = {}): Promise<H
   const net = { online: true };
   const rejections: ClaimRejection[] = [];
   const engine = createSyncEngine({
-    db, api: api.api, clock, feed, mediaQueue,
+    db, api: api.api, clock, feed, mediaQueue, files: transport,
     isOnline: () => net.online,
     onClaimRejected: (r) => rejections.push(r),
     beforeRun: () => store.lockExpired(),
