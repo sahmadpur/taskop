@@ -1,0 +1,36 @@
+export default {
+  states: {
+    active: 'İcra olunur',
+    completed: 'Tamamlanıb',
+    partial: 'Yarımçıq',
+    rejected: 'Rədd edilib',
+  },
+  claimRejections: {
+    ALREADY_CLAIMED: 'Bu checklist artıq başqa əməkdaş tərəfindən icra olunur.',
+    NOT_ASSIGNED: 'Bu checklist sizə təyin olunmayıb.',
+    NOT_STARTABLE: 'Bu checklist artıq başladıla bilməz.',
+    NOT_YET_OPEN: 'İcra vaxtı hələ başlamayıb.',
+    CLOSED: 'İcra vaxtı bitib.',
+    NOT_ON_SHIFT: 'Bu gün bu növbədə işləmirsiniz.',
+  },
+  alreadyClaimedBy: 'Bu checklist artıq {{name}} tərəfindən icra olunur',
+  issues: {
+    unknownItem: 'Bu sual checklistin bu versiyasında yoxdur.',
+    invalidValue: 'Cavab bu sual üçün uyğun deyil.',
+    unknownOption: 'Seçilmiş variant bu suala aid deyil.',
+    unknownMedia: 'Fayl bu icraya aid deyil və ya hələ qeydiyyatdan keçməyib.',
+    tooManyMedia: 'Bu sual üçün çox fayl əlavə olunub.',
+    answersTooLarge: 'Cavablar çox böyükdür.',
+    rangeTooLong: 'Tarix aralığı çox uzundur (ən çox 92 gün).',
+  },
+  problemSources: { rule: 'Qayda üzrə', manual: 'Əl ilə qeyd' },
+  severities: { normal: 'Adi', critical: 'Kritik' },
+  flags: {
+    late: 'Gecikib',
+    partial: 'Yarımçıq',
+    clockSuspect: 'Telefon saatı şübhəlidir',
+    mediaPending: '{{count}} fayl hələ yüklənməyib',
+  },
+  mediaKinds: { photo: 'Foto', video: 'Video' },
+  mediaSources: { camera: 'Kamera', gallery: 'Qalereya' },
+} as const;
