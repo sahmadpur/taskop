@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { EXECUTION_LIMITS, type ExecutionProgress, type MyExecution, type SyncResponse } from '@taskop/contracts';
-import { and, asc, eq, getTableColumns, gt, gte, inArray, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, gt, gte, inArray, lt, ne, or } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
-import { checklistVersions, executions, occurrences } from '../db/schema';
+import { checklistVersions, executions, occurrenceAssignees, occurrences } from '../db/schema';
 import { OccurrenceQueries } from '../scheduling/occurrence-queries';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import type { SyncQueryDto } from './dto';
@@ -30,28 +30,34 @@ export class SyncService {
     const now = this.clock.now();
     const from = new Date(+now - EXECUTION_LIMITS.syncPastDays * DAY);
     const to = new Date(+now + EXECUTION_LIMITS.syncFutureDays * DAY);
-    const assigned = sql`exists (select 1 from occurrence_assignees oa where oa.occurrence_id = ${occurrences.id} and oa.user_id = ${p.userId})`;
-    // An executor removed from the snapshot after starting still finishes their own execution.
-    const executing = sql`exists (select 1 from executions x where x.occurrence_id = ${occurrences.id} and x.executor_user_id = ${p.userId} and x.state = 'active')`;
-    const picked = await tx
-      .select({ id: occurrences.id, assigned: sql<boolean>`${assigned}` })
-      .from(occurrences)
-      .where(or(and(assigned, ne(occurrences.status, 'cancelled'), lt(occurrences.startsAt, to), gt(occurrences.closesAt, from)), executing));
-    const ids = picked.map((r) => r.id);
+    // Driven by the indexes: the caller's assignee rows (tenant, user) joined to occurrences in the window, plus the
+    // occurrences of the caller's active executions (tenant, executor) — an executor removed from the snapshot after
+    // starting still finishes their own execution.
+    const assignedRows = await tx
+      .select({ id: occurrences.id })
+      .from(occurrenceAssignees)
+      .innerJoin(occurrences, eq(occurrences.id, occurrenceAssignees.occurrenceId))
+      .where(
+        and(
+          eq(occurrenceAssignees.tenantId, p.tenantId),
+          eq(occurrenceAssignees.userId, p.userId),
+          ne(occurrences.status, 'cancelled'),
+          lt(occurrences.startsAt, to),
+          gt(occurrences.closesAt, from),
+        ),
+      );
+    const executingRows = await tx
+      .select({ id: executions.occurrenceId })
+      .from(executions)
+      .where(and(eq(executions.tenantId, p.tenantId), eq(executions.executorUserId, p.userId), eq(executions.state, 'active')));
+    const assignedIds = assignedRows.map((r) => r.id);
+    const ids = [...new Set([...assignedIds, ...executingRows.map((r) => r.id)])];
     // The first download by an assignee pins the version (spec §5.1); someone only finishing their own execution pins nothing.
-    await this.writer.pinVersions(picked.filter((r) => r.assigned).map((r) => r.id));
+    await this.writer.pinVersions(assignedIds);
     const rows = ids.length
       ? await this.queries.select().where(inArray(occurrences.id, ids)).orderBy(asc(occurrences.startsAt), asc(occurrences.id))
       : [];
     const claims = await this.lookups.claims(ids);
-    const known = new Set(q.knownVersionIds);
-    const versionIds = [...new Set(rows.map((r) => r.o.checklistVersionId).filter((v): v is string => v !== null && !known.has(v)))];
-    const versions = versionIds.length
-      ? await tx
-          .select({ id: checklistVersions.id, checklistId: checklistVersions.checklistId, number: checklistVersions.number, content: checklistVersions.content })
-          .from(checklistVersions)
-          .where(inArray(checklistVersions.id, versionIds))
-      : [];
     const own = await tx
       .select({ x: getTableColumns(executions), mediaPending: mediaPendingSql })
       .from(executions)
@@ -62,6 +68,16 @@ export class SyncService {
         ),
       )
       .orderBy(asc(executions.startedAt), asc(executions.id));
+    // Every version the phone needs: those of the listed occurrences and of its own executions.
+    const known = new Set(q.knownVersionIds);
+    const referenced = [...rows.map((r) => r.o.checklistVersionId), ...own.map((r) => r.x.checklistVersionId)];
+    const versionIds = [...new Set(referenced.filter((v): v is string => v !== null && !known.has(v)))];
+    const versions = versionIds.length
+      ? await tx
+          .select({ id: checklistVersions.id, checklistId: checklistVersions.checklistId, number: checklistVersions.number, content: checklistVersions.content })
+          .from(checklistVersions)
+          .where(inArray(checklistVersions.id, versionIds))
+      : [];
     return {
       serverTime: now.toISOString(),
       occurrences: rows.map((r) => ({

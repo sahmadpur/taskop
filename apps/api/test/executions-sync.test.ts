@@ -119,4 +119,20 @@ describe('download sync (GET /me/sync)', () => {
     const outsiderApi = as(t, (await loginWorker(t, w.s.orgCode, outsider.username!, outsider.secret)).accessToken);
     expect((await pull(outsiderApi)).body).toMatchObject({ occurrences: [], checklistVersions: [], executions: [] });
   });
+
+  it('sends the version of every returned execution, also when its occurrence is no longer listed', async () => {
+    const w = await executionWorld(t);
+    const api = w.workers[0].api;
+    clock.set('2026-11-02T04:20:00Z');
+    const executionId = await claimOk(api, w.occurrenceId, '2026-11-02T04:10:00.000Z');
+    const photo = await registerPhoto(api, executionId, w.c.photo.id);
+    const answers = { [w.c.problem.id]: { optionIds: [w.c.no.id] }, [w.c.temp.id]: { number: 5 }, [w.c.photo.id]: { photos: [photo] } };
+    await api.post(`/api/v1/executions/${executionId}/complete`, { rev: 1, answers, completedAt: '2026-11-02T04:20:00.000Z', deviceTime: '2026-11-02T04:20:00.000Z', clientOffsetMs: 0 });
+    await ownerQuery('delete from occurrence_assignees where user_id = $1', [w.workers[0].id]);
+    const res = (await pull(api)).body;
+    expect(res.occurrences).toEqual([]);
+    expect(res.executions.map((x: { id: string }) => x.id)).toEqual([executionId]);
+    expect(res.checklistVersions.map((v: { id: string }) => v.id)).toEqual([w.versionId]);
+    expect((await pull(api, [w.versionId])).body.checklistVersions).toEqual([]);
+  });
 });
