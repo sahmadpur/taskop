@@ -43,9 +43,16 @@ export class RosterService {
   async put(a: Actor, input: PutRosterDto): Promise<RosterDto> {
     await this.assertSite(a, input.siteId);
     const rows = [...new Map(input.rows.map((r) => [rowKey(r), r])).values()];
-    await this.validateRows(input.siteId, rows);
     const { tenantId } = this.db.context();
     const tx = this.db.tx();
+    // Rows already stored are kept as they are, even if their person left the site or their shift was deactivated
+    // since; only new rows are checked, so a week stays saveable after such a change.
+    const stored = await tx
+      .select({ userId: shiftRoster.userId, shiftId: shiftRoster.shiftId, date: shiftRoster.date })
+      .from(shiftRoster)
+      .where(and(eq(shiftRoster.siteId, input.siteId), between(shiftRoster.date, input.from, input.to)));
+    const storedKeys = new Set(stored.map(rowKey));
+    await this.validateRows(input.siteId, rows.filter((r) => !storedKeys.has(rowKey(r))));
     const removed = await tx
       .delete(shiftRoster)
       .where(and(eq(shiftRoster.siteId, input.siteId), between(shiftRoster.date, input.from, input.to)))

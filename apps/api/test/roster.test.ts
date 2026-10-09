@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DomainEvents } from '../src/common/domain-events';
 import { createTestApp, type TestApp } from './app';
+import { FakeClock } from './fake-clock';
 import { createUserDirect } from './fixtures';
 import { ownerQuery } from './owner-db';
 import { schedulingWorld } from './scheduling-fixtures';
@@ -96,5 +97,53 @@ describe('roster', () => {
       { userId: w0, shiftId: morning, date: '2026-11-16' },
       { userId: w1, shiftId: morning, date: '2026-11-20' },
     ]);
+  });
+});
+
+describe('roster after access changes', () => {
+  const clock = new FakeClock('2026-11-04T04:00:00Z'); // Wednesday 08:00 in Baku
+  let t: TestApp;
+  beforeAll(async () => {
+    t = await createTestApp({}, { clock });
+  });
+  afterAll(() => t.close());
+
+  const week = { from: '2026-11-02', to: '2026-11-08' };
+
+  it('keeps stored rows of a person deactivated mid-week but refuses new ones', async () => {
+    const w = await schedulingWorld(t, 2);
+    const [w0, w1] = w.workers as [string, string];
+    const morning = (await w.api.post('/api/v1/shifts', { name: 'Səhər', startTime: '08:00', endTime: '16:00' })).body.id as string;
+    const rows = [
+      { userId: w0, shiftId: morning, date: '2026-11-02' },
+      { userId: w1, shiftId: morning, date: '2026-11-02' },
+      { userId: w1, shiftId: morning, date: '2026-11-03' },
+      { userId: w1, shiftId: morning, date: '2026-11-05' },
+    ];
+    expect((await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows })).status).toBe(200);
+    expect((await w.api.post(`/api/v1/users/${w1}/deactivate`)).status).toBe(200);
+    const got = (await w.api.get(`/api/v1/roster?siteId=${w.siteId}&from=${week.from}&to=${week.to}`)).body;
+    expect(got.users.map((u: { id: string }) => u.id)).toEqual([w0]);
+    expect(got.rows).toHaveLength(3); // the row from today on was dropped
+    const extra = { userId: w0, shiftId: morning, date: '2026-11-06' };
+    const saved = await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows: [...got.rows, extra] });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.rows).toHaveLength(4);
+    const added = await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows: [...saved.body.rows, { userId: w1, shiftId: morning, date: '2026-11-06' }] });
+    expect(added.body.error).toMatchObject({ code: 'ROSTER_USER_NOT_AT_SITE', userIds: [w1] });
+  });
+
+  it('keeps stored rows of a deactivated shift but refuses new ones', async () => {
+    const w = await schedulingWorld(t, 2);
+    const [w0, w1] = w.workers as [string, string];
+    const morning = (await w.api.post('/api/v1/shifts', { name: 'Səhər', startTime: '08:00', endTime: '16:00' })).body.id as string;
+    const rows = [{ userId: w0, shiftId: morning, date: '2026-11-05' }];
+    expect((await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows })).status).toBe(200);
+    await w.api.patch(`/api/v1/shifts/${morning}`, { active: false });
+    const kept = await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows });
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    expect(kept.body.rows).toEqual(rows);
+    const added = await w.api.put('/api/v1/roster', { siteId: w.siteId, ...week, rows: [...rows, { userId: w1, shiftId: morning, date: '2026-11-06' }] });
+    expect(added.body.error.code).toBe('SHIFT_INACTIVE');
   });
 });

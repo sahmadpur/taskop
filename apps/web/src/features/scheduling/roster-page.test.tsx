@@ -130,4 +130,20 @@ describe('RosterPage', () => {
     expect(await screen.findByRole('checkbox', { name: 'Səhər — Elvin, 2026-11-03' })).not.toBeChecked();
     expect(screen.queryByText('Saxlanmamış dəyişikliklər var')).not.toBeInTheDocument();
   });
+
+  it('shows saved rows of people no longer at the site so they can be unticked', async () => {
+    mocks.api.roster.get.mockResolvedValue({
+      ...roster,
+      rows: [...roster.rows, { userId: 'gone', shiftId: 's1', date: '2026-11-03' }],
+    });
+    await openSite();
+    const former = await screen.findByRole('checkbox', { name: 'Səhər — Keçmiş əməkdaş, 2026-11-03' });
+    expect(former).toBeChecked();
+    // A former person can only be taken off, not put on.
+    expect(screen.getByRole('checkbox', { name: 'Səhər — Keçmiş əməkdaş, 2026-11-04' })).toBeDisabled();
+    await userEvent.click(former);
+    await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(mocks.api.roster.put).toHaveBeenCalled());
+    expect(mocks.api.roster.put.mock.calls[0]![0].rows).toEqual([{ userId: 'u1', shiftId: 's1', date: '2026-11-02' }]);
+  });
 });

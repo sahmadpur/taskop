@@ -54,7 +54,17 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
   const shifts = (roster.data?.shifts ?? []).filter(
     (s) => s.active || [...saved, ...current].some((k) => parseKey(k).shiftId === s.id),
   );
-  const people = roster.data?.users ?? [];
+  // People no longer at the site (left, deactivated) stay visible while a row in this week still names them,
+  // so those rows can be unticked; they cannot be given new ones.
+  const people = useMemo(() => {
+    const listed = roster.data?.users ?? [];
+    const known = new Set(listed.map((u) => u.id));
+    const former = [...new Set([...saved, ...current].map((k) => parseKey(k).userId))].filter((id) => !known.has(id));
+    return [
+      ...listed.map((u) => ({ ...u, former: false })),
+      ...former.map((id) => ({ id, fullName: t('scheduling.roster.formerPerson'), former: true })),
+    ];
+  }, [roster.data, saved, current, t]);
 
   const save = async () => {
     try {
@@ -166,7 +176,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
                                 date: d,
                               })}
                               checked={current.has(key)}
-                              disabled={!canManage}
+                              disabled={!canManage || (u.former && !current.has(key))}
                               onCheckedChange={(c) => setDraft(toggleKey(current, key, c === true))}
                             />
                             {s.name}

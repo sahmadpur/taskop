@@ -68,6 +68,7 @@ export default {
     prevWeek: 'Əvvəlki həftə',
     nextWeek: 'Növbəti həftə',
     person: 'Əməkdaş',
+    formerPerson: 'Keçmiş əməkdaş',
     saved: 'Növbə cədvəli yadda saxlanıldı',
     unsaved: 'Saxlanmamış dəyişikliklər var',
     copy: 'Bu həftəni köçür…',
