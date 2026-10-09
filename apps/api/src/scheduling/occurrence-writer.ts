@@ -146,6 +146,36 @@ export class OccurrenceWriter {
     await this.restart(assignmentId);
   }
 
+  /**
+   * Pins the checklist version that is current now on occurrences that have none yet (SP4 spec §5.1):
+   * at the first download by an assignee or at the claim. A pinned version never changes.
+   */
+  async pinVersions(occurrenceIds: string[]): Promise<void> {
+    if (!occurrenceIds.length) return;
+    await this.db.tx().execute(sql`
+      update occurrences set checklist_version_id = c.current_version_id
+        from checklists c
+       where c.id = occurrences.checklist_id
+         and occurrences.checklist_version_id is null
+         and c.current_version_id is not null
+         and ${inArray(occurrences.id, occurrenceIds)}`);
+  }
+
+  /**
+   * Moves one occurrence through `steps` in order (SP4 spec §3): the status becomes the last `to` at the last `at`,
+   * and every step gets its own history row and event, so a late sync that jumps several states stays readable.
+   */
+  async applyTransitions(steps: Transition[]): Promise<void> {
+    const last = steps[steps.length - 1];
+    if (!last) return;
+    await this.db
+      .tx()
+      .update(occurrences)
+      .set({ status: last.to, statusChangedAt: last.at, updatedAt: this.clock.now() })
+      .where(eq(occurrences.id, last.occurrenceId));
+    await this.recordTransitions(steps);
+  }
+
   async recordTransitions(rows: Transition[]): Promise<void> {
     if (!rows.length) return;
     const { tenantId } = this.db.context();

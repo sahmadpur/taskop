@@ -22,6 +22,6 @@ import { ShiftsService } from './shifts.service';
   imports: [PlatformModule],
   controllers: [TenantShiftsController, PlatformTenantShiftsController, TenantRosterController, PlatformTenantRosterController, TenantAssignmentsController, PlatformTenantAssignmentsController, TenantOccurrencesController, PlatformTenantOccurrencesController, MeOccurrencesController],
   providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners, OccurrenceJobs, JobsService, OccurrencesService, EligibilityService],
-  exports: [EligibilityService],
+  exports: [EligibilityService, OccurrenceWriter, OccurrenceQueries, SchedulingScope],
 })
 export class SchedulingModule {}

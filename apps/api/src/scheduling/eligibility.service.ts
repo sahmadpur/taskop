@@ -11,7 +11,8 @@ export type CanStartResult = { ok: true; late: boolean } | { ok: false; reason: 
 export class EligibilityService {
   constructor(private readonly db: DbService) {}
 
-  async canStart(occurrenceId: string, userId: string, at: Date): Promise<CanStartResult> {
+  /** `allowMissed`: a late-synced offline start may revive a missed occurrence (SP4 spec §6.2); every other rule still applies. */
+  async canStart(occurrenceId: string, userId: string, at: Date, opts: { allowMissed?: boolean } = {}): Promise<CanStartResult> {
     const tx = this.db.tx();
     const [o] = await tx.select().from(occurrences).where(eq(occurrences.id, occurrenceId));
     if (!o) return { ok: false, reason: 'NOT_FOUND' };
@@ -20,7 +21,8 @@ export class EligibilityService {
       .from(occurrenceAssignees)
       .where(and(eq(occurrenceAssignees.occurrenceId, occurrenceId), eq(occurrenceAssignees.userId, userId)));
     if (!assigned) return { ok: false, reason: 'NOT_ASSIGNED' };
-    if (o.status !== 'pending' && o.status !== 'overdue') return { ok: false, reason: 'NOT_STARTABLE' };
+    const startable = o.status === 'pending' || o.status === 'overdue' || (opts.allowMissed === true && o.status === 'missed');
+    if (!startable) return { ok: false, reason: 'NOT_STARTABLE' };
     if (at < o.startsAt) return { ok: false, reason: 'NOT_YET_OPEN' };
     if (at >= o.closesAt) return { ok: false, reason: 'CLOSED' };
     if (o.shiftId) {
