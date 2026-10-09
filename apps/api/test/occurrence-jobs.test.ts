@@ -152,7 +152,10 @@ describe('pg-boss wiring', () => {
   it('registers cron schedules only while JOBS_CRON is on and uses stately queues', async () => {
     const schedules = async () =>
       (await ownerQuery<{ name: string }>("select name from pgboss.schedule where name like 'occurrences.%' order by name")).rows.map((r) => r.name);
-    const on = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'true' });
+    // Cron jobs run for every tenant in the shared test database; a clock long in the past makes them no-ops,
+    // so they never sweep or extend other test files' occurrences.
+    const past = new FakeClock('2020-01-01T00:00:00Z');
+    const on = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'true' }, { clock: past });
     try {
       expect(await schedules()).toEqual([QUEUES.materialize, QUEUES.sweep]);
       const policies = await ownerQuery<{ name: string; policy: string }>("select name, policy from pgboss.queue where name in ($1, $2) order by name", [
@@ -163,7 +166,7 @@ describe('pg-boss wiring', () => {
     } finally {
       await on.close();
     }
-    const off = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+    const off = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' }, { clock: past });
     try {
       expect(await schedules()).toEqual([]);
     } finally {
