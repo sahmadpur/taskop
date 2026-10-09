@@ -17,6 +17,7 @@ import { escapeLike } from '../common/sql';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { checklists, checklistVersions, users } from '../db/schema';
+import { DomainEvents } from '../common/domain-events';
 import { actorColumns } from './actor';
 import { parseDraftOrThrow, storedContent } from './content';
 import type { ChecklistListQueryDto, CreateChecklistDto, PublishDto, SaveContentDto, StartDraftDto, UpdateChecklistDto } from './dto';
@@ -34,6 +35,7 @@ export class ChecklistsService {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly events: DomainEvents,
     @Optional() private readonly templates?: ChecklistContentSource,
   ) {}
 
@@ -249,6 +251,7 @@ export class ChecklistsService {
         before: { status: c.status },
         after: { status },
       });
+      if (status === 'deactivated') await this.events.emit('checklist.deactivated', { tenantId: c.tenantId, checklistId: id });
     }
     return this.get(id);
   }

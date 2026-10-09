@@ -6,6 +6,7 @@ import request from 'supertest';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { Clock } from '../src/common/clock';
 import { type AppConfig, loadConfig } from '../src/config/config';
 import { MAILER } from '../src/mail/mailer';
 import { MemoryMailer } from './memory-mailer';
@@ -41,17 +42,19 @@ export function testEnv(overrides: Record<string, string> = {}): Record<string, 
     RL_SIGNUP_IP_PER_HOUR: '100000',
     RL_FORGOT_IP_PER_HOUR: '100000',
     LOG_LEVEL: 'silent',
+    JOBS_ENABLED: 'false',
     ...overrides,
   };
 }
 
-export async function createTestApp(overrides: Record<string, string> = {}): Promise<TestApp> {
+export async function createTestApp(overrides: Record<string, string> = {}, opts: { clock?: Clock } = {}): Promise<TestApp> {
   const config = loadConfig(testEnv(overrides));
   const mailer = new MemoryMailer();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
+  let builder = Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
     .overrideProvider(MAILER)
-    .useValue(mailer)
-    .compile();
+    .useValue(mailer);
+  if (opts.clock) builder = builder.overrideProvider(Clock).useValue(opts.clock);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication();
   configureApp(app, config);
   await app.init();

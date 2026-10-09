@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
+  date,
   check,
   foreignKey,
   index,
@@ -12,6 +13,7 @@ import {
   pgView,
   primaryKey,
   text,
+  time,
   timestamp,
   unique,
   uniqueIndex,
@@ -403,3 +405,180 @@ export const globalTemplatesPublished = pgView('global_templates_published', {
   createdAt: ts('created_at').notNull(),
   updatedAt: ts('updated_at').notNull(),
 }).existing();
+
+export const assignmentStatus = pgEnum('assignment_status', ['active', 'paused', 'ended']);
+// Must match OCCURRENCE_STATUSES in @taskop/contracts (FR-11.01).
+export const occurrenceStatus = pgEnum('occurrence_status', [
+  'pending',
+  'started',
+  'in_progress',
+  'completed',
+  'partial',
+  'overdue',
+  'missed',
+  'cancelled',
+  'audit_pending',
+  'audited',
+]);
+
+const localDate = (name: string) => date(name, { mode: 'string' });
+
+export const shifts = pgTable(
+  'shifts',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    // null = usable at every site.
+    siteId: uuid('site_id'),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('shifts_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'shifts_site_fk' }),
+    check('shifts_nonzero_ck', sql`${t.startTime} <> ${t.endTime}`),
+    index('shifts_tenant_idx').on(t.tenantId),
+  ],
+);
+
+export const shiftRoster = pgTable(
+  'shift_roster',
+  {
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull(),
+    shiftId: uuid('shift_id').notNull(),
+    siteId: uuid('site_id').notNull(),
+    // Local date the shift starts.
+    date: localDate('date').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.shiftId, t.siteId, t.date] }),
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: 'shift_roster_user_fk' }),
+    foreignKey({ columns: [t.tenantId, t.shiftId], foreignColumns: [shifts.tenantId, shifts.id], name: 'shift_roster_shift_fk' }),
+    foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'shift_roster_site_fk' }),
+    index('shift_roster_site_date_idx').on(t.tenantId, t.siteId, t.date),
+  ],
+);
+
+export const assignments = pgTable(
+  'assignments',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    checklistId: uuid('checklist_id').notNull(),
+    siteId: uuid('site_id').notNull(),
+    name: text('name'),
+    schedule: jsonb('schedule').notNull(),
+    timing: jsonb('timing').notNull(),
+    // Copied from timing.shiftId for FKs and queries.
+    shiftId: uuid('shift_id'),
+    status: assignmentStatus('status').notNull().default('active'),
+    revision: integer('revision').notNull().default(1),
+    // Every slot starting at or before this instant has been considered (spec §5.1).
+    materializedUntil: ts('materialized_until'),
+    createdByUserId: createdByUser(),
+    createdByPlatformAdminId: createdByPlatform(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('assignments_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'assignments_checklist_fk' }),
+    foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'assignments_site_fk' }),
+    foreignKey({ columns: [t.tenantId, t.shiftId], foreignColumns: [shifts.tenantId, shifts.id], name: 'assignments_shift_fk' }),
+    foreignKey({ columns: [t.tenantId, t.createdByUserId], foreignColumns: [users.tenantId, users.id], name: 'assignments_created_by_fk' }),
+    oneCreator('assignments_creator_ck', t),
+    index('assignments_site_idx').on(t.tenantId, t.siteId),
+    index('assignments_checklist_idx').on(t.tenantId, t.checklistId),
+  ],
+);
+
+export const assignmentAssignees = pgTable(
+  'assignment_assignees',
+  {
+    tenantId: tenantId(),
+    assignmentId: uuid('assignment_id').notNull(),
+    userId: uuid('user_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.assignmentId, t.userId] }),
+    foreignKey({ columns: [t.tenantId, t.assignmentId], foreignColumns: [assignments.tenantId, assignments.id], name: 'assignment_assignees_assignment_fk' }),
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: 'assignment_assignees_user_fk' }),
+    index('assignment_assignees_user_idx').on(t.tenantId, t.userId),
+  ],
+);
+
+export const occurrences = pgTable(
+  'occurrences',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    assignmentId: uuid('assignment_id').notNull(),
+    checklistId: uuid('checklist_id').notNull(),
+    siteId: uuid('site_id').notNull(),
+    shiftId: uuid('shift_id'),
+    localDate: localDate('local_date').notNull(),
+    startsAt: ts('starts_at').notNull(),
+    dueAt: ts('due_at').notNull(),
+    closesAt: ts('closes_at').notNull(),
+    status: occurrenceStatus('status').notNull().default('pending'),
+    statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
+    cancelReason: text('cancel_reason'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('occurrences_tenant_id_uq').on(t.tenantId, t.id),
+    // One live occurrence per assignment and day; cancelled ones never block a regenerated slot.
+    uniqueIndex('occurrences_live_day_uq').on(t.assignmentId, t.localDate).where(sql`status <> 'cancelled'`),
+    foreignKey({ columns: [t.tenantId, t.assignmentId], foreignColumns: [assignments.tenantId, assignments.id], name: 'occurrences_assignment_fk' }),
+    foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'occurrences_checklist_fk' }),
+    foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'occurrences_site_fk' }),
+    foreignKey({ columns: [t.tenantId, t.shiftId], foreignColumns: [shifts.tenantId, shifts.id], name: 'occurrences_shift_fk' }),
+    check('occurrences_window_ck', sql`${t.startsAt} <= ${t.dueAt} and ${t.dueAt} <= ${t.closesAt}`),
+    index('occurrences_site_start_idx').on(t.tenantId, t.siteId, t.startsAt),
+    index('occurrences_status_due_idx').on(t.tenantId, t.status, t.dueAt),
+    index('occurrences_status_close_idx').on(t.tenantId, t.status, t.closesAt),
+    index('occurrences_assignment_start_idx').on(t.tenantId, t.assignmentId, t.startsAt),
+  ],
+);
+
+export const occurrenceAssignees = pgTable(
+  'occurrence_assignees',
+  {
+    tenantId: tenantId(),
+    occurrenceId: uuid('occurrence_id').notNull(),
+    userId: uuid('user_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.occurrenceId, t.userId] }),
+    foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'occurrence_assignees_occurrence_fk' }),
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: 'occurrence_assignees_user_fk' }),
+    index('occurrence_assignees_user_idx').on(t.tenantId, t.userId),
+  ],
+);
+
+/** Append-only (FR-11.02): the app account may only INSERT and SELECT. */
+export const occurrenceStatusHistory = pgTable(
+  'occurrence_status_history',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    occurrenceId: uuid('occurrence_id').notNull(),
+    fromStatus: occurrenceStatus('from_status'),
+    toStatus: occurrenceStatus('to_status').notNull(),
+    at: ts('at').notNull(),
+    // Both null = the system (jobs).
+    actorUserId: uuid('actor_user_id'),
+    actorPlatformAdminId: uuid('actor_platform_admin_id'),
+    reason: text('reason'),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'occurrence_status_history_occurrence_fk' }),
+    index('occurrence_status_history_occurrence_idx').on(t.tenantId, t.occurrenceId, t.at),
+  ],
+);

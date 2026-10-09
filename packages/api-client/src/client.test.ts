@@ -172,3 +172,40 @@ describe('checklist endpoints', () => {
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'DELETE', body: undefined });
   });
 });
+
+describe('scheduling endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'web', store);
+  }
+
+  it('builds paths and query strings, with comma-separated statuses', async () => {
+    const urls: string[] = [];
+    const { api } = await authed((url, init) => {
+      urls.push(`${init.method} ${url}`);
+      return json(200, { items: [], nextCursor: null });
+    });
+    const t = createTaskopApi(api);
+    await t.occurrences.list({ from: '2026-11-02', to: '2026-11-08', status: 'pending,overdue', siteId: id });
+    await t.occurrences.mine({ from: '2026-11-02', to: '2026-11-08' });
+    await t.assignments.list({ status: 'active' });
+    expect(urls).toEqual([
+      `GET /api/v1/occurrences?from=2026-11-02&to=2026-11-08&status=pending%2Coverdue&siteId=${id}`,
+      'GET /api/v1/me/occurrences?from=2026-11-02&to=2026-11-08',
+      'GET /api/v1/assignments?status=active',
+    ]);
+  });
+
+  it('exposes userIds on scheduling errors', async () => {
+    const { api } = await authed(() =>
+      json(422, { error: { code: 'ASSIGNEE_NOT_AT_SITE', messageKey: 'errors.ASSIGNEE_NOT_AT_SITE', fields: null, retryAfterSeconds: null, requestId: 'r1', userIds: [id] } }),
+    );
+    const call = createTaskopApi(api).assignments.preview({
+      siteId: id,
+      schedule: { kind: 'once', date: '2026-11-05' },
+      timing: { mode: 'fixed', startTime: '08:00', dueAfterMinutes: 60, graceMinutes: 0 },
+    });
+    await expect(call).rejects.toMatchObject({ code: 'ASSIGNEE_NOT_AT_SITE', userIds: [id] });
+  });
+});

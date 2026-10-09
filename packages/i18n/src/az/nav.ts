@@ -8,6 +8,10 @@ export default {
   settings: 'Parametrlər',
   checklists: 'Yoxlama vərəqələri',
   templates: 'Şablonlar',
+  assignments: 'Təyinatlar',
+  schedule: 'İcra cədvəli',
+  shifts: 'Növbələr',
+  roster: 'Növbə cədvəli',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

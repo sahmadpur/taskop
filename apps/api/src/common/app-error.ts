@@ -3,6 +3,8 @@ import { type ContentIssue, ERROR_HTTP_STATUS, type ErrorCode } from '@taskop/co
 export interface AppErrorDetails {
   issues?: ContentIssue[];
   currentRevision?: number;
+  /** Users that caused the error (e.g. ASSIGNEE_NOT_AT_SITE). */
+  userIds?: string[];
 }
 
 export class AppError extends Error {

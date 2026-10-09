@@ -36,6 +36,20 @@
       "when": 1791445369069,
       "tag": "0004_checklists_security",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791536002687,
+      "tag": "0005_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791536003001,
+      "tag": "0006_scheduling_security",
+      "breakpoints": true
     }
   ]
 }

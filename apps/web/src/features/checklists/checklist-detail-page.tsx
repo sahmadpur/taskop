@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ChecklistAssignments } from '@/features/scheduling/checklist-assignments';
 import { errorText } from '@/lib/errors';
 import { DetailsDialog } from './checklist-dialogs';
 import { categoryLabel } from './labels';
@@ -146,6 +147,9 @@ export function ChecklistDetailPage({ checklistId }: { checklistId: string }) {
           ))}
         </TableBody>
       </Table>
+
+      {/* Only tenant users have a session to check assignment permissions against; platform admins use the API. */}
+      {ws.scope === 'tenant' && <ChecklistAssignments checklistId={c.id} canAssign={active && c.currentVersionId !== null} />}
 
       {dialog === 'details' && (
         <DetailsDialog

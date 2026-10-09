@@ -15,6 +15,7 @@ import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { roles, sites, teams, users, userSites, userTeams } from '../db/schema';
 import { loadRolePermissions } from '../roles/permission-resolver';
+import { DomainEvents } from '../common/domain-events';
 import { assertNoEscalation, assertNoScopeEscalation } from '../roles/roles.service';
 import type { CreateWorkerDto, InviteStaffDto, ResetCredentialDto, UpdateUserDto, UserListQueryDto } from './dto';
 import { selectUsers, toUserDto } from './user-mapper';
@@ -28,6 +29,7 @@ export class UsersService {
     private readonly hasher: PasswordHasher,
     private readonly sessions: SessionService,
     private readonly credentials: CredentialService,
+    private readonly events: DomainEvents,
   ) {}
 
   async list(p: Principal, q: UserListQueryDto): Promise<Page<UserDto>> {
@@ -155,6 +157,7 @@ export class UsersService {
     await this.sessions.revokeAllForUser(id);
     const after = await this.load(id);
     await this.audit.record({ action: 'user.deactivated', entityType: 'user', entityId: id, before, after });
+    await this.events.emit('user.access_changed', { tenantId: p.tenantId, userId: id });
     return after;
   }
 
@@ -172,6 +175,7 @@ export class UsersService {
       .where(eq(users.id, id));
     const after = await this.load(id);
     await this.audit.record({ action: 'user.reactivated', entityType: 'user', entityId: id, before, after });
+    await this.events.emit('user.access_changed', { tenantId: p.tenantId, userId: id });
     return after;
   }
 
@@ -224,6 +228,7 @@ export class UsersService {
     await this.replaceSites(p.tenantId, id, siteIds);
     const after = await this.load(id);
     await this.audit.record({ action: 'user.sites_changed', entityType: 'user', entityId: id, before: { siteIds: before.siteIds }, after: { siteIds: after.siteIds } });
+    await this.events.emit('user.access_changed', { tenantId: p.tenantId, userId: id });
     return after;
   }
 

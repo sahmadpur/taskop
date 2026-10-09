@@ -12,6 +12,8 @@ export class ApiError extends Error {
     readonly requestId: string | null = null,
     readonly issues: ContentIssue[] | null = null,
     readonly currentRevision: number | null = null,
+    /** Users an error is about (ASSIGNEE_NOT_AT_SITE, ASSIGNEE_INACTIVE, ROSTER_USER_NOT_AT_SITE). */
+    readonly userIds: string[] | null = null,
   ) {
     super(code);
     this.name = 'ApiError';
