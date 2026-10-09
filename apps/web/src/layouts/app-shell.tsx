@@ -1,6 +1,6 @@
 import type { PermissionKey } from '@taskop/contracts';
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, ClipboardList, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, Users, UsersRound } from 'lucide-react';
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, Users, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
@@ -9,7 +9,7 @@ import { session } from '@/lib/session';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
-  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates';
+  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/shifts' | '/roster';
   labelKey: string;
   icon: LucideIcon;
   permission?: PermissionKey;
@@ -19,6 +19,10 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/', labelKey: 'nav.home', icon: Home },
   { to: '/checklists', labelKey: 'nav.checklists', icon: ListChecks, permission: 'checklists.view' },
   { to: '/templates', labelKey: 'nav.templates', icon: LayoutTemplate, permission: 'checklists.manage' },
+  { to: '/assignments', labelKey: 'nav.assignments', icon: CalendarCheck, permission: 'assignments.view' },
+  { to: '/schedule', labelKey: 'nav.schedule', icon: CalendarClock, permission: 'assignments.view' },
+  { to: '/shifts', labelKey: 'nav.shifts', icon: Clock, permission: 'shifts.view' },
+  { to: '/roster', labelKey: 'nav.roster', icon: CalendarDays, permission: 'shifts.view' },
   { to: '/users', labelKey: 'nav.users', icon: Users, permission: 'users.view' },
   { to: '/roles', labelKey: 'nav.roles', icon: Shield, permission: 'roles.view' },
   { to: '/sites', labelKey: 'nav.sites', icon: Building2, permission: 'sites.view' },

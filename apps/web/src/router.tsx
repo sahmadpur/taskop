@@ -25,6 +25,7 @@ import { PlatformTenantWorkspaceRoute } from '@/features/platform/platform-tenan
 import { PlatformTenantsPage } from '@/features/platform/platform-tenants-page';
 import { HomePage } from '@/features/home/home-page';
 import { RolesPage } from '@/features/roles/roles-page';
+import { ShiftsPage } from '@/features/scheduling/shifts-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { SitesPage } from '@/features/sites/sites-page';
 import { TeamsPage } from '@/features/teams/teams-page';
@@ -98,6 +99,7 @@ const settingsRoute = createRoute({
 });
 const sitesRoute = createRoute({ getParentRoute: () => appLayout, path: '/sites', component: SitesPage });
 const teamsRoute = createRoute({ getParentRoute: () => appLayout, path: '/teams', component: TeamsPage });
+const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shifts', component: ShiftsPage });
 const usersRoute = createRoute({ getParentRoute: () => appLayout, path: '/users', component: UsersPage });
 const userDetailRoute = createRoute({
   getParentRoute: () => appLayout,
@@ -202,6 +204,7 @@ export const routeTree = rootRoute.addChildren([
     settingsRoute,
     sitesRoute,
     teamsRoute,
+    shiftsRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,
