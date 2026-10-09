@@ -40,6 +40,8 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
   // A draft belongs to one site and week; switching either discards it.
   const scope = `${siteId ?? ''}|${weekStart}`;
   const [draftState, setDraftState] = useState<{ scope: string; keys: Set<string> } | null>(null);
+  // Switching site or week discards the draft for good (reset during render).
+  if (draftState && draftState.scope !== scope) setDraftState(null);
   const draft = draftState?.scope === scope ? draftState.keys : null;
   const setDraft = (keys: Set<string> | null) => setDraftState(keys ? { scope, keys } : null);
   const [copying, setCopying] = useState(false);
@@ -50,7 +52,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
 
   // Inactive shifts stay visible while a row in this week still uses them.
   const shifts = (roster.data?.shifts ?? []).filter(
-    (s) => s.active || [...current].some((k) => parseKey(k).shiftId === s.id),
+    (s) => s.active || [...saved, ...current].some((k) => parseKey(k).shiftId === s.id),
   );
   const people = roster.data?.users ?? [];
 
@@ -85,7 +87,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
           canManage &&
           siteId && (
             <>
-              <Button variant="outline" disabled={dirty} onClick={() => setCopying(true)}>
+              <Button variant="outline" disabled={dirty || !roster.data} onClick={() => setCopying(true)}>
                 {t('scheduling.roster.copy')}
               </Button>
               <Button disabled={!dirty} onClick={() => void save()}>
@@ -96,17 +98,18 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
         }
       />
       <div className="flex flex-wrap items-end gap-3">
-        {sites.data && (
+        {
           <div className="grid gap-1.5">
             <Label htmlFor="roster-site">{t('scheduling.roster.site')}</Label>
             <NativeSelect
               id="roster-site"
               value={siteId ?? ''}
               onChange={(e) => setSiteId(e.target.value || null)}
+              disabled={sites.isPending}
               className="w-64"
             >
               <option value="">{t('scheduling.roster.chooseSite')}</option>
-              {sites.data
+              {(sites.data ?? [])
                 .filter((s) => s.active)
                 .map((s) => (
                   <option key={s.id} value={s.id}>
@@ -114,8 +117,9 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
                   </option>
                 ))}
             </NativeSelect>
+            {sites.isError && <p className="text-destructive text-sm">{errorText(t, sites.error)}</p>}
           </div>
-        )}
+        }
         <Button variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}>
           {t('scheduling.roster.prevWeek')}
         </Button>
@@ -128,6 +132,8 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
         {dirty && <span className="text-sm text-amber-700">{t('scheduling.roster.unsaved')}</span>}
       </div>
 
+      {siteId && roster.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {siteId && roster.isError && <p className="text-destructive text-sm">{errorText(t, roster.error)}</p>}
       {siteId && roster.data && people.length === 0 && (
         <p className="text-muted-foreground">{t('scheduling.roster.noPeople')}</p>
       )}

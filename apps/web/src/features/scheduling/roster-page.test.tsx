@@ -61,6 +61,7 @@ beforeEach(() => {
 
 async function openSite() {
   renderWithProviders(<RosterPage initialDate="2026-11-04" />);
+  await screen.findByRole('option', { name: 'Anbar' });
   await userEvent.selectOptions(await screen.findByLabelText('Obyekt'), 'site1');
   await waitFor(() =>
     expect(mocks.api.roster.get).toHaveBeenCalledWith({
@@ -118,5 +119,15 @@ describe('RosterPage', () => {
         to: '2026-11-15',
       }),
     );
+  });
+
+  it('discards unsaved ticks when the week changes', async () => {
+    await openSite();
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Səhər — Elvin, 2026-11-03' }));
+    expect(screen.getByText('Saxlanmamış dəyişikliklər var')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Növbəti həftə' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Əvvəlki həftə' }));
+    expect(await screen.findByRole('checkbox', { name: 'Səhər — Elvin, 2026-11-03' })).not.toBeChecked();
+    expect(screen.queryByText('Saxlanmamış dəyişikliklər var')).not.toBeInTheDocument();
   });
 });
