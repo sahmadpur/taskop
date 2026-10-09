@@ -122,7 +122,7 @@ export class AssignmentsService {
     if (scheduleChanged || timingChanged) {
       this.rules.schedule(schedule);
       const shift = await this.rules.shift(timing, row.siteId);
-      this.rules.window(a, timing, shift);
+      if (timingChanged) this.rules.window(a, timing, shift);
       this.rules.nonEmpty(schedule, timing, shift, await this.writer.tenantTimezone());
     }
     if (assigneesChanged) await this.rules.assignees(row.siteId, assigneeIds);

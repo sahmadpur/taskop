@@ -63,7 +63,10 @@ export class ShiftsService {
         .select({ id: assignments.id })
         .from(assignments)
         .where(and(eq(assignments.shiftId, id), eq(assignments.status, 'active')));
-      for (const a of using) await this.writer.regenerate(a.id, 'shift_changed');
+      for (const a of using) {
+        await this.writer.regenerate(a.id, 'shift_changed');
+        await this.audit.record({ action: 'assignment.regenerated', entityType: 'assignment', entityId: a.id, after: { reason: 'shift_changed', shiftId: id } });
+      }
     }
     await this.audit.record({ action: 'shift.updated', entityType: 'shift', entityId: id, before, after });
     return after;

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
-import { createAssignment, fixed, live, MONDAY_0800, occurrenceRows, schedulingWorld, TODAY } from './scheduling-fixtures';
+import { createAssignment, daily, fixed, live, MONDAY_0800, occurrenceRows, schedulingWorld, staffWithRole, TODAY } from './scheduling-fixtures';
 
 const sorted = (ids: string[]) => [...ids].sort();
 
@@ -154,8 +154,23 @@ describe('changing assignments', () => {
     const rows = await occurrenceRows(a.id);
     expect(rows.filter((r) => r.cancel_reason === 'shift_changed')).toHaveLength(14);
     expect(live(rows).find((r) => r.local_date === '2026-11-03')!.starts_at.toISOString()).toBe('2026-11-03T05:00:00.000Z');
+    const regenerated = () =>
+      ownerQuery<{ after: unknown }>("select after from audit_log where entity_id = $1 and action = 'assignment.regenerated'", [a.id]);
+    expect((await regenerated()).rows).toEqual([{ after: { reason: 'shift_changed', shiftId: shift } }]);
     // A rename alone regenerates nothing.
     await w.api.patch(`/api/v1/shifts/${shift}`, { name: 'Səhər növbəsi' });
     expect((await occurrenceRows(a.id)).filter((r) => r.status === 'cancelled')).toHaveLength(14);
+    expect((await regenerated()).rowCount).toBe(1);
+  });
+
+  it('a manager can edit the schedule of an approved long window but not its timing', async () => {
+    const w = await schedulingWorld(t);
+    const a = await createAssignment(w, { timing: fixed('08:00', 1440, 60) });
+    const manager = await staffWithRole(t, w, 'manager', [w.siteId]);
+    const ok = await manager.api.put(`/api/v1/assignments/${a.id}`, { revision: 1, schedule: daily('2026-11-03') });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    const bad = await manager.api.put(`/api/v1/assignments/${a.id}`, { revision: 2, timing: fixed('09:00', 1440, 60) });
+    expect(bad.status).toBe(422);
+    expect(bad.body.error.code).toBe('WINDOW_TOO_LONG');
   });
 });
