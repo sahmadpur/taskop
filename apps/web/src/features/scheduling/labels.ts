@@ -12,7 +12,7 @@ import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 import { useMe } from '@/lib/session';
 
-type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
+export type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export const occurrenceVariant = (s: OccurrenceStatus): Variant =>
   s === 'overdue' || s === 'missed' ? 'destructive' : s === 'cancelled' ? 'outline' : s === 'pending' ? 'secondary' : 'default';
