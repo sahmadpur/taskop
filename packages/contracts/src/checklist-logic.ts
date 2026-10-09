@@ -1,5 +1,12 @@
 import { type ChecklistContent, hasRules, type Item, type ProblemSeverity, type Rule, type RuleItem } from './checklist-content.js';
 
+/** A problem the worker flags by hand on an item (FR-13.01–03). */
+export interface ManualProblem {
+  severity: ProblemSeverity;
+  note: string;
+  mediaIds: string[];
+}
+
 export interface Answer {
   optionIds?: string[];
   number?: number;
@@ -8,6 +15,7 @@ export interface Answer {
   photos?: string[];
   videos?: string[];
   note?: string;
+  problem?: ManualProblem;
 }
 export type Answers = Record<string, Answer | undefined>;
 export interface VisibleItem {
