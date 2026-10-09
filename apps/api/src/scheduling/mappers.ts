@@ -74,6 +74,8 @@ export const toOccurrenceDto = (r: OccurrenceJoinedRow): OccurrenceDto => ({
   cancelReason: r.o.cancelReason,
   assigneeIds: r.assigneeIds,
   unassigned: (r.o.status === 'pending' || r.o.status === 'overdue') && r.assigneeIds.length === 0,
+  // Read from the executions table once it exists (OccurrenceQueries.select).
+  executionBrief: null,
 });
 
 export interface AssignmentJoinedRow {

@@ -63,7 +63,7 @@ export class OccurrencesService {
       .leftJoin(users, eq(users.id, occurrenceStatusHistory.actorUserId))
       .where(eq(occurrenceStatusHistory.occurrenceId, id))
       .orderBy(asc(occurrenceStatusHistory.at), asc(occurrenceStatusHistory.id));
-    return { ...toOccurrenceDto(row), assignees, history: history.map(toHistoryEntry) };
+    return { ...toOccurrenceDto(row), assignees, history: history.map(toHistoryEntry), execution: null, rejectedExecutions: [] };
   }
 
   async cancel(a: Actor, id: string, input: CancelOccurrenceDto): Promise<OccurrenceDetail> {

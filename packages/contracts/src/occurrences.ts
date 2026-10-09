@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cursorQuerySchema, idSchema, isoDateTimeSchema } from './common.js';
+import { executionBriefSchema, executionSummarySchema } from './execution-summary.js';
 import { localDateSchema } from './scheduling-time.js';
 import { localRangeCheck, SCHEDULING_LIMITS } from './scheduling.js';
 
@@ -35,6 +36,8 @@ export const occurrenceDtoSchema = z.object({
   assigneeIds: z.array(idSchema),
   /** Pending or overdue with nobody eligible (spec §5.3). */
   unassigned: z.boolean(),
+  /** The counted execution (not rejected), or null (SP4 spec §8). */
+  executionBrief: executionBriefSchema.nullable(),
 });
 export type OccurrenceDto = z.infer<typeof occurrenceDtoSchema>;
 
@@ -50,6 +53,10 @@ export type OccurrenceHistoryEntry = z.infer<typeof occurrenceHistoryEntrySchema
 export const occurrenceDetailSchema = occurrenceDtoSchema.extend({
   assignees: z.array(userRefSchema),
   history: z.array(occurrenceHistoryEntrySchema),
+  /** The counted execution (SP4 spec §6.8). */
+  execution: executionSummarySchema.nullable(),
+  /** Executions whose claim lost; stored, never counted. */
+  rejectedExecutions: z.array(executionSummarySchema),
 });
 export type OccurrenceDetail = z.infer<typeof occurrenceDetailSchema>;
 

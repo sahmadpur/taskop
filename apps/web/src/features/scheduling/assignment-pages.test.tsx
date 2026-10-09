@@ -30,7 +30,7 @@ const detail = (over: Partial<AssignmentDetail> = {}) =>
     upcoming: [
       { id: 'o1', assignmentId: 'a1', assignmentName: 'Səhər', checklistId: 'c1', checklistName: 'Açılış', siteId: 'site1', siteName: 'Anbar', shiftId: null, shiftName: null,
         localDate: '2026-11-02', startsAt: '2026-11-02T04:00:00.000Z', dueAt: '2026-11-02T06:00:00.000Z', closesAt: '2026-11-02T07:00:00.000Z', status: 'pending',
-        statusChangedAt: '2026-11-02T04:00:00.000Z', cancelReason: null, assigneeIds: ['u1'], unassigned: false },
+        statusChangedAt: '2026-11-02T04:00:00.000Z', cancelReason: null, assigneeIds: ['u1'], unassigned: false, executionBrief: null },
     ],
     ...over,
   }) as AssignmentDetail;

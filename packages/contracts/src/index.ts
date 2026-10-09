@@ -18,6 +18,8 @@ export * from './checklist-ids.js';
 export * from './checklist-logic.js';
 export * from './execution-logic.js';
 export * from './executions.js';
+export * from './execution-summary.js';
+export * from './execution-views.js';
 export * from './templates.js';
 export * from './checklists.js';
 export * from './scheduling-time.js';
