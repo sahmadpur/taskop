@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { type ChecklistContent, type ClaimRef, type Item, walkItems } from '@taskop/contracts';
+import { type ChecklistContent, type ClaimRef, type Item, type MediaKind, walkItems } from '@taskop/contracts';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { storedContent } from '../checklists/content';
 import { DbService } from '../db/db.service';
-import { checklistVersions, executions, users } from '../db/schema';
+import { checklistVersions, executionMedia, executions, users } from '../db/schema';
 
 /** Small reads shared by the execution services. Run inside the tenant transaction. */
 @Injectable()
@@ -26,6 +26,12 @@ export class ExecutionLookups {
       .innerJoin(users, eq(users.id, executions.executorUserId))
       .where(and(inArray(executions.occurrenceId, occurrenceIds), ne(executions.state, 'rejected')));
     return new Map(rows.map(({ occurrenceId, ...claim }) => [occurrenceId, claim]));
+  }
+
+  /** Media registered on an execution, by id: what answers may reference (spec §6.3). */
+  async mediaKinds(executionId: string): Promise<Map<string, MediaKind>> {
+    const rows = await this.db.tx().select({ id: executionMedia.id, kind: executionMedia.kind }).from(executionMedia).where(eq(executionMedia.executionId, executionId));
+    return new Map(rows.map((r) => [r.id, r.kind]));
   }
 }
 

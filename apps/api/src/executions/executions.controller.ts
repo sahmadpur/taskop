@@ -1,10 +1,10 @@
-import { Body, Controller, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult, MediaUploadTicket } from '@taskop/contracts';
+import type { ClaimResult, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
 import { ExecutionsService } from './executions.service';
 import { MediaService } from './media.service';
 
@@ -31,5 +31,11 @@ export class ExecutionsController {
   @ApiOkResponse({ type: MediaUploadTicketResponse })
   registerMedia(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: RegisterMediaCommandDto): Promise<MediaUploadTicket> {
     return this.media.register(p, id, body);
+  }
+
+  @Put(':id/answers')
+  @ApiOkResponse({ type: SaveAnswersResultResponse })
+  saveAnswers(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: SaveAnswersCommandDto): Promise<SaveAnswersResult> {
+    return this.executions.saveAnswers(p, id, body);
   }
 }

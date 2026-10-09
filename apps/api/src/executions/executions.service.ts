@@ -1,5 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type ClaimRejectionReason, type ClaimResult, progress } from '@taskop/contracts';
+import {
+  type Answers,
+  answerIssues,
+  type ChecklistContent,
+  type ClaimRejectionReason,
+  type ClaimResult,
+  computeScore,
+  type ExecutionProgress,
+  progress,
+  type SaveAnswersResult,
+} from '@taskop/contracts';
 import { desc, eq, sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
@@ -9,8 +19,9 @@ import { checklists, checklistVersions, executions, occurrences } from '../db/sc
 import { EligibilityService } from '../scheduling/eligibility.service';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import { assertDeviceTimes, clampStart } from './device-time';
-import type { ClaimCommandDto } from './dto';
+import type { ClaimCommandDto, SaveAnswersCommandDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
+import { ProblemWriter } from './problem-writer';
 
 export type ExecutionRow = typeof executions.$inferSelect;
 export type OccurrenceRow = typeof occurrences.$inferSelect;
@@ -29,6 +40,7 @@ export class ExecutionsService {
     private readonly eligibility: EligibilityService,
     private readonly writer: OccurrenceWriter,
     private readonly lookups: ExecutionLookups,
+    private readonly problems: ProblemWriter,
   ) {}
 
   /** First claim to reach the server wins (NFR-06.05); a loser is stored as rejected and answered with 200. */
@@ -96,6 +108,65 @@ export class ExecutionsService {
       ]);
     }
     return this.claimResult(row!);
+  }
+
+  /** Spec §6.3. A stale revision is ignored before any state check, so a late, older command never fails. */
+  async saveAnswers(p: Principal, id: string, cmd: SaveAnswersCommandDto): Promise<SaveAnswersResult> {
+    const receivedAt = this.clock.now();
+    const { e, o } = await this.lockForCommand(p, id);
+    const deviceTime = new Date(cmd.deviceTime);
+    const bounds = assertDeviceTimes([deviceTime], receivedAt, cmd.clientOffsetMs);
+    if (cmd.rev <= e.answersRev) return this.answersResult(e, true);
+    // A swept partial still takes answers captured inside the window (they synced late); nothing after it.
+    if (e.state === 'completed' || (e.state === 'partial' && (e.completedAt !== null || deviceTime >= o.closesAt))) {
+      throw new AppError('EXECUTION_NOT_ACTIVE');
+    }
+    const content = await this.lookups.content(e.checklistVersionId);
+    await this.assertValidAnswers(content, e.id, cmd.answers);
+    const counted = e.state !== 'rejected';
+    const [row] = await this.db
+      .tx()
+      .update(executions)
+      .set({
+        answers: cmd.answers,
+        answersRev: cmd.rev,
+        lastSyncedAt: receivedAt,
+        clockOffsetMs: cmd.clientOffsetMs,
+        clockSuspect: e.clockSuspect || bounds.clockSuspect,
+        updatedAt: receivedAt,
+        // Rejected executions keep the answers only: stored, never counted.
+        ...(counted ? { progress: progress(content, cmd.answers), score: computeScore(content, cmd.answers) } : {}),
+      })
+      .where(eq(executions.id, id))
+      .returning();
+    if (counted) {
+      await this.problems.rewrite(e, o, content, cmd.answers, receivedAt);
+      if (o.status === 'started') {
+        await this.writer.applyTransitions([{ occurrenceId: o.id, from: 'started', to: 'in_progress', at: deviceTime > e.startedAt ? deviceTime : e.startedAt }]);
+      }
+    }
+    return this.answersResult(row!, false);
+  }
+
+  /** Locks the occurrence, then the execution (the order every command uses), and checks the executor. */
+  private async lockForCommand(p: Principal, id: string): Promise<{ e: ExecutionRow; o: OccurrenceRow }> {
+    const tx = this.db.tx();
+    const [found] = await tx.select({ occurrenceId: executions.occurrenceId }).from(executions).where(eq(executions.id, id));
+    if (!found) throw new AppError('NOT_FOUND');
+    const [o] = await tx.select().from(occurrences).where(eq(occurrences.id, found.occurrenceId)).for('update');
+    const [e] = await tx.select().from(executions).where(eq(executions.id, id)).for('update');
+    if (e!.executorUserId !== p.userId) throw new AppError('NOT_EXECUTOR');
+    return { e: e!, o: o! };
+  }
+
+  /** Item ids, value types and media against the pinned version (spec §6.3) → 400 VALIDATION_FAILED with issues. */
+  private async assertValidAnswers(content: ChecklistContent, executionId: string, answers: Answers): Promise<void> {
+    const issues = answerIssues(content, answers, await this.lookups.mediaKinds(executionId));
+    if (issues.length) throw new AppError('VALIDATION_FAILED', { details: { issues } });
+  }
+
+  private answersResult(e: ExecutionRow, stale: boolean): SaveAnswersResult {
+    return { executionId: e.id, rev: e.answersRev, stale, state: e.state, progress: e.progress as ExecutionProgress };
   }
 
   /** The occurrence's pinned version, pinning the current one first if needed (spec §5.1). */

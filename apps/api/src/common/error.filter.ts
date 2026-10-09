@@ -14,7 +14,7 @@ export function toAppError(e: unknown): AppError {
     const fields: Record<string, string> = {};
     for (const issue of (e.getZodError() as ZodError).issues) {
       const key = issue.path.map(String).join('.') || '_';
-      fields[key] ??= /^(errors|scheduling)\./.test(issue.message) ? issue.message : 'errors.validation.invalid';
+      fields[key] ??= /^(errors|scheduling|executions)\./.test(issue.message) ? issue.message : 'errors.validation.invalid';
     }
     return new AppError('VALIDATION_FAILED', { fields });
   }
