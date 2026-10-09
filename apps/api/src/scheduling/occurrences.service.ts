@@ -64,7 +64,8 @@ export class OccurrencesService {
       .from(occurrenceStatusHistory)
       .leftJoin(users, eq(users.id, occurrenceStatusHistory.actorUserId))
       .where(eq(occurrenceStatusHistory.occurrenceId, id))
-      .orderBy(asc(occurrenceStatusHistory.at), asc(occurrenceStatusHistory.id));
+      // Insertion order (ids are monotonic UUIDv7): `at` is device time, and late syncs record earlier times later.
+      .orderBy(asc(occurrenceStatusHistory.id));
     return { ...toOccurrenceDto(row), assignees, history: history.map(toHistoryEntry), ...(await this.executionsOf.forOccurrence(id)) };
   }
 

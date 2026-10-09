@@ -54,6 +54,20 @@ describe('sweep to partial and late revival', () => {
     ]);
   });
 
+  it('the occurrence detail lists a late-synced history in the order it happened, not by device time', async () => {
+    const { w, executionId, api, photo } = await sweptAtClose();
+    clock.set('2026-11-02T07:30:00Z');
+    expect((await completeExecution(api, executionId, 5, fullAnswers(w, photo), '2026-11-02T06:59:59.000Z')).status).toBe(200);
+    const detail = await w.owner.get(`/api/v1/occurrences/${w.occurrenceId}`);
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    const steps = detail.body.history.map((h: { fromStatus: string | null; toStatus: string; at: string }) => [h.fromStatus, h.toStatus, h.at]);
+    expect(steps.slice(-3)).toEqual([
+      ['pending', 'started', '2026-11-02T04:10:00.000Z'],
+      ['started', 'partial', '2026-11-02T07:00:00.000Z'],
+      ['partial', 'completed', '2026-11-02T06:59:59.000Z'],
+    ]);
+  });
+
   it('a photo registered after the sweep (captured before closes_at) lets a late completion revive it', async () => {
     const w = await executionWorld(t);
     const api = w.workers[0].api;
