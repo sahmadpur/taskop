@@ -11,6 +11,7 @@ import {
   ITEM_TYPES,
   MEDIA_KINDS,
   MEDIA_SOURCES,
+  MISSING_KINDS,
   OCCURRENCE_STATUSES,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
@@ -114,5 +115,29 @@ describe('execution web translations', () => {
     for (const k of ['date', 'site', 'checklist', 'item', 'severity', 'source', 'note', 'executor', 'media'] as const) {
       expect(az.executions.problemsPage.columns[k], k).toBeTypeOf('string');
     }
+  });
+});
+
+describe('mobile execution translations', () => {
+  it('labels every missing kind, outbox command, start block and sync state', () => {
+    for (const k of MISSING_KINDS) expect(az.mobile.finish.missingKinds[k], k).toBeTypeOf('string');
+    for (const k of ['claim', 'media', 'answers', 'complete', 'upload'] as const) expect(az.mobile.sync.kinds[k], k).toBeTypeOf('string');
+    for (const k of ['notYetOpen', 'closed', 'claimedByOther', 'finished', 'needsUpdate', 'notDownloaded', 'clockAhead'] as const) {
+      expect(az.mobile.checklists.startBlocked[k], k).toBeTypeOf('string');
+    }
+    for (const k of ['synced', 'pending', 'offline', 'failed'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
+    for (const k of ['FILE_MISSING', 'UPLOAD_FAILED'] as const) expect(az.mobile.sync.mediaErrors[k], k).toBeTypeOf('string');
+    for (const k of ['tooLong', 'tooLarge', 'resolution'] as const) expect(az.mobile.evidence[k], k).toBeTypeOf('string');
+  });
+
+  it('uses the spec wording', () => {
+    expect(az.mobile.checklists.sections).toEqual({ now: 'İndi', inProgress: 'Davam edən', upcoming: 'Gələcək', done: 'Bitmiş' });
+    expect(az.mobile.checklists.claimedBy.replace('{{name}}', 'Murad')).toBe('Murad icra edir');
+    expect(az.mobile.checklists.startBlocked.clockAhead).toBe('Telefonun saatı irəlidədir. Saatı düzəldin və yenidən cəhd edin.');
+    expect(az.mobile.sync.pending.replace('{{count}}', '3')).toBe('3 gözləyir');
+    expect(az.mobile.sync.retry).toBe('Yenidən cəhd et');
+    expect(az.mobile.execution.flagProblem).toBe('Problem qeyd et');
+    expect(az.mobile.execution.needsUpdate).toBe('Tətbiqi yeniləyin');
+    expect(az.mobile.finish.complete).toBe('Tamamla');
   });
 });
