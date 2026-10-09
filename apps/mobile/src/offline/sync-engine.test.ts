@@ -356,8 +356,10 @@ describe('failures', () => {
         },
       });
       await h.store.start(OCC, ME);
+      const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
       await expect(engine.run('manual')).resolves.toBeUndefined();
       expect(methods(h)).toEqual([]);
+      expect(logged).toHaveBeenCalledWith('[sync] Unexpected error; backing off', 'database is locked');
       // The retry fired by the backoff timer fails too, without an unhandled rejection.
       await jest.advanceTimersByTimeAsync(5_000);
       await engine.idle();
@@ -365,6 +367,7 @@ describe('failures', () => {
       await jest.advanceTimersByTimeAsync(10_000);
       await engine.idle();
       expect(methods(h)).toEqual(['claim', 'pull']);
+      logged.mockRestore();
       engine.stop();
       h.engine.stop();
     } finally {

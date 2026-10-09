@@ -169,6 +169,16 @@ describe('media', () => {
     await expect(h.store.setProblem(id, h.c.temp.id, { severity: 'normal', note: 'x', mediaIds: sixTimesOne })).resolves.toBeUndefined();
   });
 
+  it('keeps a problem from naming media that no longer exist for this execution', async () => {
+    const { h, id } = await started();
+    const kept = await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.temp.id, field: 'problem' });
+    const refused = await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.temp.id, field: 'problem' });
+    // The sync engine dropped this one (refused by the server) while the problem sheet was still open.
+    await h.db.run('DELETE FROM media WHERE id = ?', [refused]);
+    await h.store.setProblem(id, h.c.temp.id, { severity: 'normal', note: 'Sınıb', mediaIds: [kept, refused, 'not-a-medium'] });
+    expect((await h.store.execution(id))!.answers).toEqual({ [h.c.temp.id]: { problem: { severity: 'normal', note: 'Sınıb', mediaIds: [kept] } } });
+  });
+
   it('forgets a medium completely when it is removed before registration', async () => {
     const { h, id } = await started();
     const photo = capturedPhoto(h.transport);

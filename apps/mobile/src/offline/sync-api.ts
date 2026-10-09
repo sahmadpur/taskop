@@ -10,13 +10,16 @@ export interface SyncApi {
 export type Failure = { kind: 'retry' } | { kind: 'auth' } | { kind: 'permanent'; code: string; messageKey: string };
 
 /**
- * Spec §7.2: network errors and 5xx stop the run and retry with backoff; any other 4xx is permanent for that command.
- * 401 means the API client's refresh was rejected: wait for a new session instead of parking the command (decision 5).
+ * Spec §7.2: network errors (timeouts included) and 5xx stop the run and retry with backoff; any other 4xx is permanent
+ * for that command, also when its body is not the API's JSON (a proxy's 413 page): the status decides, not the body.
+ * An unreadable 2xx is retried. 401 means the API client's refresh was rejected: wait for a new session instead of
+ * parking the command (decision 5).
  */
 export function classifyError(e: unknown): Failure {
   if (!(e instanceof ApiError)) return { kind: 'retry' };
   if (e.status === 401) return { kind: 'auth' };
-  if (e.code === 'NETWORK' || e.code === 'INTERNAL' || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500) {
+  const clientError = e.status >= 400 && e.status < 500;
+  if (e.code === 'NETWORK' || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500 || (e.code === 'INTERNAL' && !clientError)) {
     return { kind: 'retry' };
   }
   return { kind: 'permanent', code: e.code, messageKey: e.messageKey };

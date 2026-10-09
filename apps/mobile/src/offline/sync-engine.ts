@@ -407,8 +407,10 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
             await beforeRun?.();
             if (!isOnline()) break;
             outcome = await cycle();
-          } catch {
+          } catch (e) {
             // Anything unexpected (a local error included) backs off like a network failure, never an unhandled rejection.
+            // Logged (the message only, never request bodies or tokens) so a local bug does not hide as a silent backoff.
+            console.error('[sync] Unexpected error; backing off', e instanceof Error ? e.message : 'unknown error');
             outcome = 'retry';
           }
           if (outcome === 'retry') {

@@ -281,7 +281,18 @@ export function createExecutionStore(deps: StoreDeps) {
       }
       value = { severity: problem.severity, note, mediaIds };
     }
-    await change(executionId, async (_tx, e) => ({ ...e.answers, [itemId]: { ...e.answers[itemId], problem: value } }));
+    await change(executionId, async (tx, e) => {
+      // A medium the sync engine dropped meanwhile (refused by the server) must not be sent: the API refuses unknown media.
+      let problem = value;
+      if (problem && problem.mediaIds.length > 0) {
+        const known = await tx.all<{ id: string }>('SELECT id FROM media WHERE execution_id = ? AND id IN (SELECT value FROM json_each(?))', [
+          executionId, JSON.stringify(problem.mediaIds),
+        ]);
+        const ids = new Set(known.map((r) => r.id));
+        problem = { ...problem, mediaIds: problem.mediaIds.filter((m) => ids.has(m)) };
+      }
+      return { ...e.answers, [itemId]: { ...e.answers[itemId], problem } };
+    });
   }
 
   async function attachMedia(executionId: string, m: CapturedMedia, target: MediaTarget): Promise<string> {

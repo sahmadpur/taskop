@@ -51,7 +51,8 @@ export function FinishScreen({ occurrenceId }: { occurrenceId: string }) {
         router.replace('/');
       } else setRefused(result.missing);
     } catch (e) {
-      if (!(e instanceof ExecutionLockedError)) Alert.alert(t('errors.INTERNAL', { requestId: '—' }));
+      // Locked between render and press (closes_at passed): say so instead of leaving the press without an answer.
+      Alert.alert(e instanceof ExecutionLockedError ? t('mobile.execution.locked') : t('errors.INTERNAL', { requestId: '—' }));
     } finally {
       setBusy(false);
     }

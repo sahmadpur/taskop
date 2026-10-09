@@ -4,6 +4,7 @@ import '@/lib/i18n';
 import { capturedPhoto } from '@/offline/testing/fake-transport';
 import { ME, OCC } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
+import { ExecutionLockedError } from '@/offline/execution-store';
 import { createTestServices } from '@/offline/testing/test-services';
 import { FinishScreen } from './finish-screen';
 
@@ -82,6 +83,18 @@ describe('FinishScreen', () => {
     expect(await screen.findByRole('button', { name: 'Temperatur: Cavab verilməyib' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Tamamla' }).props.accessibilityState).toMatchObject({ disabled: true });
     expect(alert).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
+  it('says the execution is locked when the store refuses completion because the window closed', async () => {
+    const { t, id } = await started();
+    await answerEverything(t, id);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest.spyOn(t.services.store, 'complete').mockRejectedValueOnce(new ExecutionLockedError('partial'));
+    await renderWithServices(t.services, <FinishScreen occurrenceId={OCC} />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Tamamla' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledWith('İcra vaxtı bitib — cavablar yarımçıq kimi saxlanıldı.'));
     expect(mockReplace).not.toHaveBeenCalled();
     alert.mockRestore();
   });

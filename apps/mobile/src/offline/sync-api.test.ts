@@ -11,6 +11,10 @@ describe('classifyError', () => {
     ['an expired session', new ApiError(401, 'UNAUTHENTICATED', 'errors.UNAUTHENTICATED'), 'auth'],
     ['a refused command', new ApiError(422, 'CLOCK_INVALID', 'errors.CLOCK_INVALID'), 'permanent'],
     ['a validation failure', new ApiError(400, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED'), 'permanent'],
+    ['a 4xx without a JSON body (a proxy page)', new ApiError(413, 'INTERNAL', 'errors.INTERNAL'), 'permanent'],
+    ['a 404 without a JSON body', new ApiError(404, 'INTERNAL', 'errors.INTERNAL'), 'permanent'],
+    ['a timeout without a JSON body', new ApiError(408, 'INTERNAL', 'errors.INTERNAL'), 'retry'],
+    ['rate limiting without a JSON body', new ApiError(429, 'INTERNAL', 'errors.INTERNAL'), 'retry'],
   ])('%s', (_name, error, kind) => {
     expect(classifyError(error).kind).toBe(kind);
   });
