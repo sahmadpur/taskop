@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/primary-button';
@@ -11,6 +12,8 @@ export function ProfileScreen() {
   const { t } = useTranslation();
   const s = useSession();
   const services = useOffline();
+  const busy = useRef(false);
+  const [isBusy, setBusy] = useState(false);
   if (s.status !== 'authenticated') return null;
   const { me } = s;
   const rows: [string, string][] = [
@@ -21,27 +24,56 @@ export function ProfileScreen() {
 
   /** Spec §7.4: unsynced data blocks logout until the worker confirms twice; local data never outlives the session. */
   const logout = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setBusy(true);
+    const release = () => {
+      busy.current = false;
+      setBusy(false);
+    };
     const finish = async () => {
-      await services.clearAll();
+      try {
+        await services.clearAll();
+      } catch (e) {
+        // The worker already confirmed; the next sign-in clears another user's data anyway (ensureUser).
+        console.error('[offline] Could not clear local data on logout', e instanceof Error ? e.message : 'unknown error');
+      }
       await session.signOut();
     };
-    const unsynced = await services.store.unsyncedCount();
+    const confirmDelete = () =>
+      Alert.alert(
+        t('mobile.logout.confirmTitle'),
+        t('mobile.logout.confirmBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel', onPress: release },
+          { text: t('mobile.logout.confirm'), style: 'destructive', onPress: () => void finish() },
+        ],
+        { cancelable: false },
+      );
+    let unsynced: number | null;
+    try {
+      unsynced = await services.store.unsyncedCount();
+    } catch (e) {
+      console.error('[offline] Could not count unsynced data on logout', e instanceof Error ? e.message : 'unknown error');
+      unsynced = null; // Unknown: assume unsynced data may exist.
+    }
     if (unsynced === 0) {
       await finish();
       return;
     }
-    Alert.alert(t('mobile.logout.unsyncedTitle'), t('mobile.logout.unsyncedBody', { count: unsynced }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('mobile.logout.continue'),
-        style: 'destructive',
-        onPress: () =>
-          Alert.alert(t('mobile.logout.confirmTitle'), t('mobile.logout.confirmBody'), [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('mobile.logout.confirm'), style: 'destructive', onPress: () => void finish() },
-          ]),
-      },
-    ]);
+    if (unsynced === null) {
+      confirmDelete();
+      return;
+    }
+    Alert.alert(
+      t('mobile.logout.unsyncedTitle'),
+      t('mobile.logout.unsyncedBody', { count: unsynced }),
+      [
+        { text: t('common.cancel'), style: 'cancel', onPress: release },
+        { text: t('mobile.logout.continue'), style: 'destructive', onPress: confirmDelete },
+      ],
+      { cancelable: false },
+    );
   };
   return (
     <Screen>
@@ -56,7 +88,7 @@ export function ProfileScreen() {
         ))}
       </View>
       <PrimaryButton variant="outline" title={t('mobile.profile.changeSecret')} onPress={() => router.push('/change-secret')} />
-      <PrimaryButton title={t('mobile.profile.logout')} onPress={() => void logout()} />
+      <PrimaryButton title={t('mobile.profile.logout')} disabled={isBusy} onPress={() => void logout()} />
     </Screen>
   );
 }

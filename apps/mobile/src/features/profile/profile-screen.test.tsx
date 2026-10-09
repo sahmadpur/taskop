@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 import '@/lib/i18n';
 import { ME, OCC } from '@/offline/testing/fixtures';
@@ -69,6 +69,50 @@ describe('logout', () => {
     await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
     expect(alert).not.toHaveBeenCalled();
     expect(await t.services.store.occurrences()).toEqual([]);
+    alert.mockRestore();
+  });
+
+  it('still signs out when clearing local data fails', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(t.services, 'clearAll').mockRejectedValue(new Error('disk'));
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('shows the warning when unsynced data cannot be counted', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(t.services.store, 'unsyncedCount').mockRejectedValue(new Error('db'));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    expect(alert.mock.calls[0]![0]).toBe('Əminsiniz?');
+    expect(mockSignOut).not.toHaveBeenCalled();
+    alert.mockRestore();
+    error.mockRestore();
+  });
+
+  it('ignores a second tap while logout is running and re-enables after cancel', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    await t.services.store.start(OCC, ME);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(true);
+    await act(async () => press(alert.mock.calls[0]![2], 'Ləğv et'));
+    await eventually(async () => expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(false));
     alert.mockRestore();
   });
 });
