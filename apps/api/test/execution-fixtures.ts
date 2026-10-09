@@ -191,3 +191,28 @@ export async function executionRow(id: string): Promise<ExecutionDbRow> {
 
 export const statusOf = async (occurrenceId: string): Promise<string> =>
   (await ownerQuery<{ status: string }>('select status from occurrences where id = $1', [occurrenceId])).rows[0]!.status;
+
+/** A 1000-byte camera JPEG captured at Monday 08:20 Baku (04:20Z). */
+export const photoBody = (itemId: string | null, extra: Record<string, unknown> = {}) => ({
+  id: uuidv7(),
+  itemId,
+  kind: 'photo',
+  source: 'camera',
+  mime: 'image/jpeg',
+  bytes: 1000,
+  width: 1600,
+  height: 1200,
+  capturedAt: '2026-11-02T04:20:00.000Z',
+  deviceTime: '2026-11-02T04:20:00.000Z',
+  clientOffsetMs: 0,
+  ...extra,
+});
+
+export async function registerPhoto(api: Api, executionId: string, itemId: string | null, extra: Record<string, unknown> = {}): Promise<string> {
+  const body = photoBody(itemId, extra);
+  const res = await api.post(`/api/v1/executions/${executionId}/media`, body);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return body.id;
+}
+
+export const answersBody = (rev: number, answers: Answers, deviceTime: string, extra: Record<string, unknown> = {}) => ({ rev, answers, deviceTime, clientOffsetMs: 0, ...extra });

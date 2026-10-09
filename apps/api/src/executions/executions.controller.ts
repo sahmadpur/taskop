@@ -1,17 +1,22 @@
-import { Body, Controller, HttpCode, Inject, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult } from '@taskop/contracts';
+import type { ClaimResult, MediaUploadTicket } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto } from './dto';
 import { ExecutionsService } from './executions.service';
+import { MediaService } from './media.service';
 
 /** Upload commands from the phone (spec §6). Any authenticated tenant user; the service checks the executor. */
 @ApiTags('executions')
 @ApiBearerAuth()
 @Controller('executions')
 export class ExecutionsController {
-  constructor(@Inject(ExecutionsService) private readonly executions: ExecutionsService) {}
+  constructor(
+    @Inject(ExecutionsService) private readonly executions: ExecutionsService,
+    @Inject(MediaService) private readonly media: MediaService,
+  ) {}
 
   /** A rejected claim is a normal 200 so the outbox moves on (spec §6.2). */
   @Post()
@@ -19,5 +24,12 @@ export class ExecutionsController {
   @ApiOkResponse({ type: ClaimResultResponse })
   claim(@CurrentPrincipal() p: Principal, @Body() body: ClaimCommandDto): Promise<ClaimResult> {
     return this.executions.claim(p, body);
+  }
+
+  @Post(':id/media')
+  @HttpCode(200)
+  @ApiOkResponse({ type: MediaUploadTicketResponse })
+  registerMedia(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: RegisterMediaCommandDto): Promise<MediaUploadTicket> {
+    return this.media.register(p, id, body);
   }
 }

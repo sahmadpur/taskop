@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ChecklistContent, ClaimRef } from '@taskop/contracts';
+import { type ChecklistContent, type ClaimRef, type Item, walkItems } from '@taskop/contracts';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { storedContent } from '../checklists/content';
 import { DbService } from '../db/db.service';
@@ -27,4 +27,12 @@ export class ExecutionLookups {
       .where(and(inArray(executions.occurrenceId, occurrenceIds), ne(executions.state, 'rejected')));
     return new Map(rows.map(({ occurrenceId, ...claim }) => [occurrenceId, claim]));
   }
+}
+
+export function findItem(content: ChecklistContent, itemId: string): Item | undefined {
+  let found: Item | undefined;
+  walkItems(content, (item) => {
+    if (item.id === itemId) found = item;
+  });
+  return found;
 }
