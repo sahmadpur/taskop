@@ -4,6 +4,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { scheduleSearch } from './routes';
 import { SchedulePage } from './schedule-page';
 
 const mocks = vi.hoisted(() => ({ api: { occurrences: { list: vi.fn(), get: vi.fn(), cancel: vi.fn() }, sites: { list: vi.fn() } } }));
@@ -77,5 +78,41 @@ describe('SchedulePage', () => {
     await userEvent.click(first!);
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('Məlumat tapılmadı.')).toBeInTheDocument();
+  });
+
+  it('shows the counted execution on a row: executor, progress, score and flags', async () => {
+    const progress = { answered: 9, total: 10, requiredMissing: 0 };
+    mocks.api.occurrences.list.mockResolvedValue({
+      items: [
+        occ({ status: 'completed', executionBrief: { executionId: 'x1', executorName: 'Aysel', state: 'completed', progress, scorePercent: 87.5, late: true, clockSuspect: true } }),
+        occ({
+          id: 'o2',
+          status: 'partial',
+          executionBrief: { executionId: 'x2', executorName: 'Murad', state: 'partial', progress: { answered: 2, total: 10, requiredMissing: 6 }, scorePercent: null, late: false, clockSuspect: false },
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderWithProviders(<SchedulePage initialDate="2026-11-04" />);
+    const [day] = await screen.findAllByRole('region');
+    const [done, partial] = within(day!).getAllByRole('button');
+    for (const text of ['Tamamlanıb', 'Aysel', '9/10', '87,5%', 'Gecikib', 'Telefon saatı şübhəlidir']) expect(done).toHaveTextContent(text);
+    for (const text of ['Murad', '2/10']) expect(partial).toHaveTextContent(text);
+    expect(partial).not.toHaveTextContent('%');
+    expect(within(partial!).getByText('Yarımçıq')).toHaveAttribute('data-variant', 'destructive');
+  });
+
+  it('opens the occurrence named in a link on its execution tab', async () => {
+    renderWithProviders(<SchedulePage initialDate="2026-11-02" initialOccurrenceId="o1" initialTab="execution" />);
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('tab', { name: 'İcra' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).getByText('Bu icra hələ başlanmayıb.')).toBeInTheDocument();
+    expect(mocks.api.occurrences.get).toHaveBeenCalledWith('o1');
+  });
+
+  it('reads only valid link parameters', () => {
+    expect(scheduleSearch({ date: '2026-11-02', occurrence: 'o1', tab: 'execution' })).toEqual({ date: '2026-11-02', occurrence: 'o1', tab: 'execution' });
+    expect(scheduleSearch({ date: '2.11.2026', occurrence: 5, tab: 'audit' })).toEqual({});
+    expect(scheduleSearch({ date: '2026-13-45' })).toEqual({});
   });
 });

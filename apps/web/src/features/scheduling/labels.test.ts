@@ -21,5 +21,9 @@ describe('scheduling labels', () => {
     expect(formatLocalDate('2026-11-02')).toContain('2');
     expect(occurrenceVariant('missed')).toBe('destructive');
     expect(occurrenceVariant('pending')).toBe('secondary');
+    expect(occurrenceVariant('partial')).toBe('destructive');
+    expect(occurrenceVariant('in_progress')).toBe('secondary');
+    expect(occurrenceVariant('started')).toBe('secondary');
+    expect(occurrenceVariant('completed')).toBe('default');
   });
 });
