@@ -9,6 +9,7 @@ import {
   type PreviewWarning,
   SCHEDULING_LIMITS,
   scheduleWarnings,
+  timingSchema,
 } from '@taskop/contracts';
 import { and, between, desc, eq, getTableColumns, ilike, inArray, lt, or, type SQL, sql } from 'drizzle-orm';
 import { actorColumns } from '../checklists/actor';
@@ -20,8 +21,8 @@ import { DbService } from '../db/db.service';
 import { assignmentAssignees, assignments, checklists, shiftRoster, shifts, sites } from '../db/schema';
 import type { Actor } from './actor';
 import { AssignmentRules } from './assignment-rules';
-import type { AssignmentListQueryDto, CreateAssignmentDto, PreviewAssignmentDto } from './dto';
-import { toAssignmentDto } from './mappers';
+import type { AssignmentListQueryDto, CreateAssignmentDto, PreviewAssignmentDto, UpdateAssignmentDto } from './dto';
+import { sameJson, toAssignmentDto } from './mappers';
 import { OccurrenceQueries } from './occurrence-queries';
 import { OccurrenceWriter } from './occurrence-writer';
 import { SchedulingScope } from './scheduling-scope';
@@ -104,6 +105,98 @@ export class AssignmentsService {
     const dto = await this.get(a, id);
     await this.audit.record({ action: 'assignment.created', entityType: 'assignment', entityId: id, after: auditView(dto) });
     return dto;
+  }
+
+  async update(a: Actor, id: string, input: UpdateAssignmentDto): Promise<AssignmentDetail> {
+    const row = await this.lockWritable(a, id);
+    if (row.status === 'ended') throw new AppError('ASSIGNMENT_ENDED');
+    if (row.revision !== input.revision) throw new AppError('REVISION_CONFLICT', { details: { currentRevision: row.revision } });
+    const before = await this.get(a, id);
+    const schedule = input.schedule ?? before.schedule;
+    const timing = input.timing ?? before.timing;
+    const scheduleChanged = !sameJson(schedule, before.schedule);
+    const timingChanged = !sameJson(timing, before.timing);
+    const currentIds = before.assignees.map((u) => u.id).sort();
+    const assigneeIds = input.assigneeIds ? [...new Set(input.assigneeIds)].sort() : currentIds;
+    const assigneesChanged = !sameJson(assigneeIds, currentIds);
+    if (scheduleChanged || timingChanged) {
+      this.rules.schedule(schedule);
+      const shift = await this.rules.shift(timing, row.siteId);
+      this.rules.window(a, timing, shift);
+      this.rules.nonEmpty(schedule, timing, shift, await this.writer.tenantTimezone());
+    }
+    if (assigneesChanged) await this.rules.assignees(row.siteId, assigneeIds);
+
+    const tx = this.db.tx();
+    await tx
+      .update(assignments)
+      .set({
+        name: input.name === undefined ? undefined : input.name || null,
+        schedule,
+        timing,
+        shiftId: timing.mode === 'shift' ? timing.shiftId : null,
+        revision: row.revision + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(assignments.id, id));
+    if (assigneesChanged) {
+      await tx.delete(assignmentAssignees).where(eq(assignmentAssignees.assignmentId, id));
+      await tx.insert(assignmentAssignees).values(assigneeIds.map((userId) => ({ tenantId: row.tenantId, assignmentId: id, userId })));
+    }
+    if (row.status === 'active') {
+      if (scheduleChanged || timingChanged) await this.writer.regenerate(id, 'assignment_edited');
+      else if (assigneesChanged) await this.writer.refreshSnapshots({ assignmentId: id });
+    }
+    const after = await this.get(a, id);
+    await this.audit.record({ action: 'assignment.updated', entityType: 'assignment', entityId: id, before: auditView(before), after: auditView(after) });
+    return after;
+  }
+
+  async pause(a: Actor, id: string): Promise<AssignmentDetail> {
+    const row = await this.lockWritable(a, id);
+    if (row.status === 'ended') throw new AppError('ASSIGNMENT_ENDED');
+    if (row.status === 'active') {
+      await this.writer.cancelFuturePending(id, 'assignment_paused');
+      await this.setStatus(row, 'paused', 'assignment.paused');
+    }
+    return this.get(a, id);
+  }
+
+  /** Re-checks spec §4.2, then generates from now on. */
+  async resume(a: Actor, id: string): Promise<AssignmentDetail> {
+    const row = await this.lockWritable(a, id);
+    if (row.status === 'ended') throw new AppError('ASSIGNMENT_ENDED');
+    if (row.status === 'paused') {
+      await this.rules.checklist(row.checklistId);
+      await this.rules.site(a, row.siteId);
+      await this.rules.shift(timingSchema.parse(row.timing), row.siteId);
+      const ids = await this.db.tx().select({ userId: assignmentAssignees.userId }).from(assignmentAssignees).where(eq(assignmentAssignees.assignmentId, id));
+      await this.rules.assignees(row.siteId, ids.map((r) => r.userId));
+      await this.setStatus(row, 'active', 'assignment.resumed');
+      await this.writer.restart(id);
+    }
+    return this.get(a, id);
+  }
+
+  async end(a: Actor, id: string): Promise<AssignmentDetail> {
+    const row = await this.lockWritable(a, id);
+    if (row.status !== 'ended') {
+      await this.writer.cancelFuturePending(id, 'assignment_ended');
+      await this.setStatus(row, 'ended', 'assignment.ended');
+    }
+    return this.get(a, id);
+  }
+
+  private async lockWritable(a: Actor, id: string): Promise<typeof assignments.$inferSelect> {
+    const [row] = await this.db.tx().select().from(assignments).where(and(eq(assignments.id, id), this.scope.assignments(a))).for('update');
+    if (!row) throw new AppError('NOT_FOUND');
+    await this.scope.assertSiteWritable(a, row.siteId);
+    return row;
+  }
+
+  private async setStatus(row: typeof assignments.$inferSelect, status: 'active' | 'paused' | 'ended', action: string): Promise<void> {
+    await this.db.tx().update(assignments).set({ status, revision: row.revision + 1, updatedAt: new Date() }).where(eq(assignments.id, row.id));
+    await this.audit.record({ action, entityType: 'assignment', entityId: row.id, before: { status: row.status }, after: { status } });
   }
 
   async preview(a: Actor, input: PreviewAssignmentDto): Promise<AssignmentPreview> {

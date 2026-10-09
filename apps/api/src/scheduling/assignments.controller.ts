@@ -1,4 +1,4 @@
-import { Body, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
 import type { AssignmentDetail, AssignmentDto, AssignmentPreview, Page } from '@taskop/contracts';
 import { controllerDecorators, named, perm, type RouteMode } from '../checklists/route-mode';
@@ -12,6 +12,7 @@ import {
   AssignmentPreviewResponse,
   CreateAssignmentDto,
   PreviewAssignmentDto,
+  UpdateAssignmentDto,
 } from './dto';
 
 export function assignmentsControllerFor(mode: RouteMode) {
@@ -49,6 +50,37 @@ export function assignmentsControllerFor(mode: RouteMode) {
     @ApiOkResponse({ type: AssignmentDetailResponse })
     get(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<AssignmentDetail> {
       return this.assignments.get(a, id);
+    }
+
+    @Put(':id')
+    @manage
+    @ApiOkResponse({ type: AssignmentDetailResponse })
+    update(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string, @Body() body: UpdateAssignmentDto): Promise<AssignmentDetail> {
+      return this.assignments.update(a, id, body);
+    }
+
+    @Post(':id/pause')
+    @HttpCode(200)
+    @manage
+    @ApiOkResponse({ type: AssignmentDetailResponse })
+    pause(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<AssignmentDetail> {
+      return this.assignments.pause(a, id);
+    }
+
+    @Post(':id/resume')
+    @HttpCode(200)
+    @manage
+    @ApiOkResponse({ type: AssignmentDetailResponse })
+    resume(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<AssignmentDetail> {
+      return this.assignments.resume(a, id);
+    }
+
+    @Post(':id/end')
+    @HttpCode(200)
+    @manage
+    @ApiOkResponse({ type: AssignmentDetailResponse })
+    end(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<AssignmentDetail> {
+      return this.assignments.end(a, id);
     }
   }
   return named(AssignmentsController, mode === 'tenant' ? 'AssignmentsController' : 'PlatformTenantAssignmentsController');

@@ -5,15 +5,17 @@ import { AppError } from '../common/app-error';
 import { assertIdsExist } from '../common/ids-exist';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
-import { shifts, sites } from '../db/schema';
+import { assignments, shifts, sites } from '../db/schema';
 import type { CreateShiftDto, ShiftListQueryDto, UpdateShiftDto } from './dto';
 import { toShiftDto } from './mappers';
+import { OccurrenceWriter } from './occurrence-writer';
 
 @Injectable()
 export class ShiftsService {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly writer: OccurrenceWriter,
   ) {}
 
   async list(q: ShiftListQueryDto): Promise<ShiftDto[]> {
@@ -55,6 +57,14 @@ export class ShiftsService {
       .set({ name: input.name, startTime: input.startTime, endTime: input.endTime, siteId: input.siteId, active: input.active, updatedAt: new Date() })
       .where(eq(shifts.id, id));
     const after = await this.get(id);
+    if (after.startTime !== before.startTime || after.endTime !== before.endTime) {
+      const using = await this.db
+        .tx()
+        .select({ id: assignments.id })
+        .from(assignments)
+        .where(and(eq(assignments.shiftId, id), eq(assignments.status, 'active')));
+      for (const a of using) await this.writer.regenerate(a.id, 'shift_changed');
+    }
     await this.audit.record({ action: 'shift.updated', entityType: 'shift', entityId: id, before, after });
     return after;
   }

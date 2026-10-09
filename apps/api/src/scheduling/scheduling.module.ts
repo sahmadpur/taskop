@@ -8,6 +8,7 @@ import { OccurrenceWriter } from './occurrence-writer';
 import { PlatformModule } from '../platform/platform.module';
 import { PlatformTenantRosterController, TenantRosterController } from './roster.controller';
 import { RosterService } from './roster.service';
+import { SchedulingListeners } from './scheduling-listeners';
 import { SchedulingScope } from './scheduling-scope';
 import { PlatformTenantShiftsController, TenantShiftsController } from './shifts.controller';
 import { ShiftsService } from './shifts.service';
@@ -15,6 +16,6 @@ import { ShiftsService } from './shifts.service';
 @Module({
   imports: [PlatformModule],
   controllers: [TenantShiftsController, PlatformTenantShiftsController, TenantRosterController, PlatformTenantRosterController, TenantAssignmentsController, PlatformTenantAssignmentsController],
-  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService],
+  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners],
 })
 export class SchedulingModule {}
