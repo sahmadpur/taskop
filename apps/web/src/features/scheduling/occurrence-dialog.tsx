@@ -49,9 +49,10 @@ export function OccurrenceDialog({ id, onClose }: { id: string; onClose: () => v
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{o?.checklistName ?? t('common.loading')}</DialogTitle>
+          <DialogTitle>{o?.checklistName ?? (occurrence.isError ? t('scheduling.schedule.title') : t('common.loading'))}</DialogTitle>
           {o && <DialogDescription>{[o.assignmentName, o.siteName, o.shiftName].filter(Boolean).join(' · ')}</DialogDescription>}
         </DialogHeader>
+        {occurrence.isError && <p className="text-destructive text-sm">{errorText(t, occurrence.error)}</p>}
         {o && (
           <div className="grid gap-4 text-sm">
             <div className="flex items-center gap-2">

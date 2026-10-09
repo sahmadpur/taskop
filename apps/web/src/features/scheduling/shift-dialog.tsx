@@ -39,6 +39,11 @@ export function ShiftDialog({ shift, sites, onClose, onSubmit }: Props) {
     defaultValues: { name: shift?.name ?? '', startTime: shift?.startTime ?? '08:00', endTime: shift?.endTime ?? '16:00', siteId: shift?.siteId ?? '' },
   });
   const [start, end] = form.watch(['startTime', 'endTime']);
+  // The shift's own site is always an option, even when it is inactive or not loaded, so editing never clears it.
+  const siteOptions =
+    shift?.siteId && !sites.some((s) => s.id === shift.siteId)
+      ? [{ id: shift.siteId, name: shift.siteName ?? shift.siteId }, ...sites]
+      : sites;
   const fieldError = (name: 'startTime' | 'endTime') => form.formState.errors[name]?.message;
   const submit = form.handleSubmit(async (v) => {
     setError(null);
@@ -71,7 +76,7 @@ export function ShiftDialog({ shift, sites, onClose, onSubmit }: Props) {
             <Label htmlFor="siteId">{t('scheduling.shifts.site')}</Label>
             <NativeSelect id="siteId" {...form.register('siteId')}>
               <option value="">{t('scheduling.shifts.allSites')}</option>
-              {sites.map((s) => (
+              {siteOptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>

@@ -1,3 +1,4 @@
+import { ApiError } from '@taskop/api-client';
 import type { OccurrenceDto } from '@taskop/contracts';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -66,5 +67,14 @@ describe('SchedulePage', () => {
     await waitFor(() => expect(mocks.api.occurrences.list).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-11-04', to: '2026-11-04' })));
     await userEvent.click(screen.getByRole('button', { name: 'Növbəti' }));
     await waitFor(() => expect(mocks.api.occurrences.list).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-11-05', to: '2026-11-05' })));
+  });
+
+  it('shows an error instead of loading forever when an occurrence cannot be read', async () => {
+    mocks.api.occurrences.get.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'errors.NOT_FOUND'));
+    renderWithProviders(<SchedulePage initialDate="2026-11-04" />);
+    const [first] = await screen.findAllByRole('button', { name: /Açılış/ });
+    await userEvent.click(first!);
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Məlumat tapılmadı.')).toBeInTheDocument();
   });
 });

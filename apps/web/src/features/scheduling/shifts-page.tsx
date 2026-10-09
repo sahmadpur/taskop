@@ -86,7 +86,11 @@ export function ShiftsPage() {
           onClose={() => setEditing(null)}
           onSubmit={async (v) => {
             if (editing === 'new') await api.shifts.create(v);
-            else await api.shifts.update(editing.id, v);
+            else {
+              // Only send the site when it was changed, so an edit never moves the shift by accident.
+              const { siteId, ...rest } = v;
+              await api.shifts.update(editing.id, siteId === editing.siteId ? rest : v);
+            }
             await refresh();
           }}
         />

@@ -65,4 +65,30 @@ describe('ShiftsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Deaktiv et' }));
     await waitFor(() => expect(mocks.api.shifts.update).toHaveBeenCalledWith('s1', { active: false }));
   });
+
+  it('keeps a shift’s site that is not among the options when editing', async () => {
+    mocks.api.shifts.list.mockResolvedValue([shift({ siteId: 'old', siteName: 'Köhnə filial' })]);
+    mocks.api.shifts.update.mockResolvedValue(shift());
+    renderWithProviders(<ShiftsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Redaktə et' }));
+    const dialog = screen.getByRole('dialog');
+    await within(dialog).findByRole('option', { name: 'Anbar' });
+    expect(within(dialog).getByLabelText('Obyekt')).toHaveValue('old');
+    await userEvent.clear(within(dialog).getByLabelText('Ad'));
+    await userEvent.type(within(dialog).getByLabelText('Ad'), 'Səhər 2');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(mocks.api.shifts.update).toHaveBeenCalledWith('s1', { name: 'Səhər 2', startTime: '08:00', endTime: '16:00' }));
+  });
+
+  it('sends the site when it was changed', async () => {
+    mocks.api.shifts.list.mockResolvedValue([shift({ siteId: 'old', siteName: 'Köhnə filial' })]);
+    mocks.api.shifts.update.mockResolvedValue(shift());
+    renderWithProviders(<ShiftsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Redaktə et' }));
+    const dialog = screen.getByRole('dialog');
+    await within(dialog).findByRole('option', { name: 'Anbar' });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Obyekt'), '');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(mocks.api.shifts.update).toHaveBeenCalledWith('s1', { name: 'Səhər', startTime: '08:00', endTime: '16:00', siteId: null }));
+  });
 });
