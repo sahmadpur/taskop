@@ -27,6 +27,19 @@ async function opened(focusItemId?: (t: TestServices) => string): Promise<Opened
 const answers = async (t: Opened, id = t.id) => (await t.services.store.execution(id))!.answers;
 
 describe('ExecutionScreen', () => {
+  it('shows why the server did not accept the execution, and why it refused a file on its item', async () => {
+    const t = await opened();
+    await act(async () => {
+      await t.db.run(`UPDATE executions SET state = 'rejected', claim = 'rejected', sync_note = 'errors.NOT_EXECUTOR' WHERE id = ?`, [t.id]);
+      await t.db.run(`INSERT INTO media_refusals (media_id, execution_id, item_id, error_key, created_at) VALUES ('m', ?, ?, 'errors.MEDIA_TOO_LARGE', ?)`, [t.id, t.c.problem.id, T.open]);
+      t.services.feed.emit();
+    });
+    expect(await screen.findByText('Server qəbul etmədi: Bu icranı yalnız onu başladan əməkdaş dəyişə bilər.')).toBeTruthy();
+    // No misleading "someone else holds it" text for a claim refused without a rejection reason.
+    expect(screen.queryByText(/icra olunur/)).toBeNull();
+    expect(within(screen.getByTestId(`item-${t.c.problem.id}`)).getByText('Server bu faylı qəbul etmədi: Fayl çox böyükdür.')).toBeTruthy();
+  });
+
   it('shows one section at a time with progress, and follow-ups appear inline', async () => {
     const t = await opened();
     expect(screen.getByText('Bölmə 1/2')).toBeTruthy();

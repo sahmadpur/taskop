@@ -1,6 +1,8 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { Alert, type AlertButton } from 'react-native';
 import '@/lib/i18n';
-import { ME, OCC } from '@/offline/testing/fixtures';
+import { capturedPhoto } from '@/offline/testing/fake-transport';
+import { ME, OCC, T } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
 import { SyncIndicator } from './sync-indicator';
@@ -65,5 +67,49 @@ describe('sync screen', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Yenidən cəhd et' }));
     await eventually(async () => expect(t.api.calls.map((c) => c.method)).toEqual(['claim', 'saveAnswers', 'pull']));
     expect(await screen.findByText('Göndəriləcək heç nə yoxdur.')).toBeTruthy();
+  });
+
+  it('"Sil" removes a failed command after a confirmation; waiting rows have no "Sil"', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const id = await t.services.store.start(OCC, ME);
+    await t.services.store.patchAnswer(id, t.c.temp.id, { number: 5 });
+    await t.db.run(`UPDATE outbox SET status = 'failed', error_code = 'CLOCK_INVALID', error_key = 'errors.CLOCK_INVALID' WHERE kind = 'claim'`);
+    await t.services.engine.refresh();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithServices(t.services, <SyncScreen />);
+    expect(await screen.findByText('Başlama · Açılış yoxlaması')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sil: Cavablar · Açılış yoxlaması' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sil: Başlama · Açılış yoxlaması' }));
+    expect(alert.mock.calls[0]![0]).toBe('Silinsin?');
+    expect(alert.mock.calls[0]![1]).toBe('Başlama silinsə, bu icranın göndərilməmiş cavabları və faylları da silinəcək. Bu, geri qaytarıla bilməz.');
+    const buttons = alert.mock.calls[0]![2] as AlertButton[];
+    expect(await t.services.store.unsyncedCount()).toBe(2);
+    await act(async () => buttons.find((b) => b.text === 'Sil')!.onPress?.());
+    expect(await screen.findByText('Göndəriləcək heç nə yoxdur.')).toBeTruthy();
+    expect(await t.services.store.unsyncedCount()).toBe(0);
+    expect(t.services.engine.status().failed).toBe(0);
+    alert.mockRestore();
+  });
+
+  it('"Sil" on a file that failed to upload removes it after a confirmation', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const id = await t.services.store.start(OCC, ME);
+    await t.services.store.attachMedia(id, capturedPhoto(t.transport), { itemId: t.c.photo.id, field: 'evidence' });
+    await t.db.run(`DELETE FROM outbox`);
+    await t.db.run(`UPDATE media SET registered_at = ?, failed_code = 'UPLOAD_FAILED', attempts = 5`, [T.open]);
+    await t.services.engine.refresh();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithServices(t.services, <SyncScreen />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Sil: Fayl yükləmə · Açılış yoxlaması' }));
+    expect(alert.mock.calls[0]![1]).toBe('Bu dəyişiklik serverə göndərilməyəcək və telefondan silinəcək. Bu, geri qaytarıla bilməz.');
+    await act(async () => (alert.mock.calls[0]![2] as AlertButton[]).find((b) => b.text === 'Ləğv et')!.onPress?.());
+    expect(t.services.engine.status().failed).toBe(1);
+    await fireEvent.press(screen.getByRole('button', { name: 'Sil: Fayl yükləmə · Açılış yoxlaması' }));
+    await act(async () => (alert.mock.calls[1]![2] as AlertButton[]).find((b) => b.text === 'Sil')!.onPress?.());
+    await eventually(async () => expect(t.services.engine.status().failed).toBe(0));
+    expect(await t.services.store.mediaRefusals(id)).toHaveLength(1);
+    alert.mockRestore();
   });
 });

@@ -143,6 +143,12 @@ export default {
     kinds: { claim: 'Başlama', media: 'Fayl qeydiyyatı', answers: 'Cavablar', complete: 'Tamamlama', upload: 'Fayl yükləmə' },
     states: { pending: 'Gözləyir', failed: 'Xəta' },
     mediaErrors: { FILE_MISSING: 'Fayl telefonda tapılmadı.', UPLOAD_FAILED: 'Fayl bir neçə cəhddən sonra yüklənmədi.' },
+    notAccepted: 'Server qəbul etmədi: {{reason}}',
+    fileNotAccepted: 'Server bu faylı qəbul etmədi: {{reason}}',
+    discard: 'Sil',
+    discardTitle: 'Silinsin?',
+    discardBody: 'Bu dəyişiklik serverə göndərilməyəcək və telefondan silinəcək. Bu, geri qaytarıla bilməz.',
+    discardClaimBody: 'Başlama silinsə, bu icranın göndərilməmiş cavabları və faylları da silinəcək. Bu, geri qaytarıla bilməz.',
   },
   logout: {
     unsyncedTitle: 'Göndərilməmiş məlumat var',

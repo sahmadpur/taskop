@@ -81,4 +81,12 @@ describe('My checklists', () => {
     expect(mockPush).not.toHaveBeenCalled();
     alert.mockRestore();
   });
+
+  it('shows on the card why the server did not accept an execution', async () => {
+    const t = await world();
+    const id = await t.services.store.start(OCC, ME);
+    await t.db.run(`UPDATE executions SET state = 'partial', sync_note = 'errors.EXECUTION_NOT_ACTIVE' WHERE id = ?`, [id]);
+    await renderWithServices(t.services, <HomeScreen />);
+    expect(await within(await screen.findByTestId(`occurrence-${OCC}`)).findByText('Server qəbul etmədi: Bu icra artıq bağlanıb və dəyişdirilə bilməz.')).toBeTruthy();
+  });
 });

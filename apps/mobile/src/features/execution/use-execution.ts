@@ -1,4 +1,5 @@
 import type { ContentLoad } from '@/offline/content';
+import type { MediaRefusal } from '@/offline/execution-store';
 import { useLiveQuery } from '@/offline/hooks';
 import type { LocalExecution, LocalMedia, LocalOccurrence } from '@/offline/local-model';
 
@@ -7,6 +8,8 @@ export interface ExecutionData {
   occurrence: LocalOccurrence;
   content: ContentLoad;
   media: LocalMedia[];
+  /** Media the server refused for good, noted on their items. */
+  refusals: MediaRefusal[];
 }
 
 /**
@@ -19,7 +22,13 @@ export function useExecution(occurrenceId: string): ExecutionData | null | undef
     const view = (await store.occurrences()).find((o) => o.id === occurrenceId);
     if (!view?.execution) return null;
     const { execution, ...occurrence } = view;
-    return { execution, occurrence, content: await store.content(execution.checklistVersionId), media: await store.media(execution.id) };
+    return {
+      execution,
+      occurrence,
+      content: await store.content(execution.checklistVersionId),
+      media: await store.media(execution.id),
+      refusals: await store.mediaRefusals(execution.id),
+    };
   }, [occurrenceId]);
 }
 

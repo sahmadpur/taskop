@@ -139,5 +139,12 @@ describe('mobile execution translations', () => {
     expect(az.mobile.execution.flagProblem).toBe('Problem qeyd et');
     expect(az.mobile.execution.needsUpdate).toBe('Tətbiqi yeniləyin');
     expect(az.mobile.finish.complete).toBe('Tamamla');
+    expect(az.mobile.sync.notAccepted.replace('{{reason}}', 'X')).toBe('Server qəbul etmədi: X');
+    expect(az.mobile.sync.fileNotAccepted.replace('{{reason}}', 'X')).toBe('Server bu faylı qəbul etmədi: X');
+    expect(az.mobile.sync.discard).toBe('Sil');
+  });
+
+  it('has the discard confirmation texts', () => {
+    for (const k of ['discardTitle', 'discardBody', 'discardClaimBody'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
   });
 });

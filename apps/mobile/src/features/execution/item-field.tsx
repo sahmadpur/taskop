@@ -29,6 +29,8 @@ export interface ItemFieldProps {
   missing: Missing[];
   /** A rule or manual problem is recorded for this item. */
   hasProblem: boolean;
+  /** One line per medium of this item the server refused for good ("Server bu faylı qəbul etmədi: …"). */
+  refused: string[];
   readOnly: boolean;
   media: ReadonlyMap<string, LocalMedia>;
   onPatch: (patch: Partial<Answer>) => void;
@@ -193,6 +195,11 @@ export function ItemField(p: ItemFieldProps) {
           onCommit={(note) => p.onPatch({ note: note.trim() ? note : undefined })}
         />
       ) : null}
+      {p.refused.map((line, i) => (
+        <Text key={`refused-${i}`} style={styles.missing}>
+          {line}
+        </Text>
+      ))}
       {p.missing
         .filter((m) => m.kind !== 'answer')
         .map((m) => (

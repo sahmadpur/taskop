@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/primary-button';
+import { notAcceptedText } from '@/features/sync/refusal-text';
 import { formatTime } from '@/lib/time';
 import { colors, spacing } from '@/lib/theme';
 import type { CardModel, GroupKey } from './group-occurrences';
@@ -44,6 +45,7 @@ export function OccurrenceCard({ card, group, timeZone, onStart, onOpen }: Props
         {card.claimedBy ? <Badge tone="muted" text={t('mobile.checklists.claimedBy', { name: card.claimedBy })} /> : null}
         {status && !card.claimedBy ? <Badge tone="muted" text={status} /> : null}
       </View>
+      {e?.syncNote ? <Text style={styles.note}>{notAcceptedText(t, e.syncNote)}</Text> : null}
       {group === 'upcoming' ? (
         <Text style={styles.muted}>{t('mobile.checklists.opensAt', { time: formatTime(o.startsAt, timeZone) })}</Text>
       ) : null}
@@ -66,6 +68,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '600', color: colors.text },
   muted: { color: colors.muted },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  note: { color: colors.danger },
   badge: { borderRadius: 8, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   badgeText: { fontSize: 12, fontWeight: '600' },
 });

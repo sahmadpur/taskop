@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/primary-button';
 import { claimRejectionText } from '@/features/sync/claim-rejection';
+import { fileNotAcceptedText, notAcceptedText } from '@/features/sync/refusal-text';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
@@ -107,9 +108,14 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
   const section = content.sections[index];
   const mediaById = new Map(data.media.map((m) => [m.id, m]));
   const draftItem = draft ? (visible.find((v) => v.item.id === draft.itemId)?.item ?? null) : null;
+  const note = execution.syncNote ? notAcceptedText(t, execution.syncNote) : null;
+  const refusedOn = (itemId: string) => data.refusals.filter((r) => r.itemId === itemId).map((r) => fileNotAcceptedText(t, r.errorKey));
   const banner =
     lock === 'rejected'
-      ? claimRejectionText(t, execution.rejectedReason ?? 'ALREADY_CLAIMED', execution.rejectedBy)
+      ? // A claim the server refused for good has no rejection reason: the note says why instead.
+        note && !execution.rejectedReason
+        ? null
+        : claimRejectionText(t, execution.rejectedReason ?? 'ALREADY_CLAIMED', execution.rejectedBy)
       : lock === 'claimedByOther'
         ? claimRejectionText(t, 'ALREADY_CLAIMED', occurrence.claim?.executorName ?? null)
         : lock === 'completed'
@@ -201,6 +207,11 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
         </View>
         <Text style={styles.muted}>{t('mobile.execution.progress', { answered: prog.answered, total: prog.total })}</Text>
       </View>
+      {note ? (
+        <View style={styles.noteBanner}>
+          <Text style={styles.noteText}>{note}</Text>
+        </View>
+      ) : null}
       {banner ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{banner}</Text>
@@ -237,6 +248,7 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
                     answer={current[item.id]}
                     missing={missing.filter((m) => m.itemId === item.id)}
                     hasProblem={problemItems.has(item.id)}
+                    refused={refusedOn(item.id)}
                     readOnly={readOnly}
                     media={mediaById}
                     onPatch={(patch) => run(() => store.patchAnswer(executionId, item.id, patch))}
@@ -311,6 +323,8 @@ const styles = StyleSheet.create({
   fill: { height: 8, backgroundColor: colors.primary },
   banner: { marginHorizontal: spacing.md, borderRadius: 10, padding: spacing.md, backgroundColor: '#FEF3C7' },
   bannerText: { color: '#92400E' },
+  noteBanner: { marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 10, padding: spacing.md, backgroundColor: '#FEE2E2' },
+  noteText: { color: colors.danger },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.lg * 2 },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
   pager: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },

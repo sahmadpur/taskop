@@ -2,7 +2,7 @@ import { formatDateTime } from '@taskop/i18n';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
 import { colors, spacing } from '@/lib/theme';
@@ -16,9 +16,14 @@ interface Row {
   key: string;
   title: string;
   error: string | null;
+  /** Only failed rows can be discarded. */
+  discard: { body: string; run: () => Promise<void> } | null;
 }
 
-/** FR-10.15: what is waiting, what failed and why, and "Yenidən cəhd et". */
+/**
+ * FR-10.15: what is waiting, what failed and why, and "Yenidən cəhd et". A failed row that retrying does not fix can
+ * be discarded ("Sil", after a confirmation), so nothing stays red for good.
+ */
 export function SyncScreen() {
   const { t } = useTranslation();
   const services = useOffline();
@@ -31,13 +36,43 @@ export function SyncScreen() {
       key: `c${c.seq}`,
       title: `${t(`mobile.sync.kinds.${c.kind}`)} · ${name(c.checklistName)}`,
       error: c.status === 'failed' ? t(c.errorKey ?? 'errors.INTERNAL', { requestId: '—' }) : null,
+      discard:
+        c.status === 'failed'
+          ? { body: t(c.kind === 'claim' ? 'mobile.sync.discardClaimBody' : 'mobile.sync.discardBody'), run: () => services.engine.discardCommand(c.seq) }
+          : null,
     })),
     ...(queue?.media ?? []).map((m) => ({
       key: `m${m.id}`,
       title: `${t('mobile.sync.kinds.upload')} · ${name(m.checklistName)}`,
       error: m.failedCode ? t(mediaErrorKey(m.failedCode)) : null,
+      discard: m.failedCode
+        ? {
+            body: t('mobile.sync.discardBody'),
+            run: async () => {
+              await services.mediaQueue.discard(m.id);
+              await services.engine.refresh();
+            },
+          }
+        : null,
     })),
   ];
+
+  const confirmDiscard = (row: Row) => {
+    const discard = row.discard;
+    if (!discard) return;
+    Alert.alert(t('mobile.sync.discardTitle'), discard.body, [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('mobile.sync.discard'),
+        style: 'destructive',
+        onPress: () =>
+          void discard.run().catch((e: unknown) => {
+            console.error('[sync] Could not discard', e instanceof Error ? e.message : 'unknown error');
+            Alert.alert(t('errors.INTERNAL', { requestId: '—' }));
+          }),
+      },
+    ]);
+  };
 
   const retry = async () => {
     setBusy(true);
@@ -72,6 +107,16 @@ export function SyncScreen() {
           <View key={row.key} style={[styles.row, row.error ? styles.rowFailed : null]}>
             <Text style={styles.rowTitle}>{row.title}</Text>
             {row.error ? <Text style={styles.error}>{row.error}</Text> : <Text style={styles.muted}>{t('mobile.sync.states.pending')}</Text>}
+            {row.discard ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t('mobile.sync.discard')}: ${row.title}`}
+                onPress={() => confirmDiscard(row)}
+                style={styles.discard}
+              >
+                <Text style={styles.discardText}>{t('mobile.sync.discard')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ))
       )}
@@ -91,4 +136,6 @@ const styles = StyleSheet.create({
   rowFailed: { borderColor: colors.danger },
   rowTitle: { color: colors.text, fontWeight: '500' },
   error: { color: colors.danger },
+  discard: { minHeight: 44, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  discardText: { color: colors.danger, fontWeight: '600' },
 });
