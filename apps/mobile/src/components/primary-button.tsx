@@ -6,13 +6,15 @@ interface Props {
   onPress: () => void;
   disabled?: boolean;
   variant?: 'primary' | 'outline';
+  accessibilityLabel?: string;
 }
 
-export function PrimaryButton({ title, onPress, disabled, variant = 'primary' }: Props) {
+export function PrimaryButton({ title, onPress, disabled, variant = 'primary', accessibilityLabel }: Props) {
   const outline = variant === 'outline';
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={onPress}

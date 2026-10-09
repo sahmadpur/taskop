@@ -19,8 +19,6 @@ export default {
     overdue: 'Gecikən',
     completed: 'Tamamlanan (bu gün)',
     issues: 'Problemlər (bu gün)',
-    recent: 'Son tapşırıqlar',
-    empty: 'Hələ tapşırıq yoxdur.',
     offline: 'Oflayn rejim — internet bərpa olunanda məlumatlar yenilənəcək.',
   },
   profile: {
