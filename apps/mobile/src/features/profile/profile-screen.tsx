@@ -38,7 +38,14 @@ export function ProfileScreen() {
         // The worker already confirmed; the next sign-in clears another user's data anyway (ensureUser).
         console.error('[offline] Could not clear local data on logout', e instanceof Error ? e.message : 'unknown error');
       }
-      await session.signOut();
+      try {
+        await session.signOut();
+      } catch (e) {
+        console.error('[session] Sign-out failed', e instanceof Error ? e.message : 'unknown error');
+        Alert.alert(t('errors.INTERNAL', { requestId: '—' }));
+      } finally {
+        release();
+      }
     };
     const confirmDelete = () =>
       Alert.alert(

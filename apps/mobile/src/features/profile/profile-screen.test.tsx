@@ -21,7 +21,7 @@ jest.mock('@/lib/session', () => ({
   }),
 }));
 
-const press = (buttons: AlertButton[] | undefined, text: string) => buttons!.find((b) => b.text === text)!.onPress?.();
+const press = (buttons: AlertButton[] | undefined, text: string) => act(async () => buttons!.find((b) => b.text === text)!.onPress?.());
 
 beforeEach(() => mockSignOut.mockClear());
 
@@ -36,10 +36,10 @@ describe('logout', () => {
     await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
     const [title, body, buttons] = alert.mock.calls[0]!;
     expect([title, body]).toEqual(['Göndərilməmiş məlumat var', '1 dəyişiklik hələ serverə göndərilməyib. Çıxsanız, onlar bu telefondan silinəcək.']);
-    press(buttons, 'Yenə də çıx');
+    await press(buttons, 'Yenə də çıx');
     expect(alert.mock.calls[1]![0]).toBe('Əminsiniz?');
     expect(mockSignOut).not.toHaveBeenCalled();
-    press(alert.mock.calls[1]![2], 'Sil və çıx');
+    await press(alert.mock.calls[1]![2], 'Sil və çıx');
     await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
     expect(await t.services.store.occurrences()).toEqual([]);
     expect(await t.services.store.unsyncedCount()).toBe(0);
@@ -54,7 +54,7 @@ describe('logout', () => {
     await renderWithServices(t.services, <ProfileScreen />);
     await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
     await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
-    press(alert.mock.calls[0]![2], 'Ləğv et');
+    await press(alert.mock.calls[0]![2], 'Ləğv et');
     expect(mockSignOut).not.toHaveBeenCalled();
     expect(await t.services.store.unsyncedCount()).toBe(1);
     alert.mockRestore();
@@ -111,8 +111,23 @@ describe('logout', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(alert).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(true);
-    await act(async () => press(alert.mock.calls[0]![2], 'Ləğv et'));
+    await press(alert.mock.calls[0]![2], 'Ləğv et');
     await eventually(async () => expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(false));
     alert.mockRestore();
+  });
+
+  it('re-enables the button and shows an error when sign-out fails', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockSignOut.mockRejectedValueOnce(new Error('keychain'));
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    await eventually(async () => expect(screen.getByRole('button', { name: 'Çıxış' }).props.accessibilityState.disabled).toBe(false));
+    expect(error).toHaveBeenCalled();
+    alert.mockRestore();
+    error.mockRestore();
   });
 });
