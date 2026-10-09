@@ -273,7 +273,7 @@ All codes are i18n keys.
   - `OCCURRENCE_NOT_CANCELLABLE`
 - Roster:
   - `ROSTER_USER_NOT_AT_SITE`
-  - `ROSTER_RANGE_TOO_LONG`
+  - A range longer than 62 days is a `VALIDATION_FAILED` with `fields.to = scheduling.issues.rangeTooLong`, the same as for the occurrence lists.
 
 **Preview warnings** (they don't block saving): `NO_ROSTERED_ASSIGNEES` (shift timing, nobody rostered in the next 14 days); `SKIP_DATE_OUT_OF_RANGE`.
 

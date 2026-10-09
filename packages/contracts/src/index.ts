@@ -21,3 +21,6 @@ export * from './checklists.js';
 export * from './scheduling-time.js';
 export * from './scheduling.js';
 export * from './scheduling-describe.js';
+export * from './shifts.js';
+export * from './occurrences.js';
+export * from './assignments.js';
