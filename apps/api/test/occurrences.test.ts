@@ -67,6 +67,17 @@ describe('occurrences', () => {
     expect(audit.rows.map((r) => r.action)).toEqual(['occurrence.cancelled']);
   });
 
+  it('refuses to cancel an overdue occurrence whose window has closed', async () => {
+    const w = await schedulingWorld(t);
+    const [first] = await occurrenceRows((await createAssignment(w)).id);
+    await ownerQuery("update occurrences set status = 'overdue' where id = $1", [first!.id]);
+    clock.set('2026-11-02T07:00:00Z'); // 11:00: the window closed, the sweep has not run yet
+    const res = await w.api.post(`/api/v1/occurrences/${first!.id}/cancel`, { reason: 'Gec' });
+    expect(res.body.error.code).toBe('OCCURRENCE_NOT_CANCELLABLE');
+    clock.set('2026-11-02T06:59:00Z');
+    expect((await w.api.post(`/api/v1/occurrences/${first!.id}/cancel`, { reason: 'Gec' })).status).toBe(200);
+  });
+
   it('flags unassigned occurrences once nobody is eligible', async () => {
     const w = await schedulingWorld(t);
     const a = await createAssignment(w);

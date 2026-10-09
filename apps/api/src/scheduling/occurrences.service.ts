@@ -71,8 +71,10 @@ export class OccurrencesService {
     const [row] = await tx.select().from(occurrences).where(and(eq(occurrences.id, id), this.scope.occurrences(a))).for('update');
     if (!row) throw new AppError('NOT_FOUND');
     await this.scope.assertSiteWritable(a, row.siteId);
-    if (row.status !== 'pending' && row.status !== 'overdue') throw new AppError('OCCURRENCE_NOT_CANCELLABLE');
     const now = this.clock.now();
+    if (row.status !== 'pending' && row.status !== 'overdue') throw new AppError('OCCURRENCE_NOT_CANCELLABLE');
+    // An overdue occurrence whose window has closed is missed, even before the sweep records it.
+    if (row.status === 'overdue' && row.closesAt <= now) throw new AppError('OCCURRENCE_NOT_CANCELLABLE');
     await tx.update(occurrences).set({ status: 'cancelled', cancelReason: input.reason, statusChangedAt: now, updatedAt: now }).where(eq(occurrences.id, id));
     await this.writer.recordTransitions([{ occurrenceId: id, from: row.status, to: 'cancelled', at: now, reason: input.reason }]);
     await this.audit.record({

@@ -62,7 +62,8 @@ export class ShiftsService {
         .tx()
         .select({ id: assignments.id })
         .from(assignments)
-        .where(and(eq(assignments.shiftId, id), eq(assignments.status, 'active')));
+        .where(and(eq(assignments.shiftId, id), eq(assignments.status, 'active')))
+        .orderBy(asc(assignments.id)); // id order: concurrent multi-assignment changes lock in the same order
       for (const a of using) {
         await this.writer.regenerate(a.id, 'shift_changed');
         await this.audit.record({ action: 'assignment.regenerated', entityType: 'assignment', entityId: a.id, after: { reason: 'shift_changed', shiftId: id } });

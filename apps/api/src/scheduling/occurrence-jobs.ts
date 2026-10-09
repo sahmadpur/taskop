@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OccurrenceStatus } from '@taskop/contracts';
-import { eq, type SQL, sql } from 'drizzle-orm';
+import { asc, eq, type SQL, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { sanitiseForLog } from '../common/error.filter';
 import { DbService } from '../db/db.service';
@@ -13,6 +13,7 @@ interface SweptRow extends Record<string, unknown> {
   to_status: Extract<OccurrenceStatus, 'overdue' | 'missed'>;
   due_at: Date | string;
   closes_at: Date | string;
+  created_at: Date | string;
 }
 
 /** The bodies of the two cron jobs (spec §5.1, §5.2). One transaction per tenant, with RLS. */
@@ -30,7 +31,8 @@ export class OccurrenceJobs {
   async materializeAll(only?: string[]): Promise<number> {
     const tenantIds = await this.tenantsWith(sql`select distinct tenant_id from assignments where status = 'active'`, only);
     return this.perTenant(tenantIds, async () => {
-      const rows = await this.db.tx().select({ id: assignments.id }).from(assignments).where(eq(assignments.status, 'active'));
+      // In id order, like every change that locks several assignments, so concurrent runs never deadlock.
+      const rows = await this.db.tx().select({ id: assignments.id }).from(assignments).where(eq(assignments.status, 'active')).orderBy(asc(assignments.id));
       let created = 0;
       for (const r of rows) created += await this.writer.materialize(r.id);
       return created;
@@ -52,21 +54,24 @@ export class OccurrenceJobs {
   async sweepTenant(now: Date): Promise<number> {
     const result = await this.db.tx().execute<SweptRow>(sql`
       with due as (
-        select id, status, due_at, closes_at from occurrences
+        select id, status, due_at, closes_at, created_at from occurrences
         where (status = 'pending' and due_at <= ${now}) or (status = 'overdue' and closes_at <= ${now})
         for update skip locked
       )
       update occurrences o
          set status = (case when due.closes_at <= ${now} then 'missed' else 'overdue' end)::occurrence_status,
-             status_changed_at = case when due.closes_at <= ${now} then due.closes_at else due.due_at end,
+             -- An occurrence created after its due or close time changes status no earlier than its creation.
+             status_changed_at = greatest(case when due.closes_at <= ${now} then due.closes_at else due.due_at end, due.created_at),
              updated_at = ${now}
         from due
        where o.id = due.id
-      returning o.id, due.status as from_status, o.status as to_status, due.due_at, due.closes_at`);
+      returning o.id, due.status as from_status, o.status as to_status, due.due_at, due.closes_at, due.created_at`);
     const transitions: Transition[] = [];
     for (const row of result.rows) {
       // Drizzle's pg driver returns raw timestamp strings from `execute`, not Dates.
-      const r = { ...row, due_at: new Date(row.due_at), closes_at: new Date(row.closes_at) };
+      const created = new Date(row.created_at);
+      const notBeforeCreation = (d: Date | string) => new Date(Math.max(+new Date(d), +created));
+      const r = { ...row, due_at: notBeforeCreation(row.due_at), closes_at: notBeforeCreation(row.closes_at) };
       if (r.from_status === 'pending' && r.to_status === 'missed' && r.due_at < r.closes_at) {
         // Down across the whole window: record both steps at their real times.
         transitions.push(

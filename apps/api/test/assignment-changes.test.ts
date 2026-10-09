@@ -37,6 +37,16 @@ describe('changing assignments', () => {
     expect(stale.body.error).toMatchObject({ code: 'REVISION_CONFLICT', currentRevision: 2 });
   });
 
+  it('re-ordering weekdays and skip dates is not a schedule change', async () => {
+    const w = await schedulingWorld(t);
+    const weekly = (weekdays: number[], skipDates: string[]) => ({ kind: 'weekly', every: 1, weekdays, startDate: TODAY, endDate: null, skipDates });
+    const a = await createAssignment(w, { schedule: weekly([5, 1, 3], ['2026-11-13', '2026-11-04']) });
+    expect(a.schedule).toMatchObject({ weekdays: [1, 3, 5], skipDates: ['2026-11-04', '2026-11-13'] });
+    const res = await w.api.put(`/api/v1/assignments/${a.id}`, { revision: 1, schedule: weekly([3, 5, 1], ['2026-11-13', '2026-11-04']) });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await occurrenceRows(a.id)).filter((r) => r.status === 'cancelled')).toHaveLength(0);
+  });
+
   it('a name-only edit regenerates nothing; an assignee-only edit refreshes future snapshots', async () => {
     const w = await schedulingWorld(t);
     const [w0] = w.workers as [string, string];

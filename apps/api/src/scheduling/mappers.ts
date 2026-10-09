@@ -1,4 +1,4 @@
-import { type AssignmentDto, type OccurrenceDto, type OccurrenceHistoryEntry, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
+import { type AssignmentDto, type OccurrenceDto, type OccurrenceHistoryEntry, type Recurrence, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
 import type { assignments, occurrences, occurrenceStatusHistory } from '../db/schema';
 
 /** Postgres `time` reads back as 'HH:MM:SS'. */
@@ -27,6 +27,21 @@ const canonical = (v: unknown): unknown => {
   }
   return v;
 };
+
+/** Sorts the order-free lists of a schedule, so re-ordering them is not a change. */
+export function normaliseSchedule(r: Recurrence): Recurrence {
+  const sorted = <T>(xs: T[]) => [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  switch (r.kind) {
+    case 'once':
+      return r;
+    case 'dates':
+      return { ...r, dates: sorted(r.dates) };
+    case 'weekly':
+      return { ...r, weekdays: sorted(r.weekdays), skipDates: sorted(r.skipDates) };
+    default:
+      return { ...r, skipDates: sorted(r.skipDates) };
+  }
+}
 
 /** Deep equality for JSON values; jsonb does not keep key order. */
 export const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));

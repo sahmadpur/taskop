@@ -22,7 +22,7 @@ import { assignmentAssignees, assignments, checklists, shiftRoster, shifts, site
 import type { Actor } from './actor';
 import { AssignmentRules } from './assignment-rules';
 import type { AssignmentListQueryDto, CreateAssignmentDto, PreviewAssignmentDto, UpdateAssignmentDto } from './dto';
-import { sameJson, toAssignmentDto } from './mappers';
+import { normaliseSchedule, sameJson, toAssignmentDto } from './mappers';
 import { OccurrenceQueries } from './occurrence-queries';
 import { OccurrenceWriter } from './occurrence-writer';
 import { SchedulingScope } from './scheduling-scope';
@@ -92,7 +92,7 @@ export class AssignmentsService {
         checklistId: input.checklistId,
         siteId: input.siteId,
         name: input.name || null,
-        schedule: input.schedule,
+        schedule: normaliseSchedule(input.schedule),
         timing: input.timing,
         shiftId: input.timing.mode === 'shift' ? input.timing.shiftId : null,
         createdByUserId: actor.userId,
@@ -112,9 +112,10 @@ export class AssignmentsService {
     if (row.status === 'ended') throw new AppError('ASSIGNMENT_ENDED');
     if (row.revision !== input.revision) throw new AppError('REVISION_CONFLICT', { details: { currentRevision: row.revision } });
     const before = await this.get(a, id);
+    // Validated as sent (issue paths point into the input), compared and stored in normalised order.
     const schedule = input.schedule ?? before.schedule;
     const timing = input.timing ?? before.timing;
-    const scheduleChanged = !sameJson(schedule, before.schedule);
+    const scheduleChanged = !sameJson(normaliseSchedule(schedule), normaliseSchedule(before.schedule));
     const timingChanged = !sameJson(timing, before.timing);
     const currentIds = before.assignees.map((u) => u.id).sort();
     const assigneeIds = input.assigneeIds ? [...new Set(input.assigneeIds)].sort() : currentIds;
@@ -134,7 +135,7 @@ export class AssignmentsService {
       .update(assignments)
       .set({
         name: input.name === undefined ? undefined : input.name || null,
-        schedule,
+        schedule: normaliseSchedule(schedule),
         timing,
         shiftId: timing.mode === 'shift' ? timing.shiftId : null,
         revision: row.revision + 1,

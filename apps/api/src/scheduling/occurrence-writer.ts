@@ -85,6 +85,7 @@ export class OccurrenceWriter {
             dueAt: s.dueAt,
             closesAt: s.closesAt,
             statusChangedAt: now,
+            createdAt: now, // the clock's time, matching the creation history row
           })),
         )
         // Targets the partial unique index occurrences_live_day_uq.

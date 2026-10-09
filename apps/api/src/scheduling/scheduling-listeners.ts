@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { localDateOf } from '@taskop/contracts';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { DomainEvents } from '../common/domain-events';
 import { AuditService } from '../db/audit.service';
@@ -44,12 +44,19 @@ export class SchedulingListeners implements OnModuleInit {
 
   /** Spec §5.3: pause the checklist's active assignments; reactivating the checklist does not resume them. */
   private async onChecklistDeactivated(checklistId: string): Promise<void> {
-    const paused = await this.db
-      .tx()
+    const tx = this.db.tx();
+    // Lock in id order first, so this never deadlocks with other changes that lock several assignments.
+    const paused = await tx
+      .select({ id: assignments.id })
+      .from(assignments)
+      .where(and(eq(assignments.checklistId, checklistId), eq(assignments.status, 'active')))
+      .orderBy(asc(assignments.id))
+      .for('update');
+    if (!paused.length) return;
+    await tx
       .update(assignments)
       .set({ status: 'paused', revision: sql`${assignments.revision} + 1`, updatedAt: new Date() })
-      .where(and(eq(assignments.checklistId, checklistId), eq(assignments.status, 'active')))
-      .returning({ id: assignments.id });
+      .where(inArray(assignments.id, paused.map((r) => r.id)));
     for (const { id } of paused) {
       await this.writer.cancelFuturePending(id, 'checklist_deactivated');
       await this.audit.record({

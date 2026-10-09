@@ -66,6 +66,20 @@ describe('occurrence jobs', () => {
     expect(row.rows[0]).toMatchObject({ status: 'missed', status_changed_at: new Date('2026-11-02T07:00:00Z') });
   });
 
+  it('never records a sweep transition before the occurrence was created', async () => {
+    const w = await schedulingWorld(t);
+    clock.set('2026-11-02T05:30:00Z'); // 09:30: today's window (due 09:00, closes 11:00) is already overdue
+    const first = (await occurrenceRows((await createAssignment(w, { timing: fixed('08:00', 60, 120) })).id))[0]!;
+    clock.set('2026-11-02T05:31:00Z');
+    expect(await jobs.sweepAll([w.s.tenantId])).toBe(1);
+    expect(await historyOf(first.id)).toEqual([
+      [null, 'pending', '2026-11-02T05:30:00.000Z', 'user'],
+      ['pending', 'overdue', '2026-11-02T05:30:00.000Z', 'system'],
+    ]);
+    const row = await ownerQuery<{ status_changed_at: Date }>('select status_changed_at from occurrences where id = $1', [first.id]);
+    expect(row.rows[0]!.status_changed_at).toEqual(new Date('2026-11-02T05:30:00Z'));
+  });
+
   it('jumps straight to missed with two history rows after downtime', async () => {
     const w = await schedulingWorld(t);
     const rows = await occurrenceRows((await createAssignment(w)).id);
@@ -132,6 +146,28 @@ describe('pg-boss wiring', () => {
         .toBe('overdue');
     } finally {
       await t.close();
+    }
+  });
+
+  it('registers cron schedules only while JOBS_CRON is on and uses stately queues', async () => {
+    const schedules = async () =>
+      (await ownerQuery<{ name: string }>("select name from pgboss.schedule where name like 'occurrences.%' order by name")).rows.map((r) => r.name);
+    const on = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'true' });
+    try {
+      expect(await schedules()).toEqual([QUEUES.materialize, QUEUES.sweep]);
+      const policies = await ownerQuery<{ name: string; policy: string }>("select name, policy from pgboss.queue where name in ($1, $2) order by name", [
+        QUEUES.materialize,
+        QUEUES.sweep,
+      ]);
+      expect(policies.rows.map((r) => r.policy)).toEqual(['stately', 'stately']);
+    } finally {
+      await on.close();
+    }
+    const off = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+    try {
+      expect(await schedules()).toEqual([]);
+    } finally {
+      await off.close();
     }
   });
 });

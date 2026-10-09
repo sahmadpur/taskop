@@ -76,7 +76,8 @@ export const copyRosterInputSchema = z
   .superRefine((v, ctx) => {
     v.targetWeekStarts.forEach((d, i) => {
       const offset = dayNumber(d) - dayNumber(v.sourceWeekStart);
-      if (offset === 0 || offset % 7 !== 0) ctx.addIssue({ code: 'custom', path: ['targetWeekStarts', i], message: 'errors.validation.invalid' });
+      // Targets are whole weeks after the source, never the source itself or an earlier week.
+      if (offset <= 0 || offset % 7 !== 0) ctx.addIssue({ code: 'custom', path: ['targetWeekStarts', i], message: 'errors.validation.invalid' });
     });
   });
 export type CopyRosterInput = z.input<typeof copyRosterInputSchema>;

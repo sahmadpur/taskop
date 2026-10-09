@@ -41,6 +41,8 @@ describe('scheduling resources', () => {
     expect(copyRosterInputSchema.safeParse({ siteId: ID, sourceWeekStart: '2026-11-02', targetWeekStarts: ['2026-11-09'] }).success).toBe(true);
     expect(copyRosterInputSchema.safeParse({ siteId: ID, sourceWeekStart: '2026-11-02', targetWeekStarts: ['2026-11-05'] }).success).toBe(false);
     expect(copyRosterInputSchema.safeParse({ siteId: ID, sourceWeekStart: '2026-11-02', targetWeekStarts: ['2026-11-02'] }).success).toBe(false);
+    // Only later weeks: copying must not overwrite past weeks.
+    expect(copyRosterInputSchema.safeParse({ siteId: ID, sourceWeekStart: '2026-11-09', targetWeekStarts: ['2026-11-02'] }).success).toBe(false);
   });
 
   it('requires 1–50 assignees', () => {
