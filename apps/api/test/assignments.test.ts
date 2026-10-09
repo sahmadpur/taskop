@@ -1,5 +1,7 @@
 import { addDays } from '@taskop/contracts';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DbService } from '../src/db/db.service';
+import { OccurrenceWriter } from '../src/scheduling/occurrence-writer';
 import { createTestApp, type TestApp } from './app';
 import { FakeClock } from './fake-clock';
 import { createUserDirect } from './fixtures';
@@ -135,6 +137,24 @@ describe('assignments', () => {
     expect((await post(w)).body.error).toMatchObject({ code: 'ASSIGNEE_INACTIVE', userIds: [w.workers[1]] });
     await w.api.post(`/api/v1/checklists/${w.checklistId}/deactivate`);
     expect((await post(w, { assigneeIds: [w.workers[0]] })).body.error.code).toBe('CHECKLIST_DEACTIVATED');
+  });
+
+  it('generates midnight slots on later runs', async () => {
+    const w = await schedulingWorld(t);
+    const a = await createAssignment(w, { timing: fixed('00:00', 60, 0) });
+    const lastDate = async () => (await occurrenceRows(a.id)).at(-1)!.local_date;
+    const histories = async () =>
+      (await ownerQuery<{ n: number }>('select count(*)::int as n from occurrence_status_history h join occurrences o on o.id = h.occurrence_id where o.assignment_id = $1', [a.id])).rows[0]!.n;
+    const run = () => t.app.get(DbService).withTenant(w.s.tenantId, null, () => t.app.get(OccurrenceWriter).materialize(a.id));
+    const first = (await occurrenceRows(a.id)).length;
+    expect(first).toBe(14); // today's 00:00 window is already closed at 08:00
+    expect(await lastDate()).toBe('2026-11-16');
+    clock.set('2026-11-03T04:00:00Z');
+    expect(await run()).toBe(1);
+    expect(await lastDate()).toBe('2026-11-17');
+    const before = await histories();
+    expect(await run()).toBe(0);
+    expect(await histories()).toBe(before);
   });
 
   it('refuses inactive sites', async () => {

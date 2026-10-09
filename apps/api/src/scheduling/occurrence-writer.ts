@@ -50,7 +50,7 @@ export class OccurrenceWriter {
 
   /**
    * Creates the occurrences an active assignment still lacks, up to today + 14 days (spec §5.1).
-   * Slots start after `materialized_until` and close after now; on the first run (null) a window that is
+   * Slots start at or after `materialized_until` and close after now; on the first run (null) a window that is
    * already open is included. Afterwards `materialized_until` is the start of day today + 15, so every slot
    * is considered once and a cancelled occurrence is never recreated.
    */
@@ -67,7 +67,7 @@ export class OccurrenceWriter {
     // First run: look back far enough for a window of up to 7 days that is still open.
     const from = until ? localDateOf(until, tz) : addDays(today, -8);
     const slots = expandSchedule(recurrenceSchema.parse(a.schedule), timing, shift, tz, from, addDays(today, SCHEDULING_LIMITS.horizonDays)).filter(
-      (s) => (!until || s.startsAt > until) && s.closesAt > now,
+      (s) => (!until || s.startsAt >= until) && s.closesAt > now,
     );
     let created: { id: string }[] = [];
     if (slots.length) {
