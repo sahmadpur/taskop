@@ -46,6 +46,11 @@ export interface ApiClientOptions {
   onRefreshed?: (result: LoginResult) => void;
   fetch?: typeof fetch;
   refreshRetryDelayMs?: number;
+  /**
+   * Aborts a request (and a refresh) that has not settled after this long, body included, and throws a NETWORK error.
+   * Unset: no limit (the web relies on the browser).
+   */
+  timeoutMs?: number;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -64,7 +69,7 @@ async function toApiError(res: Response): Promise<ApiError> {
   const parsed = errorBodySchema.safeParse(await res.json().catch(() => null));
   if (!parsed.success) return new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
   const e = parsed.data.error;
-  return new ApiError(res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null, e.userIds ?? null);
+  return new ApiError(res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null, e.userIds ?? null, e.missing ?? null);
 }
 
 async function isUnauthenticated(res: Response): Promise<boolean> {
@@ -80,32 +85,49 @@ export class ApiClient {
     this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  async request<T>(method: string, path: string, o: RequestOptions<T> = {}): Promise<T> {
-    let res = await this.send(method, path, o);
-    if (res.status === 401 && o.auth !== false && this.opts.refresh !== false && (await isUnauthenticated(res))) {
-      const refreshed = await this.refresh();
-      if (!refreshed) {
-        this.opts.onSessionExpired?.();
-        throw await toApiError(res);
+  request<T>(method: string, path: string, o: RequestOptions<T> = {}): Promise<T> {
+    return this.bounded(async (signal) => {
+      let res = await this.send(method, path, o, signal);
+      if (res.status === 401 && o.auth !== false && this.opts.refresh !== false && (await isUnauthenticated(res))) {
+        const refreshed = await this.refresh();
+        if (!refreshed) {
+          this.opts.onSessionExpired?.();
+          throw await toApiError(res);
+        }
+        res = await this.send(method, path, o, signal);
       }
-      res = await this.send(method, path, o);
-    }
-    return this.parse(res, o.schema);
+      return this.parse(res, o.schema);
+    });
   }
 
   /** Single-flight: concurrent callers share one refresh request. */
   refresh(): Promise<LoginResult | null> {
-    this.refreshing ??= this.doRefresh().finally(() => {
+    this.refreshing ??= this.bounded((signal) => this.doRefresh(signal)).finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
   }
 
-  private async doRefresh(): Promise<LoginResult | null> {
+  /** Runs `work` under `timeoutMs`: on expiry its requests are aborted and the caller gets a NETWORK error. */
+  private bounded<T>(work: (signal: AbortSignal | undefined) => Promise<T>): Promise<T> {
+    const ms = this.opts.timeoutMs;
+    if (ms === undefined) return work(undefined);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(ApiError.network());
+      }, ms);
+    });
+    return Promise.race([work(controller.signal), expired]).finally(() => clearTimeout(timer));
+  }
+
+  private async doRefresh(signal: AbortSignal | undefined): Promise<LoginResult | null> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const refreshToken = this.opts.client === 'mobile' ? await this.opts.tokenStore.getRefreshToken() : null;
       if (this.opts.client === 'mobile' && !refreshToken) break;
-      const res = await this.send('POST', '/auth/refresh', { body: refreshToken ? { refreshToken } : {}, auth: false });
+      const res = await this.send('POST', '/auth/refresh', { body: refreshToken ? { refreshToken } : {}, auth: false }, signal);
       if (res.ok) {
         const parsed = loginResultSchema.safeParse(await res.json().catch(() => null));
         if (!parsed.success) throw new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
@@ -124,7 +146,7 @@ export class ApiClient {
     return null;
   }
 
-  private async send<T>(method: string, path: string, o: RequestOptions<T>): Promise<Response> {
+  private async send<T>(method: string, path: string, o: RequestOptions<T>, signal?: AbortSignal): Promise<Response> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (o.body !== undefined) headers['Content-Type'] = 'application/json';
     const token = o.auth === false ? null : this.opts.tokenStore.getAccessToken();
@@ -135,6 +157,7 @@ export class ApiClient {
         headers,
         body: o.body === undefined ? undefined : JSON.stringify(o.body),
         credentials: 'include',
+        ...(signal ? { signal } : {}),
       });
     } catch {
       throw ApiError.network();

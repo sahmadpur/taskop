@@ -12,10 +12,16 @@ import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 import { useMe } from '@/lib/session';
 
-type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
+export type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export const occurrenceVariant = (s: OccurrenceStatus): Variant =>
-  s === 'overdue' || s === 'missed' ? 'destructive' : s === 'cancelled' ? 'outline' : s === 'pending' ? 'secondary' : 'default';
+  s === 'overdue' || s === 'missed' || s === 'partial'
+    ? 'destructive'
+    : s === 'cancelled'
+      ? 'outline'
+      : s === 'pending' || s === 'started' || s === 'in_progress'
+        ? 'secondary'
+        : 'default';
 
 export const assignmentVariant = (s: AssignmentStatus): Variant => (s === 'active' ? 'default' : s === 'paused' ? 'secondary' : 'outline');
 

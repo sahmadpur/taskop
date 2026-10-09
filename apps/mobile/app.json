@@ -27,7 +27,22 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-status-bar"
+      "expo-status-bar",
+      ["expo-sqlite", { "useSQLCipher": true }],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Taskop yoxlamalar zamanı foto və video çəkmək üçün kameradan istifadə edir.",
+          "microphonePermission": "Taskop video sübutlarda səsi yazmaq üçün mikrofondan istifadə edir.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "Taskop sübut kimi qalereyadan foto və video seçmək üçün icazə istəyir." }
+      ],
+      "expo-video",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

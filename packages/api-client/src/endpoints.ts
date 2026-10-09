@@ -78,6 +78,20 @@ import {
   type UserListQuery,
   userWithSecretSchema,
   type PermissionKey,
+  type ClaimCommand,
+  claimResultSchema,
+  type CompleteCommand,
+  completeResultSchema,
+  executionDetailSchema,
+  mediaConfirmResultSchema,
+  mediaUploadTicketSchema,
+  mediaUrlSchema,
+  problemDtoSchema,
+  type ProblemListQuery,
+  type RegisterMediaCommand,
+  type SaveAnswersCommand,
+  saveAnswersResultSchema,
+  syncResponseSchema,
 } from '@taskop/contracts';
 import { z } from 'zod';
 import type { ApiClient, QueryParams } from './client.js';
@@ -148,6 +162,7 @@ export function createTaskopApi(c: ApiClient) {
     checklists: createChecklistsApi(c),
     templates: createTemplatesApi(c),
     ...createSchedulingApi(c),
+    ...createExecutionsApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -245,3 +260,29 @@ export function createSchedulingApi(c: ApiClient) {
   };
 }
 export type SchedulingApi = ReturnType<typeof createSchedulingApi>;
+
+/** Sub-project 4: the phone's sync and upload commands, and the web's execution and problem reads. */
+export function createExecutionsApi(c: ApiClient) {
+  return {
+    sync: {
+      pull: (knownVersionIds: string[] = []) =>
+        c.request('GET', '/me/sync', { query: { knownVersionIds: knownVersionIds.join(',') }, schema: syncResponseSchema }),
+    },
+    executions: {
+      claim: (body: ClaimCommand) => c.request('POST', '/executions', { body, schema: claimResultSchema }),
+      saveAnswers: (id: string, body: SaveAnswersCommand) => c.request('PUT', `/executions/${id}/answers`, { body, schema: saveAnswersResultSchema }),
+      complete: (id: string, body: CompleteCommand) => c.request('POST', `/executions/${id}/complete`, { body, schema: completeResultSchema }),
+      registerMedia: (executionId: string, body: RegisterMediaCommand) =>
+        c.request('POST', `/executions/${executionId}/media`, { body, schema: mediaUploadTicketSchema }),
+      get: (id: string) => c.request('GET', `/executions/${id}`, { schema: executionDetailSchema }),
+    },
+    media: {
+      confirmUploaded: (id: string) => c.request('POST', `/media/${id}/uploaded`, { body: {}, schema: mediaConfirmResultSchema }),
+      url: (id: string) => c.request('GET', `/media/${id}/url`, { schema: mediaUrlSchema }),
+    },
+    problems: {
+      list: (query: ProblemListQuery) => c.request('GET', '/problems', { query: q(query), schema: pageOf(problemDtoSchema) }),
+    },
+  };
+}
+export type ExecutionsApi = ReturnType<typeof createExecutionsApi>;

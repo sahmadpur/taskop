@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { contentIssueSchema } from './checklist-content.js';
+import { missingSchema } from './execution-logic.js';
 
 export const ErrorCode = {
   VALIDATION_FAILED: 'VALIDATION_FAILED',
@@ -47,6 +48,15 @@ export const ErrorCode = {
   ASSIGNMENT_ENDED: 'ASSIGNMENT_ENDED',
   OCCURRENCE_NOT_CANCELLABLE: 'OCCURRENCE_NOT_CANCELLABLE',
   ROSTER_USER_NOT_AT_SITE: 'ROSTER_USER_NOT_AT_SITE',
+  REQUIREMENTS_UNMET: 'REQUIREMENTS_UNMET',
+  EXECUTION_NOT_ACTIVE: 'EXECUTION_NOT_ACTIVE',
+  NOT_EXECUTOR: 'NOT_EXECUTOR',
+  CLOCK_INVALID: 'CLOCK_INVALID',
+  MEDIA_TYPE_INVALID: 'MEDIA_TYPE_INVALID',
+  MEDIA_TOO_LARGE: 'MEDIA_TOO_LARGE',
+  MEDIA_LIMIT_REACHED: 'MEDIA_LIMIT_REACHED',
+  MEDIA_NOT_FOUND_IN_STORAGE: 'MEDIA_NOT_FOUND_IN_STORAGE',
+  EVIDENCE_LIVE_ONLY: 'EVIDENCE_LIVE_ONLY',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -97,6 +107,15 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   ASSIGNMENT_ENDED: 409,
   OCCURRENCE_NOT_CANCELLABLE: 409,
   ROSTER_USER_NOT_AT_SITE: 422,
+  REQUIREMENTS_UNMET: 422,
+  EXECUTION_NOT_ACTIVE: 409,
+  NOT_EXECUTOR: 403,
+  CLOCK_INVALID: 422,
+  MEDIA_TYPE_INVALID: 422,
+  MEDIA_TOO_LARGE: 422,
+  MEDIA_LIMIT_REACHED: 422,
+  MEDIA_NOT_FOUND_IN_STORAGE: 422,
+  EVIDENCE_LIVE_ONLY: 422,
   INTERNAL: 500,
 };
 
@@ -112,6 +131,8 @@ export const errorBodySchema = z.object({
     issues: z.array(contentIssueSchema).optional(),
     currentRevision: z.number().int().optional(),
     userIds: z.array(z.string()).optional(),
+    /** REQUIREMENTS_UNMET: what still blocks completion. */
+    missing: z.array(missingSchema).optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;

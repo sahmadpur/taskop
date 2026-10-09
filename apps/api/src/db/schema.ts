@@ -528,6 +528,8 @@ export const occurrences = pgTable(
     status: occurrenceStatus('status').notNull().default('pending'),
     statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
     cancelReason: text('cancel_reason'),
+    // Pinned at the first download by an assignee or at the claim, then never changed (SP4 spec §5.1).
+    checklistVersionId: uuid('checklist_version_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -539,6 +541,7 @@ export const occurrences = pgTable(
     foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'occurrences_checklist_fk' }),
     foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'occurrences_site_fk' }),
     foreignKey({ columns: [t.tenantId, t.shiftId], foreignColumns: [shifts.tenantId, shifts.id], name: 'occurrences_shift_fk' }),
+    foreignKey({ columns: [t.tenantId, t.checklistVersionId], foreignColumns: [checklistVersions.tenantId, checklistVersions.id], name: 'occurrences_version_fk' }),
     check('occurrences_window_ck', sql`${t.startsAt} <= ${t.dueAt} and ${t.dueAt} <= ${t.closesAt}`),
     index('occurrences_site_start_idx').on(t.tenantId, t.siteId, t.startsAt),
     index('occurrences_status_due_idx').on(t.tenantId, t.status, t.dueAt),
@@ -580,5 +583,118 @@ export const occurrenceStatusHistory = pgTable(
   (t) => [
     foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'occurrence_status_history_occurrence_fk' }),
     index('occurrence_status_history_occurrence_idx').on(t.tenantId, t.occurrenceId, t.at),
+  ],
+);
+
+// Must match EXECUTION_STATES, CLAIM_REJECTION_REASONS, MEDIA_*, PROBLEM_SOURCES and PROBLEM_SEVERITIES in @taskop/contracts.
+export const executionState = pgEnum('execution_state', ['active', 'completed', 'partial', 'rejected']);
+export const claimRejectionReason = pgEnum('claim_rejection_reason', ['ALREADY_CLAIMED', 'NOT_ASSIGNED', 'NOT_STARTABLE', 'NOT_YET_OPEN', 'CLOSED', 'NOT_ON_SHIFT']);
+export const mediaKind = pgEnum('media_kind', ['photo', 'video']);
+export const mediaSource = pgEnum('media_source', ['camera', 'gallery']);
+export const mediaStatus = pgEnum('media_status', ['pending', 'uploaded']);
+export const problemSource = pgEnum('problem_source', ['rule', 'manual']);
+export const problemSeverity = pgEnum('problem_severity', ['normal', 'critical']);
+
+/** One attempt to execute an occurrence (SP4 spec §5.2). The id is generated on the phone, so every command is idempotent. */
+export const executions = pgTable(
+  'executions',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenantId(),
+    occurrenceId: uuid('occurrence_id').notNull(),
+    checklistVersionId: uuid('checklist_version_id').notNull(),
+    executorUserId: uuid('executor_user_id').notNull(),
+    state: executionState('state').notNull(),
+    rejectedReason: claimRejectionReason('rejected_reason'),
+    // Device times (after bounds), with the server receipt times beside them (BR-11).
+    startedAt: ts('started_at').notNull(),
+    startedReceivedAt: ts('started_received_at').notNull(),
+    completedAt: ts('completed_at'),
+    completedReceivedAt: ts('completed_received_at'),
+    lastSyncedAt: ts('last_synced_at').notNull(),
+    answers: jsonb('answers').notNull().default({}),
+    answersRev: integer('answers_rev').notNull().default(0),
+    progress: jsonb('progress').notNull(),
+    score: jsonb('score'),
+    late: boolean('late').notNull().default(false),
+    clockOffsetMs: integer('clock_offset_ms'),
+    clockSuspect: boolean('clock_suspect').notNull().default(false),
+    device: jsonb('device').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('executions_tenant_id_uq').on(t.tenantId, t.id),
+    // The claim lock (FR-09.11, BR-13): one counted execution per occurrence; rejected ones are kept beside it.
+    uniqueIndex('executions_claim_uq').on(t.occurrenceId).where(sql`state <> 'rejected'`),
+    foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'executions_occurrence_fk' }),
+    foreignKey({ columns: [t.tenantId, t.checklistVersionId], foreignColumns: [checklistVersions.tenantId, checklistVersions.id], name: 'executions_version_fk' }),
+    foreignKey({ columns: [t.tenantId, t.executorUserId], foreignColumns: [users.tenantId, users.id], name: 'executions_executor_fk' }),
+    check('executions_rejected_ck', sql`(${t.state} = 'rejected') = (${t.rejectedReason} is not null)`),
+    index('executions_executor_idx').on(t.tenantId, t.executorUserId, t.startedAt),
+    index('executions_occurrence_idx').on(t.tenantId, t.occurrenceId),
+  ],
+);
+
+/** Photos and videos (FR-12). The file itself lives in object storage under storage_key. */
+export const executionMedia = pgTable(
+  'execution_media',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenantId(),
+    executionId: uuid('execution_id').notNull(),
+    // null = attached only to a manual problem.
+    itemId: uuid('item_id'),
+    kind: mediaKind('kind').notNull(),
+    source: mediaSource('source').notNull(),
+    mime: text('mime').notNull(),
+    bytes: integer('bytes').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    durationMs: integer('duration_ms'),
+    capturedAt: ts('captured_at').notNull(),
+    capturedByUserId: uuid('captured_by_user_id').notNull(),
+    storageKey: text('storage_key').notNull(),
+    status: mediaStatus('status').notNull().default('pending'),
+    uploadedAt: ts('uploaded_at'),
+    // Set by media.cleanup when it deleted the object of a never-uploaded medium.
+    storagePurgedAt: ts('storage_purged_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('execution_media_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'execution_media_execution_fk' }),
+    foreignKey({ columns: [t.tenantId, t.capturedByUserId], foreignColumns: [users.tenantId, users.id], name: 'execution_media_captured_by_fk' }),
+    index('execution_media_execution_idx').on(t.tenantId, t.executionId),
+    index('execution_media_status_idx').on(t.tenantId, t.status, t.createdAt),
+  ],
+);
+
+/** Rule and manual problems of counted executions (FR-13), derived from the answers; frozen once the execution closes. */
+export const executionProblems = pgTable(
+  'execution_problems',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    executionId: uuid('execution_id').notNull(),
+    occurrenceId: uuid('occurrence_id').notNull(),
+    siteId: uuid('site_id').notNull(),
+    checklistId: uuid('checklist_id').notNull(),
+    itemId: uuid('item_id').notNull(),
+    source: problemSource('source').notNull(),
+    severity: problemSeverity('severity').notNull(),
+    note: text('note'),
+    mediaIds: uuid('media_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('execution_problems_item_uq').on(t.executionId, t.itemId, t.source),
+    foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'execution_problems_execution_fk' }),
+    foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'execution_problems_occurrence_fk' }),
+    foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'execution_problems_site_fk' }),
+    foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'execution_problems_checklist_fk' }),
+    index('execution_problems_site_idx').on(t.tenantId, t.siteId, t.createdAt),
+    index('execution_problems_severity_idx').on(t.tenantId, t.severity, t.createdAt),
   ],
 );

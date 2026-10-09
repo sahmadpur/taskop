@@ -12,6 +12,7 @@ export default {
   schedule: 'İcra cədvəli',
   shifts: 'Növbələr',
   roster: 'Növbə cədvəli',
+  problems: 'Problemlər',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

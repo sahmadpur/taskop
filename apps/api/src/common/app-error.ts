@@ -1,10 +1,12 @@
-import { type ContentIssue, ERROR_HTTP_STATUS, type ErrorCode } from '@taskop/contracts';
+import { type ContentIssue, ERROR_HTTP_STATUS, type ErrorCode, type Missing } from '@taskop/contracts';
 
 export interface AppErrorDetails {
   issues?: ContentIssue[];
   currentRevision?: number;
   /** Users that caused the error (e.g. ASSIGNEE_NOT_AT_SITE). */
   userIds?: string[];
+  /** REQUIREMENTS_UNMET: what still blocks completion. */
+  missing?: Missing[];
 }
 
 export class AppError extends Error {

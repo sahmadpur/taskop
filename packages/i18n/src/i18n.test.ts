@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_PERMISSIONS,
   CANCEL_REASON_CODES,
+  CLAIM_REJECTION_REASONS,
   describeSchedule,
+  EXECUTION_ISSUE_CODES,
+  EXECUTION_STATES,
   ErrorCode,
   ISSUE_CODES,
   ITEM_TYPES,
+  MEDIA_KINDS,
+  MEDIA_SOURCES,
+  MISSING_KINDS,
   OCCURRENCE_STATUSES,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
+  PROBLEM_SEVERITIES,
+  PROBLEM_SOURCES,
   SCHEDULING_ISSUE_CODES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
@@ -73,5 +81,70 @@ describe('scheduling translations', () => {
     for (const k of ['once', 'daily', 'weekly', 'monthly', 'dates'] as const) expect(az.scheduling.builder.kinds[k], k).toBeTypeOf('string');
     for (const k of ['active', 'paused', 'ended'] as const) expect(az.scheduling.assignments.status[k], k).toBeTypeOf('string');
     expect(az.scheduling.roster.cellLabel).toContain('{{person}}');
+  });
+});
+
+describe('execution translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('translates states, claim rejections, issue codes, sources, severities and media labels', () => {
+    for (const s of EXECUTION_STATES) expect(az.executions.states[s], s).toBeTypeOf('string');
+    for (const r of CLAIM_REJECTION_REASONS) expect(az.executions.claimRejections[r], r).toBeTypeOf('string');
+    for (const code of EXECUTION_ISSUE_CODES) expect(lookup(code), code).toBeTypeOf('string');
+    for (const s of PROBLEM_SOURCES) expect(az.executions.problemSources[s], s).toBeTypeOf('string');
+    for (const s of PROBLEM_SEVERITIES) expect(az.executions.severities[s], s).toBeTypeOf('string');
+    for (const k of MEDIA_KINDS) expect(az.executions.mediaKinds[k], k).toBeTypeOf('string');
+    for (const k of MEDIA_SOURCES) expect(az.executions.mediaSources[k], k).toBeTypeOf('string');
+  });
+
+  it('uses the spec wording for the clock and the lost claim', () => {
+    expect(az.errors.CLOCK_INVALID).toBe('Telefonun saatını yoxlayın.');
+    expect(az.executions.alreadyClaimedBy.replace('{{name}}', 'Murad')).toBe('Bu checklist artıq Murad tərəfindən icra olunur');
+    expect(az.executions.flags.mediaPending).toContain('{{count}}');
+  });
+});
+
+describe('execution web translations', () => {
+  it('has the strings the drawer, the schedule list and the problems page use', () => {
+    expect(az.nav.problems).toBe('Problemlər');
+    expect(az.executions.tabs).toEqual({ overview: 'Ümumi', execution: 'İcra' });
+    expect(az.executions.rejected.title).toBe('Rədd edilmiş icralar ({{count}})');
+    expect(az.executions.receivedAt).toContain('{{time}}');
+    expect(az.executions.progressValue).toContain('{{answered}}');
+    expect(az.executions.media.pendingLabel).toContain('{{kind}}');
+    for (const k of ['date', 'site', 'checklist', 'item', 'severity', 'source', 'note', 'executor', 'media'] as const) {
+      expect(az.executions.problemsPage.columns[k], k).toBeTypeOf('string');
+    }
+  });
+});
+
+describe('mobile execution translations', () => {
+  it('labels every missing kind, outbox command, start block and sync state', () => {
+    for (const k of MISSING_KINDS) expect(az.mobile.finish.missingKinds[k], k).toBeTypeOf('string');
+    for (const k of ['claim', 'media', 'answers', 'complete', 'upload'] as const) expect(az.mobile.sync.kinds[k], k).toBeTypeOf('string');
+    for (const k of ['notYetOpen', 'closed', 'claimedByOther', 'finished', 'needsUpdate', 'notDownloaded', 'clockAhead'] as const) {
+      expect(az.mobile.checklists.startBlocked[k], k).toBeTypeOf('string');
+    }
+    for (const k of ['synced', 'pending', 'offline', 'failed'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
+    for (const k of ['FILE_MISSING', 'UPLOAD_FAILED'] as const) expect(az.mobile.sync.mediaErrors[k], k).toBeTypeOf('string');
+    for (const k of ['tooLong', 'tooLarge', 'resolution'] as const) expect(az.mobile.evidence[k], k).toBeTypeOf('string');
+  });
+
+  it('uses the spec wording', () => {
+    expect(az.mobile.checklists.sections).toEqual({ now: 'İndi', inProgress: 'Davam edən', upcoming: 'Gələcək', done: 'Bitmiş' });
+    expect(az.mobile.checklists.claimedBy.replace('{{name}}', 'Murad')).toBe('Murad icra edir');
+    expect(az.mobile.checklists.startBlocked.clockAhead).toBe('Telefonun saatı irəlidədir. Saatı düzəldin və yenidən cəhd edin.');
+    expect(az.mobile.sync.pending.replace('{{count}}', '3')).toBe('3 gözləyir');
+    expect(az.mobile.sync.retry).toBe('Yenidən cəhd et');
+    expect(az.mobile.execution.flagProblem).toBe('Problem qeyd et');
+    expect(az.mobile.execution.needsUpdate).toBe('Tətbiqi yeniləyin');
+    expect(az.mobile.finish.complete).toBe('Tamamla');
+    expect(az.mobile.sync.notAccepted.replace('{{reason}}', 'X')).toBe('Server qəbul etmədi: X');
+    expect(az.mobile.sync.fileNotAccepted.replace('{{reason}}', 'X')).toBe('Server bu faylı qəbul etmədi: X');
+    expect(az.mobile.sync.discard).toBe('Sil');
+  });
+
+  it('has the discard confirmation texts', () => {
+    for (const k of ['discardTitle', 'discardBody', 'discardClaimBody'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
   });
 });

@@ -25,6 +25,14 @@ const configSchema = z.object({
   JOBS_ENABLED: z.stringbool().default(true),
   /** Register the cron schedules. Off for tests that start workers but must not touch other tenants. */
   JOBS_CRON: z.stringbool().default(true),
+  /** Server-side S3 calls (HEAD, DELETE), e.g. http://seaweedfs:8333 (spec §9). */
+  S3_ENDPOINT: z.url(),
+  /** The host phones and browsers reach; presigned URLs are signed against it (S3 signatures cover the host). */
+  S3_PUBLIC_ENDPOINT: z.url(),
+  S3_BUCKET: z.string().min(3).default('taskop-media'),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
+  S3_FORCE_PATH_STYLE: z.stringbool().default(true),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

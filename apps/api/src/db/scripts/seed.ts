@@ -1,5 +1,5 @@
 import { hash } from '@node-rs/argon2';
-import { addDays, countItems, localDateOf, regenerateIds } from '@taskop/contracts';
+import { addDays, type Answers, type ChecklistContent, computeScore, countItems, deriveProblems, localDateOf, progress, regenerateIds, zonedTimeToUtc } from '@taskop/contracts';
 import { and, eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { uuidv7 } from 'uuidv7';
@@ -85,6 +85,113 @@ async function seedDemoScheduling(tx: Tx, tenantId: string, ownerId: string): Pr
   await tx.insert(schema.assignmentAssignees).values({ tenantId, assignmentId, userId: elvin.id });
 }
 
+/**
+ * Idempotent: yesterday's "Səhər təmizliyi" occurrence, started by elvin and left partial by the sweep, with a rule
+ * problem ("Pis qoxu var?" = yes) and a manual one, so the web's execution tab and problems page have data.
+ */
+async function seedDemoExecution(tx: Tx, tenantId: string): Promise<void> {
+  const existing = await tx.select({ id: schema.executions.id }).from(schema.executions).where(eq(schema.executions.tenantId, tenantId)).limit(1);
+  if (existing.length) return;
+  const [assignment] = await tx
+    .select()
+    .from(schema.assignments)
+    .where(and(eq(schema.assignments.tenantId, tenantId), eq(schema.assignments.name, 'Səhər təmizliyi')));
+  const [elvin] = await tx.select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.username, 'elvin')));
+  if (!assignment || !elvin) return;
+  const [checklist] = await tx.select({ versionId: schema.checklists.currentVersionId }).from(schema.checklists).where(eq(schema.checklists.id, assignment.checklistId));
+  if (!checklist?.versionId) return;
+  const [version] = await tx.select({ content: schema.checklistVersions.content }).from(schema.checklistVersions).where(eq(schema.checklistVersions.id, checklist.versionId));
+  const yesterday = addDays(localDateOf(new Date(), 'Asia/Baku'), -1);
+  const taken = await tx
+    .select({ id: schema.occurrences.id })
+    .from(schema.occurrences)
+    .where(and(eq(schema.occurrences.assignmentId, assignment.id), eq(schema.occurrences.localDate, yesterday)));
+  if (!version || taken.length) return;
+
+  const content = version.content as ChecklistContent;
+  const [entry, sanitary] = content.sections;
+  const answers: Answers = {};
+  for (const item of [...(entry?.items ?? []), ...(sanitary?.items ?? [])]) {
+    if (item.type === 'yes_no') answers[item.id] = { optionIds: [item.options[0].id] };
+    // "Pis qoxu var?" = yes is a problem; its follow-up asks for the source.
+    if (item.type === 'yes_no' && item.label === 'Pis qoxu var?') {
+      const followUp = item.rules[0]?.then.followUps[0];
+      if (followUp) answers[followUp.id] = { text: 'Kanalizasiya borusundan' };
+    }
+    if (item.type === 'yes_no' && item.label === 'Zibil qutuları boşaldılıb?') {
+      answers[item.id] = { optionIds: [item.options[0].id], problem: { severity: 'normal', note: 'Qutulardan birinin qapağı sınıqdır', mediaIds: [] } };
+    }
+  }
+
+  const startsAt = zonedTimeToUtc(yesterday, 9 * 60, 'Asia/Baku');
+  const dueAt = new Date(+startsAt + 120 * 60_000);
+  const closesAt = new Date(+dueAt + 60 * 60_000);
+  const startedAt = new Date(+startsAt + 15 * 60_000);
+  const answeredAt = new Date(+startedAt + 5 * 60_000);
+  const occurrenceId = uuidv7();
+  await tx.insert(schema.occurrences).values({
+    id: occurrenceId,
+    tenantId,
+    assignmentId: assignment.id,
+    checklistId: assignment.checklistId,
+    siteId: assignment.siteId,
+    localDate: yesterday,
+    startsAt,
+    dueAt,
+    closesAt,
+    status: 'partial',
+    statusChangedAt: closesAt,
+    checklistVersionId: checklist.versionId,
+    createdAt: startsAt,
+  });
+  await tx.insert(schema.occurrenceAssignees).values({ tenantId, occurrenceId, userId: elvin.id });
+  await tx.insert(schema.occurrenceStatusHistory).values([
+    { tenantId, occurrenceId, fromStatus: null, toStatus: 'pending', at: startsAt },
+    { tenantId, occurrenceId, fromStatus: 'pending', toStatus: 'started', at: startedAt, actorUserId: elvin.id },
+    { tenantId, occurrenceId, fromStatus: 'started', toStatus: 'in_progress', at: answeredAt, actorUserId: elvin.id },
+    { tenantId, occurrenceId, fromStatus: 'in_progress', toStatus: 'partial', at: closesAt },
+  ]);
+  const executionId = uuidv7();
+  await tx.insert(schema.executions).values({
+    id: executionId,
+    tenantId,
+    occurrenceId,
+    checklistVersionId: checklist.versionId,
+    executorUserId: elvin.id,
+    state: 'partial',
+    startedAt,
+    startedReceivedAt: startedAt,
+    lastSyncedAt: answeredAt,
+    answers,
+    answersRev: 3,
+    progress: progress(content, answers),
+    score: computeScore(content, answers),
+    clockOffsetMs: 0,
+    device: { platform: 'android', osVersion: '15', appVersion: '1.0.0' },
+    createdAt: startedAt,
+    updatedAt: closesAt,
+  });
+  const problems = deriveProblems(content, answers);
+  if (problems.length) {
+    await tx.insert(schema.executionProblems).values(
+      problems.map((p) => ({
+        tenantId,
+        executionId,
+        occurrenceId,
+        siteId: assignment.siteId,
+        checklistId: assignment.checklistId,
+        itemId: p.itemId,
+        source: p.source,
+        severity: p.severity,
+        note: p.note,
+        mediaIds: p.mediaIds,
+        createdAt: answeredAt,
+        updatedAt: answeredAt,
+      })),
+    );
+  }
+}
+
 export async function seed(url: string): Promise<void> {
   const db = drizzle(url, { schema });
   await seedGlobalTemplates(db);
@@ -95,6 +202,7 @@ export async function seed(url: string): Promise<void> {
       await db.transaction(async (tx) => {
         await seedDemoChecklists(tx, existing.id, owner.id);
         await seedDemoScheduling(tx, existing.id, owner.id);
+        await seedDemoExecution(tx, existing.id);
       });
     }
     console.log('Demo tenant already exists');
@@ -105,8 +213,8 @@ export async function seed(url: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.insert(schema.tenants).values({ id: tenantId, name: 'Demo MMC', orgCode: 'demo' });
     const roleIds = await seedTenantDefaults(tx, tenantId);
-    const [branchType] = await tx.select().from(schema.siteTypes).where(eq(schema.siteTypes.name, 'Filial'));
-    const [zoneType] = await tx.select().from(schema.siteTypes).where(eq(schema.siteTypes.name, 'Zona'));
+    const [branchType] = await tx.select().from(schema.siteTypes).where(and(eq(schema.siteTypes.tenantId, tenantId), eq(schema.siteTypes.name, 'Filial')));
+    const [zoneType] = await tx.select().from(schema.siteTypes).where(and(eq(schema.siteTypes.tenantId, tenantId), eq(schema.siteTypes.name, 'Zona')));
     const site = async (name: string, typeId: string, parent?: { id: string; path: string }) => {
       const id = uuidv7();
       const path = parent ? `${parent.path}.${siteLabel(id)}` : siteLabel(id);
@@ -143,6 +251,7 @@ export async function seed(url: string): Promise<void> {
     }
     await seedDemoChecklists(tx, tenantId, ownerId);
     await seedDemoScheduling(tx, tenantId, ownerId);
+    await seedDemoExecution(tx, tenantId);
   });
   await db.$client.end();
   console.log('Demo tenant "demo" created.');
@@ -150,6 +259,7 @@ export async function seed(url: string): Promise<void> {
   console.log('  Manager: manager@demo.taskop.az / DemoPassword123');
   console.log('  Workers: org code "demo", usernames elvin / nigar, PIN 482915');
   console.log('  Scheduling: shift "Səhər", daily "Səhər təmizliyi" at Anbar №1 (occurrences appear once the API has started)');
+  console.log('  Execution: yesterday\'s "Səhər təmizliyi" by elvin, partial, with two problems (web schedule drawer and /problems)');
 }
 
 async function main(): Promise<void> {

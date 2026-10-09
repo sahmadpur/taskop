@@ -9,6 +9,10 @@ const valid = {
   WEB_URL: 'http://localhost:5173',
   SMTP_URL: 'smtp://localhost:1025',
   MAIL_FROM: 'Taskop <no-reply@taskop.local>',
+  S3_ENDPOINT: 'http://localhost:8333',
+  S3_PUBLIC_ENDPOINT: 'http://192.168.1.20:8333',
+  S3_ACCESS_KEY: 'taskop',
+  S3_SECRET_KEY: 'taskop_dev_password',
 };
 
 describe('loadConfig', () => {
@@ -22,5 +26,10 @@ describe('loadConfig', () => {
   it('parses booleans', () => expect(loadConfig({ ...valid, COOKIE_SECURE: 'false' }).COOKIE_SECURE).toBe(false));
   it('names missing variables', () => {
     expect(() => loadConfig({ ...valid, DATABASE_APP_URL: undefined })).toThrow(/DATABASE_APP_URL/);
+  });
+  it('reads storage settings with defaults and requires the endpoints', () => {
+    const c = loadConfig(valid);
+    expect([c.S3_BUCKET, c.S3_FORCE_PATH_STYLE, c.S3_PUBLIC_ENDPOINT]).toEqual(['taskop-media', true, 'http://192.168.1.20:8333']);
+    expect(() => loadConfig({ ...valid, S3_ENDPOINT: undefined })).toThrow(/S3_ENDPOINT/);
   });
 });

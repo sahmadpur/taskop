@@ -10,6 +10,7 @@ import { occurrenceAssignees, occurrences, occurrenceStatusHistory, users } from
 import type { Actor } from './actor';
 import type { CancelOccurrenceDto, MyOccurrenceQueryDto, OccurrenceListQueryDto } from './dto';
 import { toHistoryEntry, toOccurrenceDto } from './mappers';
+import { OccurrenceExecutions } from './occurrence-executions';
 import { OccurrenceQueries } from './occurrence-queries';
 import { OccurrenceWriter } from './occurrence-writer';
 import { SchedulingScope } from './scheduling-scope';
@@ -31,6 +32,7 @@ export class OccurrencesService {
     private readonly scope: SchedulingScope,
     private readonly queries: OccurrenceQueries,
     private readonly writer: OccurrenceWriter,
+    private readonly executionsOf: OccurrenceExecutions,
   ) {}
 
   list(a: Actor, q: OccurrenceListQueryDto): Promise<Page<OccurrenceDto>> {
@@ -62,8 +64,9 @@ export class OccurrencesService {
       .from(occurrenceStatusHistory)
       .leftJoin(users, eq(users.id, occurrenceStatusHistory.actorUserId))
       .where(eq(occurrenceStatusHistory.occurrenceId, id))
-      .orderBy(asc(occurrenceStatusHistory.at), asc(occurrenceStatusHistory.id));
-    return { ...toOccurrenceDto(row), assignees, history: history.map(toHistoryEntry) };
+      // Insertion order (ids are monotonic UUIDv7): `at` is device time, and late syncs record earlier times later.
+      .orderBy(asc(occurrenceStatusHistory.id));
+    return { ...toOccurrenceDto(row), assignees, history: history.map(toHistoryEntry), ...(await this.executionsOf.forOccurrence(id)) };
   }
 
   async cancel(a: Actor, id: string, input: CancelOccurrenceDto): Promise<OccurrenceDetail> {

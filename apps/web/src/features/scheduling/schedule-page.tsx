@@ -1,27 +1,30 @@
-import { addDays, OCCURRENCE_STATUSES, type OccurrenceDto } from '@taskop/contracts';
+import { addDays, type ExecutionBrief, OCCURRENCE_STATUSES, type OccurrenceDto } from '@taskop/contracts';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NativeSelect } from '@/components/native-select';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatPercent } from '@/features/executions/labels';
 import { useSites } from '@/features/sites/queries';
 import { errorText } from '@/lib/errors';
+import { useMe } from '@/lib/session';
 import { formatLocalDate, occurrenceVariant, useTenantToday, useTimeFormat } from './labels';
-import { OccurrenceDialog } from './occurrence-dialog';
+import { OccurrenceDialog, type OccurrenceTab } from './occurrence-dialog';
 import { useOccurrences } from './queries';
 import { weekStartOf } from './roster-grid';
 
-export function SchedulePage({ initialDate }: { initialDate?: string }) {
+export function SchedulePage(props: { initialDate?: string; initialOccurrenceId?: string; initialTab?: OccurrenceTab }) {
   const { t } = useTranslation();
   const today = useTenantToday();
   const time = useTimeFormat();
   const sites = useSites();
   const [view, setView] = useState<'day' | 'week'>('week');
-  const [anchor, setAnchor] = useState(initialDate ?? today);
+  const [anchor, setAnchor] = useState(props.initialDate ?? today);
   const [siteId, setSiteId] = useState('');
   const [status, setStatus] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  // A link (e.g. from the problems page) may name an occurrence to open right away.
+  const [selected, setSelected] = useState<string | null>(props.initialOccurrenceId ?? null);
   const from = view === 'day' ? anchor : weekStartOf(anchor);
   const to = view === 'day' ? anchor : addDays(from, 6);
   const step = view === 'day' ? 1 : 7;
@@ -89,13 +92,39 @@ export function SchedulePage({ initialDate }: { initialDate?: string }) {
                   <span className="text-muted-foreground">{o.siteName}</span>
                   <Badge variant={occurrenceVariant(o.status)}>{t(`scheduling.statuses.${o.status}`)}</Badge>
                   {o.unassigned && <Badge variant="destructive">{t('scheduling.schedule.unassigned')}</Badge>}
+                  {o.executionBrief && <ExecutionCells brief={o.executionBrief} />}
                 </button>
               </li>
             ))}
           </ul>
         </section>
       ))}
-      {selected && <OccurrenceDialog id={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <OccurrenceDialog
+          id={selected}
+          initialTab={selected === props.initialOccurrenceId ? props.initialTab : undefined}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** The counted execution on a schedule row (spec §8): who, how far, the score, and the flags. */
+function ExecutionCells({ brief }: { brief: ExecutionBrief }) {
+  const { t } = useTranslation();
+  const { tenant } = useMe();
+  return (
+    <>
+      <span>{brief.executorName}</span>
+      <span title={t('executions.progress')} className="font-mono">
+        {t('executions.progressShort', { answered: brief.progress.answered, total: brief.progress.total })}
+      </span>
+      {brief.scorePercent !== null && (
+        <span title={t('executions.score')}>{t('executions.percent', { value: formatPercent(brief.scorePercent, tenant.locale) })}</span>
+      )}
+      {brief.late && <Badge variant="destructive">{t('executions.flags.late')}</Badge>}
+      {brief.clockSuspect && <Badge variant="outline">{t('executions.flags.clockSuspect')}</Badge>}
+    </>
   );
 }

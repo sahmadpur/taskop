@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "taskop",
+      "credentials": [{ "accessKey": "taskop", "secretKey": "taskop_dev_password" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

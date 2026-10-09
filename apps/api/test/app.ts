@@ -43,6 +43,13 @@ export function testEnv(overrides: Record<string, string> = {}): Record<string, 
     RL_FORGOT_IP_PER_HOUR: '100000',
     LOG_LEVEL: 'silent',
     JOBS_ENABLED: 'false',
+    // Presigning works offline; only the storage tests override these with a real SeaweedFS.
+    S3_ENDPOINT: 'http://127.0.0.1:9',
+    S3_PUBLIC_ENDPOINT: 'http://files.taskop.test',
+    S3_BUCKET: 'taskop-media',
+    S3_ACCESS_KEY: 'test',
+    S3_SECRET_KEY: 'test-secret',
+    S3_FORCE_PATH_STYLE: 'true',
     ...overrides,
   };
 }

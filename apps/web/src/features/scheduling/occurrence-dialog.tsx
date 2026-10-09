@@ -8,14 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { ExecutionTab } from '@/features/executions/execution-tab';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
 import { api, useCan } from '@/lib/session';
 import { cancelReasonText, occurrenceVariant } from './labels';
 import { useOccurrence } from './queries';
 
-export function OccurrenceDialog({ id, onClose }: { id: string; onClose: () => void }) {
+export type OccurrenceTab = 'overview' | 'execution';
+
+export function OccurrenceDialog({ id, onClose, initialTab }: { id: string; onClose: () => void; initialTab?: OccurrenceTab }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const canManage = useCan('assignments.manage');
@@ -47,54 +51,66 @@ export function OccurrenceDialog({ id, onClose }: { id: string; onClose: () => v
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{o?.checklistName ?? (occurrence.isError ? t('scheduling.schedule.title') : t('common.loading'))}</DialogTitle>
           {o && <DialogDescription>{[o.assignmentName, o.siteName, o.shiftName].filter(Boolean).join(' · ')}</DialogDescription>}
         </DialogHeader>
         {occurrence.isError && <p className="text-destructive text-sm">{errorText(t, occurrence.error)}</p>}
         {o && (
-          <div className="grid gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <Badge variant={occurrenceVariant(o.status)}>{t(`scheduling.statuses.${o.status}`)}</Badge>
-              {o.unassigned && <Badge variant="destructive">{t('scheduling.schedule.unassigned')}</Badge>}
-            </div>
-            <p>{t('scheduling.schedule.window', { start: formatDateTime(o.startsAt), due: formatDateTime(o.dueAt), close: formatDateTime(o.closesAt) })}</p>
-            <div>
-              <h3 className="font-medium">{t('scheduling.schedule.assignees')}</h3>
-              {o.assignees.length ? (
-                <ul>
-                  {o.assignees.map((u) => (
-                    <li key={u.id}>{u.fullName}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">{t('scheduling.schedule.unassigned')}</p>
-              )}
-            </div>
-            <div>
-              <h3 className="font-medium">{t('scheduling.schedule.history')}</h3>
-              <ol className="grid gap-1">
-                {o.history.map((h, i) => (
-                  <li key={i}>
-                    {formatDateTime(h.at)} · {h.fromStatus ? `${t(`scheduling.statuses.${h.fromStatus}`)} → ` : ''}
-                    {t(`scheduling.statuses.${h.toStatus}`)} · {actor(h)}
-                    {h.reason ? ` · ${cancelReasonText(t, h.reason)}` : ''}
-                  </li>
-                ))}
-              </ol>
-            </div>
-            {canManage && (o.status === 'pending' || o.status === 'overdue') && (
-              <div className="grid gap-2">
-                <Label htmlFor="cancel-reason">{t('scheduling.schedule.cancelReason')}</Label>
-                <Textarea id="cancel-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
-                <FormError message={error} />
-                <Button variant="destructive" disabled={!reason.trim() || busy} onClick={() => void cancel()}>
-                  {t('scheduling.schedule.cancel')}
-                </Button>
+          <Tabs defaultValue={initialTab ?? 'overview'}>
+            <TabsList>
+              <TabsTrigger value="overview">{t('executions.tabs.overview')}</TabsTrigger>
+              <TabsTrigger value="execution">{t('executions.tabs.execution')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="overview">
+              <div className="grid gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge variant={occurrenceVariant(o.status)}>{t(`scheduling.statuses.${o.status}`)}</Badge>
+                  {o.unassigned && <Badge variant="destructive">{t('scheduling.schedule.unassigned')}</Badge>}
+                </div>
+                <p>{t('scheduling.schedule.window', { start: formatDateTime(o.startsAt), due: formatDateTime(o.dueAt), close: formatDateTime(o.closesAt) })}</p>
+                <div>
+                  <h3 className="font-medium">{t('scheduling.schedule.assignees')}</h3>
+                  {o.assignees.length ? (
+                    <ul>
+                      {o.assignees.map((u) => (
+                        <li key={u.id}>{u.fullName}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground">{t('scheduling.schedule.unassigned')}</p>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-medium">{t('scheduling.schedule.history')}</h3>
+                  <ol className="grid gap-1">
+                    {o.history.map((h, i) => (
+                      <li key={i}>
+                        {formatDateTime(h.at)} · {h.fromStatus ? `${t(`scheduling.statuses.${h.fromStatus}`)} → ` : ''}
+                        {t(`scheduling.statuses.${h.toStatus}`)} · {actor(h)}
+                        {h.reason ? ` · ${cancelReasonText(t, h.reason)}` : ''}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                {canManage && (o.status === 'pending' || o.status === 'overdue') && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="cancel-reason">{t('scheduling.schedule.cancelReason')}</Label>
+                    <Textarea id="cancel-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
+                    <FormError message={error} />
+                    <Button variant="destructive" disabled={!reason.trim() || busy} onClick={() => void cancel()}>
+                      {t('scheduling.schedule.cancel')}
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </TabsContent>
+            <TabsContent value="execution">
+              {/* Radix unmounts inactive tabs, so the execution is only fetched when this tab is opened. */}
+              <ExecutionTab occurrence={o} />
+            </TabsContent>
+          </Tabs>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

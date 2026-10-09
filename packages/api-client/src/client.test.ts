@@ -104,6 +104,53 @@ describe('ApiClient', () => {
     expect(store.getAccessToken()).toBe('a');
   });
 
+  describe('timeoutMs', () => {
+    /** A fetch that never answers until its signal aborts. */
+    const hanging = (_url: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+
+    it('aborts a request that does not settle in time and throws a NETWORK error', async () => {
+      vi.useFakeTimers();
+      try {
+        const fetchMock = vi.fn(hanging);
+        const api = new ApiClient({ baseUrl: '/api/v1', client: 'mobile', tokenStore: memoryTokenStore(), fetch: fetchMock as unknown as typeof fetch, timeoutMs: 30_000 });
+        const pending = createTaskopApi(api).me();
+        const outcome = expect(pending).rejects.toMatchObject({ code: 'NETWORK', messageKey: 'errors.NETWORK', status: 0 });
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(fetchMock.mock.calls[0]![1].signal?.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await outcome;
+        expect(fetchMock.mock.calls[0]![1].signal?.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('also bounds a response body that never finishes', async () => {
+      vi.useFakeTimers();
+      try {
+        const body = new ReadableStream({ start: () => undefined }); // headers arrive, the body never does
+        const api = new ApiClient({
+          baseUrl: '/api/v1', client: 'mobile', tokenStore: memoryTokenStore(), timeoutMs: 1_000,
+          fetch: (async () => new Response(body, { status: 200 })) as unknown as typeof fetch,
+        });
+        const outcome = expect(createTaskopApi(api).me()).rejects.toMatchObject({ code: 'NETWORK' });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await outcome;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sends no abort signal and never times out without the option (web)', async () => {
+      const { api, fetchMock } = setup(() => json(200, me));
+      await createTaskopApi(api).me();
+      expect(fetchMock.mock.calls[0]![1].signal).toBeUndefined();
+    });
+  });
+
   it('serialises query parameters and skips empty ones', async () => {
     const { api, fetchMock } = setup(() => json(200, { items: [], nextCursor: null }));
     await createTaskopApi(api).users.list({ q: 'elvin', status: undefined, limit: 20 });
@@ -207,5 +254,115 @@ describe('scheduling endpoints', () => {
       timing: { mode: 'fixed', startTime: '08:00', dueAfterMinutes: 60, graceMinutes: 0 },
     });
     await expect(call).rejects.toMatchObject({ code: 'ASSIGNEE_NOT_AT_SITE', userIds: [id] });
+  });
+});
+
+describe('execution endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'mobile', store);
+  }
+  const progress = { answered: 0, total: 3, requiredMissing: 3 };
+  const now0 = '2026-11-02T04:00:00.000Z';
+  const detail = {
+    id,
+    executor: { id, fullName: 'Murad' },
+    state: 'completed',
+    rejectedReason: null,
+    startedAt: now0,
+    startedReceivedAt: now0,
+    completedAt: now0,
+    completedReceivedAt: now0,
+    late: false,
+    clockSuspect: false,
+    progress,
+    scorePercent: null,
+    problemCount: 0,
+    mediaPending: 0,
+    occurrence: {
+      id,
+      assignmentId: id,
+      assignmentName: null,
+      checklistId: id,
+      checklistName: 'Ops',
+      siteId: id,
+      siteName: 'Main',
+      shiftId: null,
+      shiftName: null,
+      localDate: '2026-11-02',
+      startsAt: now0,
+      dueAt: now0,
+      closesAt: now0,
+      status: 'completed',
+      statusChangedAt: now0,
+      cancelReason: null,
+      assigneeIds: [id],
+      unassigned: false,
+      executionBrief: null,
+    },
+    checklistVersionId: id,
+    versionNumber: 1,
+    content: { schemaVersion: 1, instructions: null, scoring: { enabled: false, problemsReduceScore: false }, sections: [] },
+    answers: {},
+    answersRev: 3,
+    score: null,
+    clockOffsetMs: 0,
+    device: { platform: 'android', osVersion: '15', appVersion: '1.0.0' },
+    lastSyncedAt: now0,
+    media: [],
+    problems: [],
+  };
+
+  it('builds every path, method and body', async () => {
+    const calls: string[] = [];
+    const { api } = await authed((url, init) => {
+      calls.push(`${init.method} ${url} ${init.body ?? ''}`);
+      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [] });
+      if (url.endsWith('/answers')) return json(200, { executionId: id, rev: 2, stale: false, state: 'active', progress });
+      if (url.endsWith('/complete')) return json(200, { executionId: id, state: 'completed', completedAt: '2026-11-02T05:00:00.000Z', late: false, progress, score: null });
+      if (url.endsWith(`/executions/${id}/media`)) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: { 'Content-Type': 'image/jpeg' }, expiresAt: '2026-11-02T04:15:00.000Z' });
+      if (url.endsWith('/uploaded')) return json(200, { mediaId: id, status: 'uploaded', uploadedAt: '2026-11-02T04:01:00.000Z' });
+      if (url.endsWith('/url')) return json(200, { url: 'http://files.test/x', expiresAt: '2026-11-02T04:05:00.000Z' });
+      if (url.includes('/problems')) return json(200, { items: [], nextCursor: null });
+      if (url.endsWith(`/executions/${id}`)) return json(200, detail);
+      return json(200, { executionId: id, state: 'rejected', reason: 'ALREADY_CLAIMED', claim: { executionId: id, executorUserId: id, executorName: 'Murad' }, checklistVersionId: id, startedAt: '2026-11-02T04:00:00.000Z', clockSuspect: false });
+    });
+    const t = createTaskopApi(api);
+    const now = '2026-11-02T04:00:00.000Z';
+    await t.sync.pull([id, id]);
+    await t.sync.pull();
+    const claim = await t.executions.claim({ id, occurrenceId: id, startedAt: now, deviceTime: now, clientOffsetMs: 0, device: { platform: 'android', osVersion: '15', appVersion: '1.0.0' } });
+    expect(claim).toMatchObject({ state: 'rejected', reason: 'ALREADY_CLAIMED', claim: { executorName: 'Murad' } });
+    await t.executions.saveAnswers(id, { rev: 2, answers: {}, deviceTime: now, clientOffsetMs: 0 });
+    await t.executions.complete(id, { rev: 3, answers: {}, completedAt: now, deviceTime: now, clientOffsetMs: 0 });
+    await t.executions.get(id);
+    await t.executions.registerMedia(id, { id, itemId: null, kind: 'photo', source: 'camera', mime: 'image/jpeg', bytes: 10, capturedAt: now, deviceTime: now, clientOffsetMs: 0 });
+    await t.media.confirmUploaded(id);
+    await t.media.url(id);
+    await t.problems.list({ from: '2026-11-01', to: '2026-11-30', severity: 'critical' });
+    expect(calls.map((c) => c.split(' ').slice(0, 2).join(' '))).toEqual([
+      `GET /api/v1/me/sync?knownVersionIds=${id}%2C${id}`,
+      'GET /api/v1/me/sync',
+      'POST /api/v1/executions',
+      `PUT /api/v1/executions/${id}/answers`,
+      `POST /api/v1/executions/${id}/complete`,
+      `GET /api/v1/executions/${id}`,
+      `POST /api/v1/executions/${id}/media`,
+      `POST /api/v1/media/${id}/uploaded`,
+      `GET /api/v1/media/${id}/url`,
+      'GET /api/v1/problems?from=2026-11-01&to=2026-11-30&severity=critical',
+    ]);
+  });
+
+  it('exposes the missing requirements on REQUIREMENTS_UNMET', async () => {
+    const { api } = await authed(() =>
+      json(422, { error: { code: 'REQUIREMENTS_UNMET', messageKey: 'errors.REQUIREMENTS_UNMET', fields: null, retryAfterSeconds: null, requestId: 'r1', missing: [{ itemId: id, kind: 'photo' }] } }),
+    );
+    const now = '2026-11-02T04:00:00.000Z';
+    await expect(createTaskopApi(api).executions.complete(id, { rev: 1, answers: {}, completedAt: now, deviceTime: now, clientOffsetMs: 0 })).rejects.toMatchObject({
+      code: 'REQUIREMENTS_UNMET',
+      missing: [{ itemId: id, kind: 'photo' }],
+    });
   });
 });

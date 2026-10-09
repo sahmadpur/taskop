@@ -3,5 +3,7 @@
 declare global {
   var crypto: { randomUUID(): string };
   function structuredClone<T>(value: T): T;
+  // Node, browsers and Hermes (React Native ≥ 0.74) all provide it.
+  var TextEncoder: { new (): { encode(input: string): Uint8Array } };
 }
 export {};

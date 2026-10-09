@@ -1,4 +1,4 @@
-import type { ContentIssue, ErrorCode } from '@taskop/contracts';
+import type { ContentIssue, ErrorCode, Missing } from '@taskop/contracts';
 
 export type ClientErrorCode = ErrorCode | 'NETWORK';
 
@@ -14,6 +14,8 @@ export class ApiError extends Error {
     readonly currentRevision: number | null = null,
     /** Users an error is about (ASSIGNEE_NOT_AT_SITE, ASSIGNEE_INACTIVE, ROSTER_USER_NOT_AT_SITE). */
     readonly userIds: string[] | null = null,
+    /** REQUIREMENTS_UNMET: what still blocks completion. */
+    readonly missing: Missing[] | null = null,
   ) {
     super(code);
     this.name = 'ApiError';

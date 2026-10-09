@@ -40,10 +40,14 @@ async function loadCachedMe(): Promise<Me | null> {
   }
 }
 
+/** A request that has not settled by then counts as a network failure, so sync, logout and a user switch never hang on it. */
+export const API_TIMEOUT_MS = 30_000;
+
 const apiClient = new ApiClient({
   baseUrl: `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/v1`,
   client: 'mobile',
   tokenStore,
+  timeoutMs: API_TIMEOUT_MS,
   onSessionExpired: () => set({ status: 'anonymous' }),
   onRefreshed: (r) => {
     void cacheMe(r.me);
@@ -87,6 +91,15 @@ export const session = {
     }
     await tokenStore.clear();
     set({ status: 'anonymous' });
+  },
+  /**
+   * Ends the session in memory when signOut() failed (secure storage): the local data is already deleted and the offline
+   * services stopped, so staying signed in would lose any later work. Removing the stored tokens is retried, best effort.
+   */
+  forceSignedOut(): void {
+    accessToken = null;
+    set({ status: 'anonymous' });
+    void tokenStore.clear().catch(() => undefined);
   },
   rememberOrgCode: (code: string) => secureStorage.set(STORAGE_KEYS.orgCode, code),
   getOrgCode: () => secureStorage.get(STORAGE_KEYS.orgCode),
