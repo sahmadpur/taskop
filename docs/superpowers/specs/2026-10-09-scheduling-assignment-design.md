@@ -46,22 +46,22 @@ Decisions made during brainstorming:
 
 ## 3. Shared scheduling logic (`packages/contracts`)
 
-Defined with Zod in `packages/contracts/src/scheduling.ts`. Time-zone maths uses `@date-fns/tz`.
+Defined with Zod in `packages/contracts/src/scheduling.ts`. Time-zone maths uses small `Intl`-based helpers in `packages/contracts/src/scheduling-time.ts`; no extra dependency.
 
 ### 3.1 Recurrence
 
 ```
 Recurrence (discriminated union on `kind`)
-  common:
+  range fields (daily, weekly, monthly only):
     startDate: LocalDate                 'YYYY-MM-DD', first day the rule applies
-    endDate?: LocalDate                  inclusive
+    endDate: LocalDate | null            inclusive
     skipDates: LocalDate[]               ≤ 366, e.g. public holidays
-  kind-specific:
-    once      { date: LocalDate }        startDate = date; endDate ignored
+  kinds:
+    once      { date: LocalDate }        no range fields
     daily     { every: 1–365 }           every N days counted from startDate
     weekly    { every: 1–52, weekdays: (1–7)[] }   ISO weekdays, ≥ 1; every N weeks counted from the ISO week of startDate
     monthly   { every: 1–12, by: { dayOfMonth: 1–31 } | { nth: 1|2|3|4|-1, weekday: 1–7 } }
-    dates     { dates: LocalDate[] }     1–366 explicit dates ("custom calendar")
+    dates     { dates: LocalDate[] }     1–366 explicit dates ("custom calendar"); no range fields
 ```
 
 - `monthly` with `dayOfMonth` greater than the month's length falls on the month's last day. `nth: -1` means the last such weekday.
@@ -80,13 +80,13 @@ For a slot on local date `d`:
 - **fixed:** `startsAt = d + startTime`, `dueAt = startsAt + dueAfterMinutes`, `closesAt = dueAt + graceMinutes`.
 - **shift:** `startsAt = d + shift.start_time`, `dueAt = d + shift.end_time` (next day when `end_time ≤ start_time`), `closesAt = dueAt + graceMinutes`.
 - **Window cap:** `closesAt − startsAt ≤ 24h` unless the actor has `assignments.extended_window`, in which case ≤ 7 days (FR-09.05/06). Checked on save, not per slot.
-- **DST:** local times are converted in the tenant timezone. A local time that does not exist (spring forward) moves forward to the first valid instant; an ambiguous one (fall back) takes the earlier instant. Durations are added in absolute time.
+- **DST:** local times are converted in the tenant timezone. A local time that does not exist (spring forward) is read with the offset in force before the gap, so it moves forward by the gap length (02:30 → 03:30), as RFC 5545 does; an ambiguous one (fall back) takes the earlier instant. Durations are added in absolute time.
 
 ### 3.3 Functions
 
 - **`expandSchedule(recurrence, timing, shift | null, tz, fromDate, toDate)`** returns slots `{ localDate, startsAt, dueAt, closesAt }` (UTC instants) for local dates in the inclusive range, in order, skipping `skipDates`.
 - **`validateSchedule(recurrence, timing)`** returns `issues: { path, code }[]` (codes are i18n keys, as in SP2). Covers ranges, `endDate ≥ startDate`, empty weekday lists, duplicate dates.
-- **`describeSchedule(recurrence, timing, shift | null, locale)`** returns a short az summary, e.g. "Hər B.e., Ç. 08:00–10:00" or "Hər ayın son Cümə günü, Səhər növbəsi".
+- **`describeSchedule(recurrence, timing, shiftName | null, t)`** returns a short summary, e.g. "Hər B.e., Ç. 08:00–10:00" or "Hər ayın son Cümə günü, Səhər növbəsi". `t` is the caller's translate function, so contracts stays free of strings; only the web calls it.
 
 ## 4. Data model
 
@@ -112,7 +112,7 @@ The Foundation rules apply: UUIDv7 IDs, `timestamptz` in UTC, `tenant_id` with a
 - `shift_id?`: denormalised from `timing.shiftId` for FKs and queries
 - `status`: `active` | `paused` | `ended`
 - `revision int not null default 1`
-- `materialized_until date?`: last local date generated
+- `materialized_until timestamptz?`: every slot starting at or before this instant has already been considered; null until the first run
 - `created_by_user_id?` / `created_by_platform_admin_id?` (exactly one, as in SP2), `created_at`, `updated_at`
 
 **`assignment_assignees`**: `tenant_id`, `assignment_id`, `user_id`; primary key `(assignment_id, user_id)`. 1–50 users per assignment.
@@ -123,7 +123,7 @@ The Foundation rules apply: UUIDv7 IDs, `timestamptz` in UTC, `tenant_id` with a
 - `status occurrence_status`, `status_changed_at`
 - `cancel_reason?` (≤ 500)
 - `created_at`, `updated_at`
-- `unique (assignment_id, starts_at)`; indexes `(tenant_id, site_id, starts_at)`, `(tenant_id, status, due_at)`, `(tenant_id, status, closes_at)`
+- partial unique index `(assignment_id, local_date) where status <> 'cancelled'`: at most one live occurrence per assignment per day, so an edit at 08:30 that moves today's slot to 09:00 does not create a second one beside the open 08:00 occurrence, and a cancelled slot never blocks a regenerated one; indexes `(tenant_id, site_id, starts_at)`, `(tenant_id, status, due_at)`, `(tenant_id, status, closes_at)`
 - No checklist version is pinned. SP4 uses `checklists.current_version_id` at start (SP2 §4.4).
 
 **`occurrence_status`** pg enum and contracts enum, with the full FR-11.01 list so SP4 needs no enum migration: `pending`, `started`, `in_progress`, `completed`, `partial`, `overdue`, `missed`, `cancelled`, `audit_pending`, `audited`. SP3 only sets `pending`, `overdue`, `missed` and `cancelled`.
@@ -153,25 +153,25 @@ pg-boss runs inside the API process. Jobs act per tenant through a **system prin
 
 ### 5.1 `occurrences.materialize` (cron every 15 min, singleton)
 
-- For every `active` assignment, expand the schedule from today (tenant local) to today + 14 days and insert occurrences with `ON CONFLICT (assignment_id, starts_at) DO NOTHING`, status `pending`, with a creation history row.
+- For every `active` assignment, expand the schedule up to today + 14 days (tenant local) and insert the slots that start after `materialized_until` and close after now, with `ON CONFLICT DO NOTHING` on the partial unique index, status `pending`, with a creation history row. On the first run (`materialized_until` null) slots whose window is already open are included, so an assignment created at 09:00 still gets today's 08:00–10:00 slot.
 - Slots whose `closesAt` is already past are not created.
 - **Assignee snapshot** for each new occurrence:
   - fixed timing: all assignees still active and linked to the site
   - shift timing: those assignees who are rostered on the assignment's shift, site and `local_date`
 - **Snapshot refresh:** while an occurrence is `pending` and `starts_at > now`, its snapshot is recomputed when the roster for that site and date changes, when the assignment's assignees change, or when a user is deactivated or unlinked from the site. Once the window opens, the snapshot is fixed.
-- Updates `materialized_until`.
-- `occurrences.materialize-one { assignmentId }` does the same for one assignment. It is queued after create, edit and resume so the UI shows results at once.
+- Sets `materialized_until` to the start of day today + 15. A slot is therefore considered once: a cancelled occurrence is never recreated by a later run.
+- Create, edit and resume materialise that one assignment **inline, in the request transaction** (at most 14 days of slots), so the response already reflects the result. Edit and resume first set `materialized_until = now`, so only future slots are generated.
 
 ### 5.2 `occurrences.sweep` (cron every minute, singleton)
 
 - `pending → overdue` where `due_at ≤ now < closes_at`.
 - `pending | overdue → missed` where `closes_at ≤ now`. When an occurrence jumps straight from `pending` (e.g. the server was down), two history rows are written (`pending → overdue` at `due_at`, `overdue → missed` at `closes_at`).
 - Each update is guarded by the current status (`UPDATE … WHERE status = …`) and writes history in the same transaction, so running twice is harmless.
-- Emits an in-process domain event `OccurrenceStatusChanged { tenantId, occurrenceId, from, to, at }`. SP3 registers no listeners; SP6 will.
+- Emits an in-process domain event `occurrence.status_changed { tenantId, occurrenceId, from, to, at }` through a small `DomainEvents` service in `common/`. SP3 registers no listeners for it; SP6 will. The same service carries `user.access_changed` (users module) and `checklist.deactivated` (checklists module) to the scheduling module, so neither depends on it.
 
 ### 5.3 Changing assignments and occurrences
 
-- **Edit** (`PUT` with `revision`): occurrences that are `pending` with `starts_at > now` are cancelled with reason `assignment_edited`, then the assignment is re-materialised. Occurrences whose window has already opened are untouched. Changing only `name` regenerates nothing; changing only assignees refreshes snapshots instead of regenerating.
+- **Edit** (`PUT` with `revision`): occurrences that are `pending` with `starts_at > now` are cancelled with reason `assignment_edited`, then the assignment is re-materialised. Changing a shift's hours does the same for every active assignment that uses the shift (reason `shift_changed`). Occurrences whose window has already opened are untouched. Changing only `name` regenerates nothing; changing only assignees refreshes snapshots instead of regenerating.
 - **Pause:** cancels future pending occurrences (reason `assignment_paused`). **Resume:** re-checks §4.2 and materialises from now. **End:** like pause, but final.
 - **Checklist deactivated (SP2):** in the same transaction, its active assignments are paused and their future pending occurrences cancelled (reason `checklist_deactivated`). Reactivating the checklist does not resume them automatically.
 - **Cancel one occurrence:** `pending | overdue → cancelled`, reason required, history + audit entry.
@@ -236,11 +236,11 @@ All endpoints are under `/api/v1` and follow the Foundation conventions (Zod con
 | `PUT /roster` | shifts.manage | `{ siteId, from, to, rows[] }` replaces all rows for that site and range |
 | `POST /roster/copy` | shifts.manage | `{ siteId, sourceWeekStart, targetWeekStarts[] (≤ 12) }` replaces target weeks with the source week |
 | `GET /assignments` | assignments.view | Filters: `siteId`, `checklistId`, `status`, `assigneeId`, `q` |
-| `GET /assignments/:id` | assignments.view | Includes assignees, `describeSchedule` summary, next 5 occurrences |
+| `GET /assignments/:id` | assignments.view | Includes assignees and the next 5 occurrences; the web renders the summary with `describeSchedule` |
 | `POST /assignments` | assignments.manage | Validates §3, §4.2, window cap |
-| `PUT /assignments/:id` | assignments.manage | Requires `revision`; stale → 409 |
+| `PUT /assignments/:id` | assignments.manage | `{ revision, name?, assigneeIds?, schedule?, timing? }`; stale → 409. Checklist and site are fixed after creation (use "Copy to other sites") |
 | `POST /assignments/:id/pause` · `/resume` · `/end` | assignments.manage | |
-| `POST /assignments/preview` | assignments.manage | Same body as create; returns the next 20 slots, the summary and warnings; saves nothing |
+| `POST /assignments/preview` | assignments.manage | `{ siteId, schedule, timing, assigneeIds? }`; returns the next 20 slots and warnings; saves nothing |
 | `GET /occurrences` | assignments.view | Filters: `from`, `to` (≤ 62 days), `siteId`, `status[]`, `assigneeId`, `checklistId`, `assignmentId`; rows include `unassigned` |
 | `GET /occurrences/:id` | assignments.view | Includes snapshot users and status history |
 | `POST /occurrences/:id/cancel` | assignments.manage | `{ reason }` |
@@ -370,6 +370,6 @@ Dates and times are shown in the tenant timezone with `Intl`; all strings are az
 ## 11. Open items for later sub-projects
 
 - SP4: claim lock on start (FR-09.11), recording the executor (FR-09.12), enforcing `canStart`, mobile list built on `/me/occurrences`, and offline handling of occurrences whose window closes while the device is offline.
-- SP6: listeners for `OccurrenceStatusChanged` (overdue alerts, FR-15.05/06), reminders before `due_at` (FR-15.04), "new checklist assigned" push (FR-15.02) — these will use pg-boss.
+- SP6: listeners for `occurrence.status_changed` (overdue alerts, FR-15.05/06), reminders before `due_at` (FR-15.04), "new checklist assigned" push (FR-15.02) — these will use pg-boss.
 - Team, job-title and whole-site assignee targeting (rest of FR-09.07), if customers ask for it.
 - Per-site timezones, if a tenant operates across timezones.
