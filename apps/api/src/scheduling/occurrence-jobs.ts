@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OccurrenceStatus } from '@taskop/contracts';
-import { asc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { sanitiseForLog } from '../common/error.filter';
 import { DbService } from '../db/db.service';
-import { assignments } from '../db/schema';
+import { assignments, executions } from '../db/schema';
 import { OccurrenceWriter, type Transition } from './occurrence-writer';
 
 interface SweptRow extends Record<string, unknown> {
@@ -14,6 +14,12 @@ interface SweptRow extends Record<string, unknown> {
   due_at: Date | string;
   closes_at: Date | string;
   created_at: Date | string;
+}
+
+interface OpenRow extends Record<string, unknown> {
+  id: string;
+  from_status: Extract<OccurrenceStatus, 'started' | 'in_progress'>;
+  closes_at: Date | string;
 }
 
 /** The bodies of the two cron jobs (spec §5.1, §5.2). One transaction per tenant, with RLS. */
@@ -39,15 +45,15 @@ export class OccurrenceJobs {
     });
   }
 
-  /** pending → overdue after due_at; pending | overdue → missed after closes_at. */
+  /** pending → overdue after due_at; pending | overdue → missed and started | in_progress → partial after closes_at. */
   async sweepAll(only?: string[]): Promise<number> {
     const now = this.clock.now();
     const tenantIds = await this.tenantsWith(
       sql`select distinct tenant_id from occurrences
-          where (status = 'pending' and due_at <= ${now}) or (status = 'overdue' and closes_at <= ${now})`,
+          where (status = 'pending' and due_at <= ${now}) or (status in ('overdue', 'started', 'in_progress') and closes_at <= ${now})`,
       only,
     );
-    return this.perTenant(tenantIds, () => this.sweepTenant(now));
+    return this.perTenant(tenantIds, async () => (await this.sweepTenant(now)) + (await this.sweepOpenExecutions(now)));
   }
 
   /** Guarded by the current status and SKIP LOCKED, so two runs never double-move a row. */
@@ -83,6 +89,33 @@ export class OccurrenceJobs {
       }
     }
     await this.writer.recordTransitions(transitions);
+    return result.rows.length;
+  }
+
+  /**
+   * started | in_progress → partial at closes_at, with the counted execution (SP4 spec §6.5). Answers are kept;
+   * a later completion with completedAt < closes_at revives it. SKIP LOCKED: a command holding the occurrence wins.
+   */
+  async sweepOpenExecutions(now: Date): Promise<number> {
+    const tx = this.db.tx();
+    const result = await tx.execute<OpenRow>(sql`
+      with open as (
+        select id, status, closes_at from occurrences
+        where status in ('started', 'in_progress') and closes_at <= ${now}
+        for update skip locked
+      )
+      update occurrences o
+         set status = 'partial', status_changed_at = open.closes_at, updated_at = ${now}
+        from open
+       where o.id = open.id
+      returning o.id, open.status as from_status, open.closes_at`);
+    if (!result.rows.length) return 0;
+    const ids = result.rows.map((r) => r.id);
+    await tx
+      .update(executions)
+      .set({ state: 'partial', updatedAt: now })
+      .where(and(inArray(executions.occurrenceId, ids), eq(executions.state, 'active')));
+    await this.writer.recordTransitions(result.rows.map((r) => ({ occurrenceId: r.id, from: r.from_status, to: 'partial', at: new Date(r.closes_at) })));
     return result.rows.length;
   }
 
