@@ -1,10 +1,11 @@
-import { Body, Controller, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult, CompleteResult, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
+import type { ClaimResult, CompleteResult, ExecutionDetail, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, ExecutionDetailResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
+import { ExecutionQueries } from './execution-queries';
 import { ExecutionsService } from './executions.service';
 import { MediaService } from './media.service';
 
@@ -16,7 +17,15 @@ export class ExecutionsController {
   constructor(
     @Inject(ExecutionsService) private readonly executions: ExecutionsService,
     @Inject(MediaService) private readonly media: MediaService,
+    @Inject(ExecutionQueries) private readonly queries: ExecutionQueries,
   ) {}
+
+  /** The executor, or assignments.view within the data scope (spec §6.8); anyone else gets 404. */
+  @Get(':id')
+  @ApiOkResponse({ type: ExecutionDetailResponse })
+  get(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string): Promise<ExecutionDetail> {
+    return this.queries.detail(p, id);
+  }
 
   /** A rejected claim is a normal 200 so the outbox moves on (spec §6.2). */
   @Post()

@@ -7,6 +7,7 @@ import { JobsService } from './jobs.service';
 import { EligibilityService } from './eligibility.service';
 import { MeOccurrencesController, PlatformTenantOccurrencesController, TenantOccurrencesController } from './occurrences.controller';
 import { OccurrencesService } from './occurrences.service';
+import { OccurrenceExecutions } from './occurrence-executions';
 import { OccurrenceJobs } from './occurrence-jobs';
 import { OccurrenceQueries } from './occurrence-queries';
 import { OccurrenceWriter } from './occurrence-writer';
@@ -21,7 +22,7 @@ import { ShiftsService } from './shifts.service';
 @Module({
   imports: [PlatformModule],
   controllers: [TenantShiftsController, PlatformTenantShiftsController, TenantRosterController, PlatformTenantRosterController, TenantAssignmentsController, PlatformTenantAssignmentsController, TenantOccurrencesController, PlatformTenantOccurrencesController, MeOccurrencesController],
-  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners, OccurrenceJobs, JobsService, OccurrencesService, EligibilityService],
+  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners, OccurrenceJobs, JobsService, OccurrencesService, EligibilityService, OccurrenceExecutions],
   exports: [JobsService, EligibilityService, OccurrenceWriter, OccurrenceQueries, SchedulingScope],
 })
 export class SchedulingModule {}

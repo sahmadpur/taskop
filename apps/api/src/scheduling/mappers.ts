@@ -1,4 +1,4 @@
-import { type AssignmentDto, type OccurrenceDto, type OccurrenceHistoryEntry, type Recurrence, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
+import { type AssignmentDto, type ExecutionBrief, type OccurrenceDto, type OccurrenceHistoryEntry, type Recurrence, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
 import type { assignments, occurrences, occurrenceStatusHistory } from '../db/schema';
 
 /** Postgres `time` reads back as 'HH:MM:SS'. */
@@ -53,6 +53,7 @@ export interface OccurrenceJoinedRow {
   siteName: string;
   shiftName: string | null;
   assigneeIds: string[];
+  executionBrief: ExecutionBrief | null;
 }
 
 export const toOccurrenceDto = (r: OccurrenceJoinedRow): OccurrenceDto => ({
@@ -74,8 +75,7 @@ export const toOccurrenceDto = (r: OccurrenceJoinedRow): OccurrenceDto => ({
   cancelReason: r.o.cancelReason,
   assigneeIds: r.assigneeIds,
   unassigned: (r.o.status === 'pending' || r.o.status === 'overdue') && r.assigneeIds.length === 0,
-  // Read from the executions table once it exists (OccurrenceQueries.select).
-  executionBrief: null,
+  executionBrief: r.executionBrief,
 });
 
 export interface AssignmentJoinedRow {

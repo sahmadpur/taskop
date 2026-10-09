@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { OccurrenceDto } from '@taskop/contracts';
+import type { ExecutionBrief, OccurrenceDto } from '@taskop/contracts';
 import { and, asc, eq, getTableColumns, gt, inArray, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { DbService } from '../db/db.service';
@@ -24,6 +24,12 @@ export class OccurrenceQueries {
         shiftName: shifts.name,
         // Qualified explicitly: in a select list Drizzle renders a column as its bare name.
         assigneeIds: sql<string[]>`array(select oa.user_id::text from occurrence_assignees oa where oa.occurrence_id = "occurrences"."id" order by oa.user_id)`,
+        // The counted execution, for list badges and columns (SP4 spec §8).
+        executionBrief: sql<ExecutionBrief | null>`(select json_build_object(
+            'executionId', x.id, 'executorName', u.full_name, 'state', x.state, 'progress', x.progress,
+            'scorePercent', (x.score->>'percent')::float8, 'late', x.late, 'clockSuspect', x.clock_suspect)
+          from executions x join users u on u.id = x.executor_user_id
+          where x.occurrence_id = "occurrences"."id" and x.state <> 'rejected')`,
       })
       .from(occurrences)
       .innerJoin(assignments, eq(assignments.id, occurrences.assignmentId))
