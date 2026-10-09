@@ -17,6 +17,7 @@ import { PlatformModule } from './platform/platform.module';
 import { UsersModule } from './users/users.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { ChecklistsModule } from './checklists/checklists.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
 import { HealthController } from './health/health.controller';
 
 @Module({})
@@ -24,7 +25,7 @@ export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(config), LoggerModule.forRoot(loggerParams(config)), DbModule, MailModule, CommonModule, AuthModule, TenancyModule, TeamsModule, RolesModule, AuditLogModule, UsersModule, PlatformModule, ChecklistsModule],
+      imports: [ConfigModule.forRoot(config), LoggerModule.forRoot(loggerParams(config)), DbModule, MailModule, CommonModule, AuthModule, TenancyModule, TeamsModule, RolesModule, AuditLogModule, UsersModule, PlatformModule, ChecklistsModule, SchedulingModule],
       controllers: [HealthController],
       providers: [
         { provide: APP_PIPE, useClass: ZodValidationPipe },
