@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OccurrenceStatus } from '@taskop/contracts';
-import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
-import { sanitiseForLog } from '../common/error.filter';
+import { perTenant, tenantsWith } from '../common/per-tenant';
 import { DbService } from '../db/db.service';
 import { assignments, executions } from '../db/schema';
 import { OccurrenceWriter, type Transition } from './occurrence-writer';
@@ -35,8 +35,8 @@ export class OccurrenceJobs {
 
   /** Keeps every active assignment materialised 14 days ahead. */
   async materializeAll(only?: string[]): Promise<number> {
-    const tenantIds = await this.tenantsWith(sql`select distinct tenant_id from assignments where status = 'active'`, only);
-    return this.perTenant(tenantIds, async () => {
+    const tenantIds = await tenantsWith(this.db, sql`select distinct tenant_id from assignments where status = 'active'`, only);
+    return perTenant(this.db, this.logger, 'Scheduling job', tenantIds, async () => {
       // In id order, like every change that locks several assignments, so concurrent runs never deadlock.
       const rows = await this.db.tx().select({ id: assignments.id }).from(assignments).where(eq(assignments.status, 'active')).orderBy(asc(assignments.id));
       let created = 0;
@@ -48,12 +48,13 @@ export class OccurrenceJobs {
   /** pending → overdue after due_at; pending | overdue → missed and started | in_progress → partial after closes_at. */
   async sweepAll(only?: string[]): Promise<number> {
     const now = this.clock.now();
-    const tenantIds = await this.tenantsWith(
+    const tenantIds = await tenantsWith(
+      this.db,
       sql`select distinct tenant_id from occurrences
           where (status = 'pending' and due_at <= ${now}) or (status in ('overdue', 'started', 'in_progress') and closes_at <= ${now})`,
       only,
     );
-    return this.perTenant(tenantIds, async () => (await this.sweepTenant(now)) + (await this.sweepOpenExecutions(now)));
+    return perTenant(this.db, this.logger, 'Scheduling job', tenantIds, async () => (await this.sweepTenant(now)) + (await this.sweepOpenExecutions(now)));
   }
 
   /** Guarded by the current status and SKIP LOCKED, so two runs never double-move a row. */
@@ -117,27 +118,5 @@ export class OccurrenceJobs {
       .where(and(inArray(executions.occurrenceId, ids), eq(executions.state, 'active')));
     await this.writer.recordTransitions(result.rows.map((r) => ({ occurrenceId: r.id, from: r.from_status, to: 'partial', at: new Date(r.closes_at) })));
     return result.rows.length;
-  }
-
-  private async tenantsWith(query: SQL, only?: string[]): Promise<string[]> {
-    const r = await this.db.platform.execute<{ tenant_id: string }>(query);
-    const ids = r.rows.map((x) => x.tenant_id);
-    return only ? ids.filter((id) => only.includes(id)) : ids;
-  }
-
-  /** One tenant's bad data never blocks the others; the job still fails afterwards so pg-boss retries it. */
-  private async perTenant(tenantIds: string[], fn: () => Promise<number>): Promise<number> {
-    let total = 0;
-    let failed = 0;
-    for (const tenantId of tenantIds) {
-      try {
-        total += await this.db.withTenant(tenantId, null, fn);
-      } catch (e) {
-        failed++;
-        this.logger.error(sanitiseForLog(e, null), `Scheduling job failed for tenant ${tenantId}`);
-      }
-    }
-    if (failed) throw new Error(`Scheduling job failed for ${failed} tenant(s)`);
-    return total;
   }
 }

@@ -1,4 +1,4 @@
-import { claimCommandSchema, claimResultSchema, completeCommandSchema, completeResultSchema, mediaUploadTicketSchema, registerMediaCommandSchema, saveAnswersCommandSchema, saveAnswersResultSchema, syncQuerySchema, syncResponseSchema } from '@taskop/contracts';
+import { claimCommandSchema, claimResultSchema, completeCommandSchema, completeResultSchema, mediaConfirmResultSchema, mediaUploadTicketSchema, mediaUrlSchema, registerMediaCommandSchema, saveAnswersCommandSchema, saveAnswersResultSchema, syncQuerySchema, syncResponseSchema } from '@taskop/contracts';
 import { createZodDto } from 'nestjs-zod';
 
 export class ClaimCommandDto extends createZodDto(claimCommandSchema) {}
@@ -11,3 +11,5 @@ export class CompleteCommandDto extends createZodDto(completeCommandSchema) {}
 export class CompleteResultResponse extends createZodDto(completeResultSchema) {}
 export class SyncQueryDto extends createZodDto(syncQuerySchema) {}
 export class SyncResponseDto extends createZodDto(syncResponseSchema) {}
+export class MediaConfirmResultResponse extends createZodDto(mediaConfirmResultSchema) {}
+export class MediaUrlResponse extends createZodDto(mediaUrlSchema) {}
