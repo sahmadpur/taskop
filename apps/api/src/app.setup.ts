@@ -11,6 +11,8 @@ export function configureApp(app: INestApplication, config: AppConfig): void {
   const express = app as NestExpressApplication;
   if (config.TRUST_PROXY) express.set('trust proxy', 1);
   express.disable('x-powered-by');
+  // Checklist content can be up to 1 MB; leave headroom for the JSON envelope (spec §6.4).
+  express.useBodyParser('json', { limit: '1.5mb' });
   app.useLogger(app.get(Logger));
   app.use(cookieParser());
   app.use(requestContextMiddleware);

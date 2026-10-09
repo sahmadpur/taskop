@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@taskop/contracts';
+import type { ContentIssue, ErrorCode } from '@taskop/contracts';
 
 export type ClientErrorCode = ErrorCode | 'NETWORK';
 
@@ -10,6 +10,8 @@ export class ApiError extends Error {
     readonly fields: Record<string, string> | null = null,
     readonly retryAfterSeconds: number | null = null,
     readonly requestId: string | null = null,
+    readonly issues: ContentIssue[] | null = null,
+    readonly currentRevision: number | null = null,
   ) {
     super(code);
     this.name = 'ApiError';

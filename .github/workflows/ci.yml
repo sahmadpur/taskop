@@ -55,6 +55,7 @@ jobs:
           cd apps/api
           touch .env
           pnpm exec tsx src/db/scripts/setup.ts
+          pnpm exec tsx src/db/scripts/seed.ts
           pnpm exec tsx src/scripts/generate-keys.ts | sed 's/"//g' >> "$GITHUB_ENV"
       - run: pnpm --filter @taskop/web exec playwright install --with-deps chromium
       - run: pnpm --filter @taskop/web e2e

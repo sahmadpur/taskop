@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { contentIssueSchema } from './checklist-content.js';
 
 export const ErrorCode = {
   VALIDATION_FAILED: 'VALIDATION_FAILED',
@@ -23,6 +24,14 @@ export const ErrorCode = {
   SITE_CYCLE: 'SITE_CYCLE',
   MANAGER_CYCLE: 'MANAGER_CYCLE',
   SELF_MODIFICATION: 'SELF_MODIFICATION',
+  CHECKLIST_NO_DRAFT: 'CHECKLIST_NO_DRAFT',
+  CHECKLIST_DRAFT_EXISTS: 'CHECKLIST_DRAFT_EXISTS',
+  CHECKLIST_DRAFT_CONFLICT: 'CHECKLIST_DRAFT_CONFLICT',
+  CHECKLIST_INVALID_CONTENT: 'CHECKLIST_INVALID_CONTENT',
+  CHECKLIST_CONTENT_TOO_LARGE: 'CHECKLIST_CONTENT_TOO_LARGE',
+  CHECKLIST_DEACTIVATED: 'CHECKLIST_DEACTIVATED',
+  TEMPLATE_CONFLICT: 'TEMPLATE_CONFLICT',
+  TEMPLATE_DEACTIVATED: 'TEMPLATE_DEACTIVATED',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -50,6 +59,14 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   SITE_CYCLE: 409,
   MANAGER_CYCLE: 409,
   SELF_MODIFICATION: 409,
+  CHECKLIST_NO_DRAFT: 404,
+  CHECKLIST_DRAFT_EXISTS: 409,
+  CHECKLIST_DRAFT_CONFLICT: 409,
+  CHECKLIST_INVALID_CONTENT: 422,
+  CHECKLIST_CONTENT_TOO_LARGE: 413,
+  CHECKLIST_DEACTIVATED: 409,
+  TEMPLATE_CONFLICT: 409,
+  TEMPLATE_DEACTIVATED: 409,
   INTERNAL: 500,
 };
 
@@ -62,6 +79,8 @@ export const errorBodySchema = z.object({
     fields: z.record(z.string(), z.string()).nullable(),
     retryAfterSeconds: z.number().int().nullable(),
     requestId: z.string().nullable(),
+    issues: z.array(contentIssueSchema).optional(),
+    currentRevision: z.number().int().optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;

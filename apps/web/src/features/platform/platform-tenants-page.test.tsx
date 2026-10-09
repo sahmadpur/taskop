@@ -16,7 +16,7 @@ beforeEach(() => {
 describe('PlatformTenantsTable', () => {
   it('confirms before suspending', async () => {
     const onSuspend = vi.fn();
-    renderWithProviders(<PlatformTenantsTable tenants={[tenant('active')]} onSuspend={onSuspend} onReactivate={vi.fn()} />);
+    renderWithProviders(<PlatformTenantsTable tenants={[tenant('active')]} onSuspend={onSuspend} onReactivate={vi.fn()} onOpenChecklists={vi.fn()} />);
     expect(screen.getByText('12')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Dayandır' }));
     expect(screen.getByText(/«Acme MMC» dayandırılsın/)).toBeInTheDocument();
@@ -26,8 +26,15 @@ describe('PlatformTenantsTable', () => {
 
   it('offers reactivation for suspended tenants', async () => {
     const onReactivate = vi.fn();
-    renderWithProviders(<PlatformTenantsTable tenants={[tenant('suspended')]} onSuspend={vi.fn()} onReactivate={onReactivate} />);
+    renderWithProviders(<PlatformTenantsTable tenants={[tenant('suspended')]} onSuspend={vi.fn()} onReactivate={onReactivate} onOpenChecklists={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Bərpa et' }));
     expect(onReactivate).toHaveBeenCalledWith('t1');
+  });
+
+  it('opens a tenant\'s checklists', async () => {
+    const onOpenChecklists = vi.fn();
+    renderWithProviders(<PlatformTenantsTable tenants={[tenant('active')]} onSuspend={vi.fn()} onReactivate={vi.fn()} onOpenChecklists={onOpenChecklists} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Yoxlama vərəqələri' }));
+    expect(onOpenChecklists).toHaveBeenCalledWith('t1');
   });
 });

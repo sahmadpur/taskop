@@ -14,6 +14,7 @@ interface TenantStore {
   tx: Tx;
   tenantId: string;
   userId: string | null;
+  platformAdminId: string | null;
   afterCommit: (() => unknown)[];
 }
 
@@ -41,7 +42,7 @@ export class DbService implements OnModuleDestroy {
   }
 
   /** Runs `fn` in a transaction where RLS sees `tenantId`. Re-uses an enclosing transaction for the same tenant. */
-  async withTenant<T>(tenantId: string, userId: string | null, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  async withTenant<T>(tenantId: string, userId: string | null, fn: (tx: Tx) => Promise<T>, opts: { platformAdminId?: string } = {}): Promise<T> {
     const current = storage.getStore();
     if (current) {
       if (current.tenantId !== tenantId) throw new Error('Cannot open a transaction for a different tenant');
@@ -52,7 +53,7 @@ export class DbService implements OnModuleDestroy {
       await tx.execute(
         sql`select set_config('app.tenant_id', ${tenantId}, true), set_config('app.user_id', ${userId ?? ''}, true)`,
       );
-      return storage.run({ tx, tenantId, userId, afterCommit }, () => fn(tx));
+      return storage.run({ tx, tenantId, userId, platformAdminId: opts.platformAdminId ?? null, afterCommit }, () => fn(tx));
     });
     // Outside the transaction's async context, so callbacks cannot touch the committed tx.
     storage.exit(() => afterCommit.forEach((cb) => this.runAfterCommit(cb)));
@@ -83,10 +84,10 @@ export class DbService implements OnModuleDestroy {
     return current.tx;
   }
 
-  context(): { tenantId: string; userId: string | null } {
+  context(): { tenantId: string; userId: string | null; platformAdminId: string | null } {
     const current = storage.getStore();
     if (!current) throw new Error('No tenant transaction in scope');
-    return { tenantId: current.tenantId, userId: current.userId };
+    return { tenantId: current.tenantId, userId: current.userId, platformAdminId: current.platformAdminId };
   }
 
   async onModuleDestroy(): Promise<void> {

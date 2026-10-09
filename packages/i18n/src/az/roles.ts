@@ -29,6 +29,8 @@ export default {
     users: 'İstifadəçilər',
     roles: 'Rollar',
     audit: 'Audit',
+    checklists: 'Yoxlama vərəqələri',
+    templates: 'Şablonlar',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -41,5 +43,9 @@ export default {
     roles_view: 'Rollara baxmaq',
     roles_manage: 'Rolları idarə etmək',
     audit_view: 'Audit jurnalına baxmaq',
+    checklists_view: 'Yoxlama vərəqələrinə baxmaq',
+    checklists_manage: 'Yoxlama vərəqələrini yaratmaq və redaktə etmək',
+    checklists_publish: 'Yoxlama vərəqələrini dərc etmək',
+    templates_manage: 'Şablonları idarə etmək',
   },
 } as const;
