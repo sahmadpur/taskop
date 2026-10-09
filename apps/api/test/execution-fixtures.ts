@@ -4,6 +4,9 @@ import {
   type ChecklistContent,
   type ClaimCommand,
   type ExecutionProgress,
+  localDateOf,
+  type MediaUploadTicket,
+  minutesToTime,
   newItem,
   newRule,
   newSection,
@@ -235,3 +238,28 @@ export const fullAnswers = (w: ExecutionWorld, photoId: string): Answers => ({
 
 export const completeExecution = (api: Api, id: string, rev: number, answers: Answers, completedAt: string) =>
   api.post(`/api/v1/executions/${id}/complete`, { rev, answers, completedAt, deviceTime: completedAt, clientOffsetMs: 0 });
+
+/**
+ * An occurrence on today's Baku date whose window opened an hour ago (or at 00:00, early in the day) and
+ * closes at least three hours from now, so a test cannot fail near local midnight. Real time.
+ */
+export async function liveExecution(app: TestApp) {
+  const now = new Date();
+  const local = new Date(+now + 4 * 3_600_000); // Asia/Baku is UTC+4 all year.
+  const nowMinutes = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const startMinutes = Math.max(0, nowMinutes - 60);
+  const w = await executionWorld(app, { date: localDateOf(now, 'Asia/Baku'), timing: fixed(minutesToTime(startMinutes), 180, 60) });
+  const executionId = await claimOk(w.workers[0].api, w.occurrenceId, now.toISOString());
+  return { w, executionId, api: w.workers[0].api };
+}
+
+export async function registerBytes(api: Api, executionId: string, itemId: string | null, bytes: number) {
+  const now = new Date().toISOString();
+  const body = photoBody(itemId, { bytes, capturedAt: now, deviceTime: now });
+  const res = await api.post(`/api/v1/executions/${executionId}/media`, body);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return { id: body.id, ticket: res.body as MediaUploadTicket };
+}
+
+export const mediaRow = async (id: string) =>
+  (await ownerQuery<{ status: string; storage_key: string; purged: boolean }>('select status, storage_key, storage_purged_at is not null as purged from execution_media where id = $1', [id])).rows[0]!;

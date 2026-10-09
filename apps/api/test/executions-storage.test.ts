@@ -1,13 +1,11 @@
-import { localDateOf, type MediaUploadTicket, minutesToTime } from '@taskop/contracts';
+import type { MediaUploadTicket } from '@taskop/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MEDIA_CLEANUP_QUEUE, MediaJobs } from '../src/executions/media-jobs';
-import { JobsService } from '../src/scheduling/jobs.service';
+import { MediaJobs } from '../src/executions/media-jobs';
 import { S3Service } from '../src/storage/s3.service';
 import { createTestApp, type TestApp } from './app';
-import { claimOk, executionWorld, photoBody } from './execution-fixtures';
+import { liveExecution, mediaRow, photoBody, registerBytes } from './execution-fixtures';
 import { as, createUserDirect, loginStaff } from './fixtures';
 import { ownerQuery } from './owner-db';
-import { type Api, fixed } from './scheduling-fixtures';
 import { type Seaweed, startSeaweedfs } from './seaweedfs';
 
 /** Real time throughout: SeaweedFS checks signatures against its own clock. */
@@ -23,30 +21,8 @@ describe('media upload, confirmation, viewing and cleanup against SeaweedFS', ()
     await sw?.stop();
   });
 
-  /**
-   * An occurrence on today's Baku date whose window opened an hour ago (or at 00:00, early in the day) and
-   * closes at least three hours from now, so the test cannot fail near local midnight.
-   */
-  async function liveExecution(app: TestApp) {
-    const now = new Date();
-    const local = new Date(+now + 4 * 3_600_000); // Asia/Baku is UTC+4 all year.
-    const nowMinutes = local.getUTCHours() * 60 + local.getUTCMinutes();
-    const startMinutes = Math.max(0, nowMinutes - 60);
-    const w = await executionWorld(app, { date: localDateOf(now, 'Asia/Baku'), timing: fixed(minutesToTime(startMinutes), 180, 60) });
-    const executionId = await claimOk(w.workers[0].api, w.occurrenceId, now.toISOString());
-    return { w, executionId, api: w.workers[0].api };
-  }
-  async function registerBytes(api: Api, executionId: string, itemId: string | null, bytes: number) {
-    const now = new Date().toISOString();
-    const body = photoBody(itemId, { bytes, capturedAt: now, deviceTime: now });
-    const res = await api.post(`/api/v1/executions/${executionId}/media`, body);
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    return { id: body.id, ticket: res.body as MediaUploadTicket };
-  }
   const upload = (ticket: MediaUploadTicket, body: Buffer) =>
     fetch(ticket.uploadUrl!, { method: 'PUT', body: new Uint8Array(body), headers: { 'Content-Type': ticket.headers['Content-Type']! } });
-  const mediaRow = async (id: string) =>
-    (await ownerQuery<{ status: string; storage_key: string; purged: boolean }>('select status, storage_key, storage_purged_at is not null as purged from execution_media where id = $1', [id])).rows[0]!;
 
   it('registers, uploads through the presigned PUT and confirms', async () => {
     const { w, executionId, api } = await liveExecution(t);
@@ -132,18 +108,5 @@ describe('media upload, confirmation, viewing and cleanup against SeaweedFS', ()
     const r = await mediaRow(recent.id);
     expect([r.status, r.purged]).toEqual(['pending', false]);
     expect(await s3.head(r.storage_key)).not.toBeNull();
-  });
-
-  it('runs media.cleanup through a real pg-boss queue', async () => {
-    const app = await createTestApp({ ...sw.env, JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
-    try {
-      const { w, executionId, api } = await liveExecution(app);
-      const m = await registerBytes(api, executionId, null, 10);
-      await ownerQuery("update execution_media set created_at = now() - interval '15 days' where id = $1", [m.id]);
-      await app.app.get(JobsService).runNow(MEDIA_CLEANUP_QUEUE, [w.s.tenantId]);
-      await expect.poll(async () => (await mediaRow(m.id)).purged, { timeout: 20_000, interval: 250 }).toBe(true);
-    } finally {
-      await app.close();
-    }
   });
 });
