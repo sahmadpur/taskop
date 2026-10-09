@@ -102,3 +102,17 @@ describe('execution translations', () => {
     expect(az.executions.flags.mediaPending).toContain('{{count}}');
   });
 });
+
+describe('execution web translations', () => {
+  it('has the strings the drawer, the schedule list and the problems page use', () => {
+    expect(az.nav.problems).toBe('Problemlər');
+    expect(az.executions.tabs).toEqual({ overview: 'Ümumi', execution: 'İcra' });
+    expect(az.executions.rejected.title).toBe('Rədd edilmiş icralar ({{count}})');
+    expect(az.executions.receivedAt).toContain('{{time}}');
+    expect(az.executions.progressValue).toContain('{{answered}}');
+    expect(az.executions.media.pendingLabel).toContain('{{kind}}');
+    for (const k of ['date', 'site', 'checklist', 'item', 'severity', 'source', 'note', 'executor', 'media'] as const) {
+      expect(az.executions.problemsPage.columns[k], k).toBeTypeOf('string');
+    }
+  });
+});
