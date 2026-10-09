@@ -20,3 +20,4 @@ export * from './templates.js';
 export * from './checklists.js';
 export * from './scheduling-time.js';
 export * from './scheduling.js';
+export * from './scheduling-describe.js';
