@@ -162,6 +162,21 @@ function compact(answers: Answers): Answers {
   return out;
 }
 
+/** The answers without any reference to a medium (evidence photos/videos and problem media), compacted. */
+export function withoutMedia(answers: Answers, mediaId: string): Answers {
+  const out: Answers = {};
+  for (const [itemId, a] of Object.entries(answers)) {
+    if (!a) continue;
+    out[itemId] = {
+      ...a,
+      photos: a.photos?.filter((x) => x !== mediaId),
+      videos: a.videos?.filter((x) => x !== mediaId),
+      problem: a.problem && { ...a.problem, mediaIds: a.problem.mediaIds.filter((x) => x !== mediaId) },
+    };
+  }
+  return compact(out);
+}
+
 export function createExecutionStore(deps: StoreDeps) {
   const { db, clock, newId, device, files, feed, onWrite } = deps;
   const contents = new Map<string, ContentLoad>();
@@ -305,17 +320,7 @@ export function createExecutionStore(deps: StoreDeps) {
         await tx.run('DELETE FROM media WHERE id = ?', [mediaId]);
         discarded.push(row.local_uri);
       }
-      const answers: Answers = {};
-      for (const [itemId, a] of Object.entries(e.answers)) {
-        if (!a) continue;
-        answers[itemId] = {
-          ...a,
-          photos: a.photos?.filter((x) => x !== mediaId),
-          videos: a.videos?.filter((x) => x !== mediaId),
-          problem: a.problem && { ...a.problem, mediaIds: a.problem.mediaIds.filter((x) => x !== mediaId) },
-        };
-      }
-      return answers;
+      return withoutMedia(e.answers, mediaId);
     });
     for (const uri of discarded) files.remove(uri);
   }
