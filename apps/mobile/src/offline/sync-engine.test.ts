@@ -369,9 +369,12 @@ describe('failures', () => {
       throw new ApiError(422, 'REQUIREMENTS_UNMET', 'errors.REQUIREMENTS_UNMET');
     });
     await h.engine.run('manual');
-    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed', errorCode: 'REQUIREMENTS_UNMET' }]);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
     expect(await h.store.execution(id)).toMatchObject({ state: 'active', completedAt: null, finishedSyncedAt: null });
     await h.store.patchAnswer(id, h.c.note.id, { text: 'Düzəldildi' });
+    expect(await h.store.complete(id)).toEqual({ ok: true });
+    expect((await listCommands(h.db)).filter((c) => c.kind === 'complete')).toMatchObject([{ status: 'pending' }]);
   });
 
   it('a completion refused after closes_at stays completed', async () => {
@@ -386,7 +389,7 @@ describe('failures', () => {
     });
     h.clock.set('2026-11-02T07:05:00.000Z');
     await h.engine.run('manual');
-    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed' }]);
+    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed', errorCode: 'REQUIREMENTS_UNMET' }]);
     expect(await h.store.execution(id)).toMatchObject({ state: 'completed', completedAt: T.open });
   });
 

@@ -193,15 +193,18 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
 /**
  * A completion refused for unmet requirements (e.g. a refused medium left an item without evidence) reopens the
  * execution while its window is still open, so the worker can fix it and complete again. After closes_at the
- * server's sweep makes it partial.
+ * server's sweep makes it partial. A reopened execution drops the refused command (the next completion queues a fresh
+ * one); otherwise the command is parked as failed. Returns whether it reopened.
  */
-async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: number): Promise<void> {
-  await tx.run(
+async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: number): Promise<boolean> {
+  const reopened = await tx.run(
     `UPDATE executions SET state = 'active', completed_at = NULL, finished_synced_at = NULL, updated_at = ?
      WHERE id = ? AND state = 'completed'
        AND EXISTS (SELECT 1 FROM occurrences o WHERE o.id = executions.occurrence_id AND o.closes_at > ?)`,
     [iso(now), cmd.executionId, iso(now)],
   );
+  if (reopened > 0) await ackCommand(tx, cmd.seq);
+  return reopened > 0;
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
@@ -333,8 +336,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
             if (uri) removeFile(uri);
           } else {
             await db.transaction(async (tx) => {
+              if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, clock.now()))) return;
               await failCommand(tx, cmd.seq, f.code, f.messageKey);
-              if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET') await reopenRefusedCompletion(tx, cmd, clock.now());
             });
           }
           feed.emit();
