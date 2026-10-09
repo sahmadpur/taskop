@@ -34,6 +34,13 @@ export function defaultTiming(mode: Timing['mode'], shifts: ShiftDto[]): Timing 
 }
 
 function NumberField({ id, label, value, min, max, onChange }: { id: string; label: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+  // The draft is what the user is typing; it re-syncs whenever `value` changes from outside.
+  const [state, setState] = useState({ draft: String(value), seen: value });
+  const draft = state.seen === value ? state.draft : String(value);
+  const parse = (text: string) => {
+    const n = Number(text);
+    return text.trim() !== '' && Number.isInteger(n) ? n : null;
+  };
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -42,10 +49,22 @@ function NumberField({ id, label, value, min, max, onChange }: { id: string; lab
         type="number"
         min={min}
         max={max}
-        value={value}
+        value={draft}
         onChange={(e) => {
-          const n = Number(e.target.value);
-          if (Number.isInteger(n)) onChange(Math.min(max, Math.max(min, n)));
+          const text = e.target.value;
+          const n = parse(text);
+          if (n !== null && n >= min && n <= max) {
+            setState({ draft: text, seen: n });
+            if (n !== value) onChange(n);
+          } else {
+            setState({ draft: text, seen: value });
+          }
+        }}
+        onBlur={() => {
+          const n = parse(draft);
+          const fixed = n === null ? value : Math.min(max, Math.max(min, n));
+          setState({ draft: String(fixed), seen: fixed });
+          if (fixed !== value) onChange(fixed);
         }}
       />
     </div>
@@ -129,7 +148,7 @@ export function RecurrenceEditor({ value, onChange, today, disabled }: Recurrenc
         </NativeSelect>
       </div>
 
-      {value.kind === 'once' && <DateField id={`${id}-date`} label={t('scheduling.builder.date')} value={value.date} onChange={(date) => onChange({ ...value, date })} />}
+      {value.kind === 'once' && <DateField id={`${id}-date`} label={t('scheduling.builder.date')} value={value.date} onChange={(date) => date && onChange({ ...value, date })} />}
       {value.kind === 'dates' && (
         <DateList id={`${id}-dates`} label={t('scheduling.builder.dates')} values={value.dates} min={1} onChange={(dates) => onChange({ ...value, dates })} />
       )}
@@ -269,7 +288,7 @@ export function TimingEditor({ value, onChange, shifts, disabled }: TimingEditor
             <NativeSelect id={`${id}-shift`} value={value.shiftId} onChange={(e) => onChange({ ...value, shiftId: e.target.value })}>
               <option value="">{t('scheduling.builder.chooseShift')}</option>
               {shifts
-                .filter((s) => s.active)
+                .filter((s) => s.active || s.id === value.shiftId)
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.startTime}–{s.endTime})

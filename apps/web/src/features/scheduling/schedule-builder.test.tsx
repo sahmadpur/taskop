@@ -72,6 +72,34 @@ describe('RecurrenceEditor', () => {
   });
 });
 
+describe('input validity', () => {
+  it('ignores an empty once date', () => {
+    render(<RecurrenceHarness initial={defaultRecurrence('once', '2026-11-04')} />);
+    fireEvent.change(screen.getByLabelText('Tarix'), { target: { value: '' } });
+    expect(json().date).toBe('2026-11-04');
+  });
+
+  it('keeps number fields valid while typing', () => {
+    render(<TimingHarness initial={defaultTiming('shift', shifts)} />);
+    const grace = screen.getByLabelText('Gecikmə icazəsi (dəqiqə)');
+    const before = json();
+    fireEvent.change(grace, { target: { value: '' } });
+    expect(json()).toEqual(before);
+    fireEvent.change(grace, { target: { value: '30' } });
+    expect(json().graceMinutes).toBe(30);
+    fireEvent.change(grace, { target: { value: '99999' } });
+    expect(json().graceMinutes).toBe(30);
+    fireEvent.blur(grace);
+    expect(json().graceMinutes).toBe(10080);
+  });
+
+  it('keeps an inactive selected shift as an option', () => {
+    const inactive: ShiftDto[] = [{ ...shifts[0]!, active: false }];
+    render(<TimingEditor value={{ mode: 'shift', shiftId: 's1', graceMinutes: 0 }} onChange={() => {}} shifts={inactive} />);
+    expect(screen.getByRole('option', { name: /Səhər/ })).toBeInTheDocument();
+  });
+});
+
 describe('TimingEditor', () => {
   it('switches between fixed and shift timing', async () => {
     render(<TimingHarness initial={defaultTiming('fixed', [])} />);
