@@ -67,4 +67,11 @@ describe('scheduling translations', () => {
     expect(describeSchedule({ kind: 'monthly', every: 1, by: { nth: -1, weekday: 5 }, ...r0 }, fixed, null, t)).toBe('Hər ay, sonuncu Cümə, 08:00–10:00');
     expect(describeSchedule({ kind: 'daily', every: 1, ...r0 }, { mode: 'shift', shiftId: 'x', graceMinutes: 0 }, 'Səhər', t)).toBe('Hər gün, Səhər növbəsi');
   });
+
+  it('has the UI strings the web screens use', () => {
+    for (const k of ['assignments', 'schedule', 'shifts', 'roster'] as const) expect(az.nav[k], k).toBeTypeOf('string');
+    for (const k of ['once', 'daily', 'weekly', 'monthly', 'dates'] as const) expect(az.scheduling.builder.kinds[k], k).toBeTypeOf('string');
+    for (const k of ['active', 'paused', 'ended'] as const) expect(az.scheduling.assignments.status[k], k).toBeTypeOf('string');
+    expect(az.scheduling.roster.cellLabel).toContain('{{person}}');
+  });
 });
