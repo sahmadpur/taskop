@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type ClaimRejectionReason, type ClaimResult, progress } from '@taskop/contracts';
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
-import { checklists, executions, occurrences } from '../db/schema';
+import { checklists, checklistVersions, executions, occurrences } from '../db/schema';
 import { EligibilityService } from '../scheduling/eligibility.service';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import { assertDeviceTimes, clampStart } from './device-time';
@@ -43,6 +43,12 @@ export class ExecutionsService {
     const bounds = assertDeviceTimes([new Date(cmd.deviceTime), new Date(cmd.startedAt)], receivedAt, cmd.clientOffsetMs);
     const [o] = await tx.select().from(occurrences).where(eq(occurrences.id, cmd.occurrenceId)).for('update');
     if (!o) throw new AppError('NOT_FOUND');
+    // A replay of this very command may have committed while we waited for the lock.
+    const [replayed] = await tx.select().from(executions).where(eq(executions.id, cmd.id));
+    if (replayed) {
+      if (replayed.executorUserId !== p.userId) throw new AppError('NOT_EXECUTOR');
+      return this.claimResult(replayed);
+    }
     const start = clampStart(new Date(cmd.startedAt), o.startsAt, receivedAt);
 
     let reason: ClaimRejectionReason | null = (await this.lookups.claims([o.id])).has(o.id) ? 'ALREADY_CLAIMED' : null;
@@ -105,8 +111,17 @@ export class ExecutionsService {
   private async visibleVersion(o: OccurrenceRow): Promise<string> {
     if (o.checklistVersionId) return o.checklistVersionId;
     const [c] = await this.db.tx().select({ v: checklists.currentVersionId }).from(checklists).where(eq(checklists.id, o.checklistId));
-    if (!c?.v) throw new AppError('CHECKLIST_NOT_PUBLISHED');
-    return c.v;
+    if (c?.v) return c.v;
+    // Never fail a rejected claim (it must answer 200): fall back to the newest published version.
+    const [latest] = await this.db
+      .tx()
+      .select({ id: checklistVersions.id })
+      .from(checklistVersions)
+      .where(eq(checklistVersions.checklistId, o.checklistId))
+      .orderBy(desc(checklistVersions.number))
+      .limit(1);
+    if (!latest) throw new AppError('CHECKLIST_NOT_PUBLISHED');
+    return latest.id;
   }
 
   private async claimResult(e: ExecutionRow): Promise<ClaimResult> {

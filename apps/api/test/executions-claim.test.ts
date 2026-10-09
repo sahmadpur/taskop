@@ -111,6 +111,18 @@ describe('claims (POST /executions)', () => {
     expect(await pinnedVersionOf(w.occurrenceId)).toBe(w.versionId);
   });
 
+  it('answers two concurrent copies of the same claim with the same 200 body', async () => {
+    const w = await executionWorld(t);
+    clock.set('2026-11-02T04:10:00Z');
+    const body = claimBody(w.occurrenceId, '2026-11-02T04:05:00.000Z');
+    const [a, b] = await Promise.all([w.workers[0].api.post('/api/v1/executions', body), w.workers[0].api.post('/api/v1/executions', body)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(a.body).toEqual(b.body);
+    expect(a.body.state).toBe('active');
+    expect((await ownerQuery('select id from executions where occurrence_id = $1', [w.occurrenceId])).rowCount).toBe(1);
+    expect((await historyOf(w.occurrenceId)).filter((h) => h[1] === 'started')).toHaveLength(1);
+  });
+
   it('stores every canStart failure as a rejected claim', async () => {
     const w = await executionWorld(t);
     const [w0] = w.workers;
