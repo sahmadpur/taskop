@@ -29,8 +29,8 @@ Minor review findings left open, and rulings made while building Part 1.
 - Ruling: commit trailer = whatever each subagent's harness specifies — harness attribution rules bind subagents — cost: mixed model names in trailers.
 - Task 1: MISSING_KINDS lacks exhaustiveness check vs MissingKind.
 - Task 1: manual problem note not trimmed in deriveProblems (check answerSchema trims).
-- Task 2: answerIssues accepts duplicate media IDs in one array.
-- Task 2: media registered for a different item accepted by answerIssues (media map holds kind only).
+- Task 2: answerIssues accepts duplicate media IDs in one array — resolved in the final fix wave.
+- Task 2: media registered for a different item accepted by answerIssues (media map holds kind only) — resolved in the final fix wave.
 - Task 2: date/datetime regex format-only (2026-13-45 passes).
 - Task 3: syncQuerySchema knownVersionIds max(200) untested.
 - Task 4: rangeTooLong string hardcodes 92 (duplicates EXECUTION_LIMITS).
@@ -50,14 +50,15 @@ Minor review findings left open, and rulings made while building Part 1.
 - Task 10: video without durationMs/width/height skips duration/resolution checks.
 - Task 11: swept-partial answers test leaves occurrence 'started' (unrealistic), no progress/problems assertion.
 - Task 11: device-time check before stale check → stale replay with bad clock gets 422 not stale:true.
-- Task 12: stale-rev completion path untested.
+- Task 12: stale-rev completion path untested — resolved in the final fix wave.
 - Task 12: completion replay checks device time before replay → bad clock replay 422 (same pattern as T11).
 - Task 13: late completion after sweep test doesn't assert completedAt/late/row completed_at.
 - Task 14: cancelled-occurrence exclusion in sync untested.
 - Task 14: rejected executions included in sync's 24h finished list (phone shows rejection — likely intended).
 - Ruling: replay register of an uploaded medium → 409 EXECUTION_NOT_ACTIVE (no generic conflict code exists) — reuse over new code — cost: slightly misleading code; phone never re-registers uploaded media.
+- Ruling (final review, supersedes the two replay rulings above): a register replay of an uploaded medium returns `200` with `status: 'uploaded'`, `uploadUrl: null`, `headers: {}`, `expiresAt: null` — the phone's media queue replays after upload — still no fresh PUT URL.
 - Task 15: confirmUploaded update not guarded by status='pending' (concurrent confirms overwrite uploadedAt).
-- Task 15: media.cleanup select lacks FOR UPDATE SKIP LOCKED (race with confirm).
+- Task 15: media.cleanup select lacks FOR UPDATE SKIP LOCKED (race with confirm) — resolved in the final fix wave.
 - Task 15: presigned PUT valid 15 min after confirm (overwrite window).
 - Task 15: tests missing: confirm-after-purge clears storage_purged_at; mime mismatch; cross-tenant GET url.
 - Task 15: defined jobs dead-letter into 'occurrences.dead' queue name.
@@ -65,3 +66,4 @@ Minor review findings left open, and rulings made while building Part 1.
 - Task 16: non-null assertions occurrence!/version!.number! in execution-queries.
 - Task 17: isolation tests don't assert tenant A state unchanged after foreign 404.
 - Task 18: seed assumes the first yes_no option and rules[0].
+- Final review minor 6 (accepted): an offline `started → in_progress` is stamped with the deviceTime of the collapsed latest answers command, not of the first edit.
