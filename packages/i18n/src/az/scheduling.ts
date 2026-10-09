@@ -95,6 +95,7 @@ export default {
     allStatuses: 'Bütün statuslar',
     assignees: 'İcraçılar',
     assigneeCount: '{{count}} icraçı',
+    notAtSite: 'artıq bu obyektdə deyil',
     schedule: 'Cədvəl',
     status: { active: 'Aktiv', paused: 'Dayandırılıb', ended: 'Bitib' },
     pause: 'Dayandır',

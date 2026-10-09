@@ -173,4 +173,34 @@ describe('changing assignments', () => {
     expect(bad.status).toBe(422);
     expect(bad.body.error.code).toBe('WINDOW_TOO_LONG');
   });
+
+  it('a deactivated stored assignee does not block removing them, adding others, or resuming', async () => {
+    const w = await schedulingWorld(t, 3);
+    const [w0, w1, w2] = w.workers as [string, string, string];
+    const a = await createAssignment(w, { assigneeIds: [w0, w1] });
+    await w.api.post(`/api/v1/users/${w1}/deactivate`);
+    const added = await w.api.put(`/api/v1/assignments/${a.id}`, { revision: 1, assigneeIds: [w0, w1, w2] });
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+    expect(sorted(added.body.assignees.map((u: { id: string }) => u.id))).toEqual(sorted([w0, w1, w2]));
+    const removed = await w.api.put(`/api/v1/assignments/${a.id}`, { revision: 2, assigneeIds: [w0] });
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    expect(removed.body.assignees.map((u: { id: string }) => u.id)).toEqual([w0]);
+    // Adding an ineligible user is still refused.
+    const bad = await w.api.put(`/api/v1/assignments/${a.id}`, { revision: 3, assigneeIds: [w0, w1] });
+    expect(bad.body.error).toMatchObject({ code: 'ASSIGNEE_INACTIVE', userIds: [w1] });
+  });
+
+  it('resumes when a stored assignee was deactivated meanwhile', async () => {
+    const w = await schedulingWorld(t);
+    const [w0, w1] = w.workers as [string, string];
+    const a = await createAssignment(w);
+    await w.api.post(`/api/v1/assignments/${a.id}/pause`);
+    await w.api.post(`/api/v1/users/${w1}/deactivate`);
+    const res = await w.api.post(`/api/v1/assignments/${a.id}/resume`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.status).toBe('active');
+    expect(sorted(res.body.assignees.map((u: { id: string }) => u.id))).toEqual(sorted([w0, w1]));
+    const future = live(await occurrenceRows(a.id)).filter((r) => r.local_date > TODAY);
+    expect(future.every((r) => r.assignees.length === 1 && r.assignees[0] === w0)).toBe(true);
+  });
 });

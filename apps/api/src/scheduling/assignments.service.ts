@@ -125,7 +125,9 @@ export class AssignmentsService {
       if (timingChanged) this.rules.window(a, timing, shift);
       this.rules.nonEmpty(schedule, timing, shift, await this.writer.tenantTimezone());
     }
-    if (assigneesChanged) await this.rules.assignees(row.siteId, assigneeIds);
+    // Only added people are checked: a stored assignee who has since left the site or been deactivated can be kept or removed.
+    const addedIds = assigneeIds.filter((uid) => !currentIds.includes(uid));
+    if (addedIds.length) await this.rules.assignees(row.siteId, addedIds);
 
     const tx = this.db.tx();
     await tx
@@ -162,7 +164,10 @@ export class AssignmentsService {
     return this.get(a, id);
   }
 
-  /** Re-checks spec §4.2, then generates from now on. */
+  /**
+   * Re-checks spec §4.2 for the checklist, site and shift, then generates from now on. Stored assignees who are no
+   * longer eligible do not block a resume; snapshots leave them out.
+   */
   async resume(a: Actor, id: string): Promise<AssignmentDetail> {
     const row = await this.lockWritable(a, id);
     if (row.status === 'ended') throw new AppError('ASSIGNMENT_ENDED');
@@ -170,8 +175,6 @@ export class AssignmentsService {
       await this.rules.checklist(row.checklistId);
       await this.rules.site(a, row.siteId);
       await this.rules.shift(timingSchema.parse(row.timing), row.siteId);
-      const ids = await this.db.tx().select({ userId: assignmentAssignees.userId }).from(assignmentAssignees).where(eq(assignmentAssignees.assignmentId, id));
-      await this.rules.assignees(row.siteId, ids.map((r) => r.userId));
       await this.setStatus(row, 'active', 'assignment.resumed');
       await this.writer.restart(id);
     }

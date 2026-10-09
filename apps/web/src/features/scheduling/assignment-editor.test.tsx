@@ -131,4 +131,26 @@ describe('AssignmentEditor', () => {
     expect(screen.getByLabelText('Obyekt')).toHaveValue('');
     expect(screen.getByLabelText('Ad (istəyə bağlı)')).toHaveValue('Səhər');
   });
+
+  it('shows a stored assignee no longer at the site so they can be unticked', async () => {
+    mocks.api.assignments.update.mockResolvedValue(detail({ revision: 4 }));
+    const initial = detail({ assignees: [{ id: 'u1', fullName: 'Elvin' }, { id: 'gone', fullName: 'Kamran' }] });
+    renderWithProviders(<AssignmentEditor initial={initial} today="2026-11-02" onSaved={vi.fn()} onCancel={vi.fn()} />);
+    const stale = await screen.findByRole('checkbox', { name: 'Kamran (artıq bu obyektdə deyil)' });
+    expect(stale).toBeChecked();
+    await userEvent.click(stale);
+    await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(mocks.api.assignments.update).toHaveBeenCalledWith('a1', expect.objectContaining({ assigneeIds: ['u1'] })));
+  });
+
+  it('names stored assignees in errors', async () => {
+    mocks.api.assignments.update.mockRejectedValue(
+      new ApiError(422, 'ASSIGNEE_INACTIVE', 'errors.ASSIGNEE_INACTIVE', null, null, 'r1', null, null, ['gone']),
+    );
+    const initial = detail({ assignees: [{ id: 'u1', fullName: 'Elvin' }, { id: 'gone', fullName: 'Kamran' }] });
+    renderWithProviders(<AssignmentEditor initial={initial} today="2026-11-02" onSaved={vi.fn()} onCancel={vi.fn()} />);
+    await screen.findByRole('checkbox', { name: 'Kamran (artıq bu obyektdə deyil)' });
+    await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
+    expect(await screen.findByText(/\(Kamran\)$/)).toBeInTheDocument();
+  });
 });

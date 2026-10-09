@@ -57,6 +57,12 @@ export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, o
   const users = useSiteUsers(siteId || null);
   const shifts = useShifts(siteId || null);
   const people = users.data ?? [];
+  // Stored assignees who have since left the site or been deactivated: still listed so they can be unticked.
+  const staleAssignees = users.data && siteId === initial?.siteId ? initial.assignees.filter((u) => !people.some((p) => p.id === u.id)) : [];
+  const assigneeOptions = [
+    ...people.map((u) => ({ value: u.id, label: u.fullName })),
+    ...staleAssignees.map((u) => ({ value: u.id, label: `${u.fullName} (${t('scheduling.assignments.notAtSite')})` })),
+  ];
   const shiftMissing = timing.mode === 'shift' && !timing.shiftId;
   const shiftName = timing.mode === 'shift' ? (shifts.data?.find((s) => s.id === timing.shiftId)?.name ?? null) : null;
 
@@ -89,7 +95,7 @@ export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, o
         : await api.assignments.create({ name: name.trim() || null, checklistId, siteId, assigneeIds, schedule, timing });
       onSaved(result);
     } catch (e) {
-      setError(describeError(t, e, people));
+      setError(describeError(t, e, [...people, ...(initial?.assignees ?? [])]));
     } finally {
       setSaving(false);
     }
@@ -132,7 +138,7 @@ export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, o
         {siteId && (
           <CheckboxList
             label={t('scheduling.assignments.assignees')}
-            options={people.map((u) => ({ value: u.id, label: u.fullName }))}
+            options={assigneeOptions}
             value={assigneeIds}
             onChange={setAssigneeIds}
           />
