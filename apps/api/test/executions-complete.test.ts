@@ -104,4 +104,22 @@ describe('completion (POST /executions/:id/complete)', () => {
     expect(await executionRow(lost.id)).toMatchObject({ answers_rev: 1, answers: { [w.c.temp.id]: { number: 5 } } });
     expect(await statusOf(w.occurrenceId)).toBe('started');
   });
+
+  it('a completion with a stale rev checks requirements and scores the stored answers', async () => {
+    const { w, executionId, api } = await started();
+    const photo = await registerPhoto(api, executionId, w.c.photo.id);
+    const stored = { ...fullAnswers(w, photo), [w.c.temp.id]: { number: 10, note: 'Kondisioner xarabdır' } };
+    expect((await api.put(`/api/v1/executions/${executionId}/answers`, answersBody(2, stored, '2026-11-02T04:18:00.000Z'))).status).toBe(200);
+    const res = await completeExecution(api, executionId, 2, { [w.c.temp.id]: { number: 5 } }, '2026-11-02T04:20:00.000Z');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ state: 'completed', score: { earned: 1, possible: 2, percent: 50, problems: [{ itemId: w.c.temp.id, severity: 'normal' }] } });
+    expect(await executionRow(executionId)).toMatchObject({ answers_rev: 2, answers: stored });
+
+    const other = await startedExecution(t, clock);
+    const partial = { [other.w.c.temp.id]: { number: 5 } };
+    await other.api.put(`/api/v1/executions/${other.executionId}/answers`, answersBody(3, partial, '2026-11-02T04:18:00.000Z'));
+    const otherPhoto = await registerPhoto(other.api, other.executionId, other.w.c.photo.id);
+    const unmet = await completeExecution(other.api, other.executionId, 3, fullAnswers(other.w, otherPhoto), '2026-11-02T04:20:00.000Z');
+    expect([unmet.status, unmet.body.error.code]).toEqual([422, 'REQUIREMENTS_UNMET']);
+  });
 });

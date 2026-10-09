@@ -120,10 +120,10 @@ export class ExecutionsService {
     const deviceTime = new Date(cmd.deviceTime);
     const bounds = assertDeviceTimes([deviceTime], receivedAt, cmd.clientOffsetMs);
     if (cmd.rev <= e.answersRev) return this.answersResult(e, true);
-    // A swept partial still takes answers captured inside the window (they synced late); nothing after it.
-    if (e.state === 'completed' || (e.state === 'partial' && (e.completedAt !== null || deviceTime >= o.closesAt))) {
-      throw new AppError('EXECUTION_NOT_ACTIVE');
-    }
+    // Answers made inside the window count, even when they sync after the sweep made the execution partial;
+    // nothing made at or after closes_at does, whether or not the sweep has run yet. Rejected executions store anything.
+    const closed = e.state === 'completed' || (e.state === 'partial' && e.completedAt !== null);
+    if (closed || (e.state !== 'rejected' && deviceTime >= o.closesAt)) throw new AppError('EXECUTION_NOT_ACTIVE');
     const content = await this.lookups.content(e.checklistVersionId);
     await this.assertValidAnswers(content, e.id, cmd.answers);
     const counted = e.state !== 'rejected';
@@ -156,10 +156,13 @@ export class ExecutionsService {
     const bounds = assertDeviceTimes([new Date(cmd.deviceTime), new Date(cmd.completedAt)], receivedAt, cmd.clientOffsetMs);
     if (e.completedAt) return this.completeResult(e);
     const content = await this.lookups.content(e.checklistVersionId);
-    const fresh = cmd.rev > e.answersRev;
+    const completedAt = new Date(Math.max(+new Date(cmd.completedAt), +e.startedAt));
+    // A swept partial completed after closes_at stays partial with the answers it had at the close: the command's
+    // answers were made after the window, and requirements no longer decide anything.
+    const sweptLate = e.state === 'partial' && completedAt >= o.closesAt;
+    const fresh = cmd.rev > e.answersRev && !sweptLate;
     if (fresh) await this.assertValidAnswers(content, e.id, cmd.answers);
     const answers: Answers = fresh ? cmd.answers : (e.answers as Answers);
-    const completedAt = new Date(Math.max(+new Date(cmd.completedAt), +e.startedAt));
     const base = {
       ...this.answersColumns(e, answers, fresh ? cmd.rev : e.answersRev, cmd.clientOffsetMs, bounds.clockSuspect, receivedAt),
       completedAt,
@@ -170,7 +173,7 @@ export class ExecutionsService {
       const [row] = await tx.update(executions).set(base).where(eq(executions.id, id)).returning();
       return this.completeResult(row!);
     }
-    const missing = requirements(content, answers);
+    const missing = sweptLate ? [] : requirements(content, answers);
     if (missing.length) throw new AppError('REQUIREMENTS_UNMET', { details: { missing } });
     const inWindow = completedAt < o.closesAt;
     const [row] = await tx

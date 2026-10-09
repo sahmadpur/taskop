@@ -125,4 +125,13 @@ describe('answers (PUT /executions/:id/answers)', () => {
     const after = await put(api, executionId, answersBody(2, { [w.c.temp.id]: { number: 6 } }, '2026-11-02T07:10:00.000Z'));
     expect([after.status, after.body.error.code]).toEqual([409, 'EXECUTION_NOT_ACTIVE']);
   });
+
+  it('refuses answers made at or after closes_at on an active execution the sweep has not reached yet', async () => {
+    const { w, executionId, api } = await started();
+    clock.set('2026-11-02T07:05:00Z');
+    const atClose = await put(api, executionId, answersBody(1, { [w.c.temp.id]: { number: 6 } }, '2026-11-02T07:00:00.000Z'));
+    expect([atClose.status, atClose.body.error.code]).toEqual([409, 'EXECUTION_NOT_ACTIVE']);
+    const before = await put(api, executionId, answersBody(1, { [w.c.temp.id]: { number: 5 } }, '2026-11-02T06:59:59.000Z'));
+    expect(before.body).toMatchObject({ rev: 1, stale: false, state: 'active' });
+  });
 });

@@ -83,14 +83,19 @@ describe('sweep to partial and late revival', () => {
     expect(history.at(-1)).toEqual(['started', 'partial', '2026-11-02T07:00:00.000Z', null, null]);
   });
 
-  it('a late completion after closes_at keeps the occurrence partial without an extra history row', async () => {
+  it('a late completion after closes_at keeps the occurrence partial, stores no answers and adds no history row', async () => {
     const { w, executionId, api, photo } = await sweptAtClose();
     clock.set('2026-11-02T07:30:00Z');
     const before = (await historyOf(w.occurrenceId)).length;
     const res = await completeExecution(api, executionId, 5, fullAnswers(w, photo), '2026-11-02T07:20:00.000Z');
-    expect(res.body).toMatchObject({ state: 'partial' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ state: 'partial', completedAt: '2026-11-02T07:20:00.000Z', late: true });
     expect(await statusOf(w.occurrenceId)).toBe('partial');
     expect(await historyOf(w.occurrenceId)).toHaveLength(before);
+    // Answers made after the window closed are not stored on a swept execution.
+    const row = await executionRow(executionId);
+    expect(row).toMatchObject({ state: 'partial', answers_rev: 0, answers: {} });
+    expect(row.completed_at!.toISOString()).toBe('2026-11-02T07:20:00.000Z');
   });
 
   it('keeps answers captured before closes_at that arrive after the sweep, and refuses later ones', async () => {
