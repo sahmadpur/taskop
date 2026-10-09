@@ -25,9 +25,18 @@ pnpm dev
 cp apps/mobile/.env.example apps/mobile/.env
 pnpm --filter @taskop/mobile dev
 ```
-`EXPO_PUBLIC_API_URL` points the app at the API (default `http://localhost:3000`). On a physical phone use your computer's LAN IP, e.g. `http://192.168.1.20:3000`.
+`EXPO_PUBLIC_API_URL` points the app at the API (default `http://localhost:3000`).
 
-Photo and video uploads go straight from the phone to storage. On a physical phone set both `EXPO_PUBLIC_API_URL=http://<mac-lan-ip>:3000` (mobile `.env`) and `S3_PUBLIC_ENDPOINT=http://<mac-lan-ip>:8333` (API `.env`).
+### Running on a phone (development build)
+Checklist execution uses native modules that Expo Go does not ship (SQLCipher, camera), so run a development build:
+```bash
+ipconfig getifaddr en0                     # your Mac's LAN IP, e.g. 192.168.1.20
+# apps/mobile/.env:  EXPO_PUBLIC_API_URL=http://192.168.1.20:3000
+# apps/api/.env:     S3_PUBLIC_ENDPOINT=http://192.168.1.20:8333   (presigned upload URLs point here)
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer pnpm --filter @taskop/mobile ios -- --device
+pnpm --filter @taskop/mobile android -- --device
+```
+The phone and the Mac must be on the same Wi-Fi, and the macOS firewall must accept incoming connections for Node (port 3000) and Docker (port 8333). The iOS simulator can keep `localhost`.
 
 ## Tests
 `pnpm test` (API integration tests start a disposable Postgres via Testcontainers; Docker must be running).
