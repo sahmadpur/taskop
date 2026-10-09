@@ -14,12 +14,13 @@ import {
 } from '@taskop/contracts';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CommitInput } from '@/components/commit-input';
 import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import type { LocalMedia } from '@/offline/local-model';
 import { fromAnswerDatetime, nowInputFor, toAnswerDatetime } from './datetime-format';
+import { numberKeyboard, parseNumberAnswer } from './number-format';
 import { Chip, Choice, EvidenceRow } from './parts';
 
 export interface ItemFieldProps {
@@ -62,24 +63,25 @@ function NumberInput(p: { item: NumberItem; value: number | undefined; disabled:
   const [invalid, setInvalid] = useState(false);
   const { item } = p;
   const commit = (text: string) => {
-    const s = text.trim().replace(',', '.');
-    if (!s) {
-      setInvalid(false);
-      p.onChange(undefined);
-      return;
-    }
-    const n = Number(s);
-    const ok = Number.isFinite(n) && (item.min === null || n >= item.min) && (item.max === null || n <= item.max);
-    setInvalid(!ok);
-    if (ok) p.onChange(Math.round(n * 10 ** item.decimals) / 10 ** item.decimals);
+    const entry = parseNumberAnswer(item, text);
+    setInvalid(entry.kind === 'invalid');
+    if (entry.kind !== 'invalid') p.onChange(entry.kind === 'ok' ? entry.value : undefined);
   };
+  const range =
+    item.min !== null && item.max !== null
+      ? t('mobile.execution.numberRange', { min: item.min, max: item.max })
+      : item.min !== null
+        ? t('mobile.execution.numberMin', { min: item.min })
+        : item.max !== null
+          ? t('mobile.execution.numberMax', { max: item.max })
+          : null;
   return (
     <View style={styles.gap}>
       <View style={styles.row}>
-        <CommitInput accessibilityLabel={item.label} keyboardType="decimal-pad" value={p.value === undefined ? '' : String(p.value)} editable={!p.disabled} onCommit={commit} style={styles.flex} />
+        <CommitInput accessibilityLabel={item.label} keyboardType={numberKeyboard(item, Platform.OS)} value={p.value === undefined ? '' : String(p.value)} editable={!p.disabled} onCommit={commit} style={styles.flex} />
         {item.unit ? <Text style={styles.unit}>{item.unit}</Text> : null}
       </View>
-      {item.min !== null && item.max !== null ? <Text style={styles.help}>{t('mobile.execution.numberRange', { min: item.min, max: item.max })}</Text> : null}
+      {range ? <Text style={styles.help}>{range}</Text> : null}
       {invalid ? <Text style={styles.missing}>{t('mobile.execution.invalidNumber')}</Text> : null}
     </View>
   );

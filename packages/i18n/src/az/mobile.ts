@@ -70,6 +70,8 @@ export default {
     notePlaceholder: 'Nə gördüyünüzü qısa yazın',
     now: 'İndi',
     numberRange: '{{min}}–{{max}} arası',
+    numberMin: 'Ən azı {{min}}',
+    numberMax: 'Ən çoxu {{max}}',
     invalidNumber: 'Rəqəm düzgün deyil və ya icazə verilən aralıqdan kənardır.',
     invalidDate: 'Format düzgün deyil.',
     datePlaceholder: { date: 'İİİİ-AA-GG', time: 'SS:DD', datetime: 'İİİİ-AA-GG SS:DD' },

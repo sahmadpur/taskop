@@ -1,7 +1,7 @@
 import { EXECUTION_LIMITS, type ManualProblem, MEDIA_KINDS, MEDIA_LIMITS, type MediaKind, type MediaSource, PROBLEM_SEVERITIES, type ProblemSeverity } from '@taskop/contracts';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FormError } from '@/components/form-error';
 import { PrimaryButton } from '@/components/primary-button';
 import { colors, spacing } from '@/lib/theme';
@@ -44,8 +44,9 @@ export function ProblemSheet(p: Props) {
   };
   return (
     <Modal visible transparent animationType="slide" onRequestClose={p.onClose}>
-      <View style={styles.backdrop}>
-        <View testID="problem-sheet" style={styles.sheet}>
+      {/* The keyboard must not cover the note field or the save button. */}
+      <KeyboardAvoidingView testID="problem-sheet-keyboard" style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView testID="problem-sheet" style={styles.sheet} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>{t('mobile.problem.title')}</Text>
           <Text style={styles.muted}>{p.itemLabel}</Text>
           <Text style={styles.label}>{t('mobile.problem.severity')}</Text>
@@ -90,15 +91,16 @@ export function ProblemSheet(p: Props) {
             <PrimaryButton title={t('mobile.problem.save')} onPress={save} />
           </View>
           {p.existing ? <PrimaryButton variant="outline" title={t('mobile.problem.remove')} onPress={() => p.onSave(null)} /> : null}
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.4)' },
-  sheet: { backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: spacing.lg, gap: spacing.sm },
+  sheet: { flexGrow: 0, maxHeight: '90%', backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  sheetContent: { padding: spacing.lg, gap: spacing.sm },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
   muted: { color: colors.muted },
   label: { fontWeight: '600', color: colors.text, marginTop: spacing.sm },

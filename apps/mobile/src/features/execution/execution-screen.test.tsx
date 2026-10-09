@@ -1,7 +1,7 @@
-import { MEDIA_LIMITS } from '@taskop/contracts';
+import { blankContent, type ChecklistContent, MEDIA_LIMITS, type MultiChoiceItem, newItem, newSection, type NumberItem, type SingleChoiceItem } from '@taskop/contracts';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import '@/lib/i18n';
-import { capturedPhoto } from '@/offline/testing/fake-transport';
+import { capturedPhoto, type FakeTransport } from '@/offline/testing/fake-transport';
 import { ME, myExecution, OCC, occurrence, OTHER, OTHER_EXECUTION, syncResponse, T, VERSION2, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices, type TestServices } from '@/offline/testing/test-services';
@@ -163,6 +163,117 @@ describe('ExecutionScreen', () => {
   it('opens the section of the item the finish screen jumped to', async () => {
     await opened((t) => t.c.photo.id);
     expect(screen.getByText('Bölmə 2/2')).toBeTruthy();
+  });
+});
+
+/** A pick the test resolves later, to act while it is still running. */
+function deferredPick(t: { transport: FakeTransport }) {
+  let resolve!: () => void;
+  const { pickFromGallery } = jest.requireMock('./capture') as { pickFromGallery: jest.Mock };
+  pickFromGallery.mockImplementationOnce(
+    () => new Promise((r) => {
+      resolve = () => r(capturedPhoto(t.transport, { source: 'gallery' }));
+    }),
+  );
+  return { resolve: () => act(async () => resolve()) };
+}
+
+describe('ExecutionScreen inputs and races', () => {
+  it('answers single and multi choice, and deselecting every option leaves an empty selection', async () => {
+    const single = newItem('single_choice') as SingleChoiceItem;
+    single.label = 'Növbə';
+    single.options = [{ id: single.options[0]!.id, label: 'Səhər' }, { id: single.options[1]!.id, label: 'Axşam' }];
+    const multi = newItem('multi_choice') as MultiChoiceItem;
+    multi.label = 'Təmizlənən yerlər';
+    multi.options = [{ id: multi.options[0]!.id, label: 'Rəf' }, { id: multi.options[1]!.id, label: 'Vitrin' }];
+    multi.required = false;
+    const count = newItem('number') as NumberItem;
+    count.label = 'Say';
+    count.min = 0;
+    const content: ChecklistContent = { ...blankContent(), sections: [{ ...newSection('Ümumi'), items: [single, multi, count] }] };
+    const t = await createTestServices();
+    await t.seed(syncResponse({ checklistVersions: [versionOf(content)] }));
+    const id = await t.services.store.start(OCC, ME);
+    await renderWithServices(t.services, <ExecutionScreen occurrenceId={OCC} />);
+    await screen.findByText('Ümumi');
+    const saved = async () => (await t.services.store.execution(id))!.answers;
+
+    await fireEvent.press(screen.getByRole('radio', { name: 'Səhər' }));
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Axşam' }));
+    await eventually(async () => expect((await saved())[single.id]).toEqual({ optionIds: [single.options[1]!.id] }));
+    expect(screen.getByRole('radio', { name: 'Axşam' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByRole('radio', { name: 'Səhər' }).props.accessibilityState).toMatchObject({ selected: false });
+
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Rəf' }));
+    await eventually(async () => expect((await saved())[multi.id]).toEqual({ optionIds: [multi.options[0]!.id] }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Vitrin' }));
+    await eventually(async () => expect((await saved())[multi.id]).toEqual({ optionIds: [multi.options[0]!.id, multi.options[1]!.id] }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Rəf' }));
+    await eventually(async () => expect((await saved())[multi.id]).toEqual({ optionIds: [multi.options[1]!.id] }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Vitrin' }));
+    // The store compacts an empty selection away: the item is simply unanswered again.
+    await eventually(async () => expect((await saved())[multi.id]).toBeUndefined());
+    expect(screen.getByRole('checkbox', { name: 'Vitrin' }).props.accessibilityState).toMatchObject({ checked: false });
+
+    // A count that cannot be negative keeps the decimal pad and shows its lower bound.
+    expect(screen.getByLabelText('Say').props.keyboardType).toBe('decimal-pad');
+    expect(screen.getByText('Ən azı 0')).toBeTruthy();
+  });
+
+  it('offers a minus key for numbers that may be negative and refuses more decimals than allowed', async () => {
+    const t = await opened();
+    const input = screen.getByLabelText('Temperatur');
+    expect(input.props.keyboardType).toBe('numbers-and-punctuation'); // Jest runs as iOS; Temperatur has no min
+    await fireEvent.changeText(input, '4.5');
+    await fireEvent(input, 'blur');
+    expect(await screen.findByText('Rəqəm düzgün deyil və ya icazə verilən aralıqdan kənardır.')).toBeTruthy();
+    await fireEvent.changeText(input, '1e3');
+    await fireEvent(input, 'blur');
+    expect(await answers(t)).toEqual({});
+    await fireEvent.changeText(input, '-18');
+    await fireEvent(input, 'blur');
+    await eventually(async () => expect(await answers(t)).toEqual({ [t.c.temp.id]: { number: -18 } }));
+    expect(screen.queryByText('Rəqəm düzgün deyil və ya icazə verilən aralıqdan kənardır.')).toBeNull();
+  });
+
+  it('keeps fields clear of the keyboard on the screen and in the problem sheet', async () => {
+    await opened();
+    expect(screen.getByTestId('execution-scroll').props).toMatchObject({
+      keyboardShouldPersistTaps: 'handled',
+      keyboardDismissMode: 'interactive',
+      automaticallyAdjustKeyboardInsets: true,
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Problem qeyd et: Temperatur' }));
+    // The KeyboardAvoidingView's `behavior` is not visible on its host view; that it wraps the sheet is.
+    expect(within(await screen.findByTestId('problem-sheet-keyboard')).getByTestId('problem-sheet')).toBeTruthy();
+    expect(screen.getByTestId('problem-sheet').props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
+  it('a gallery pick still running when the execution moves to another id lands on the new id', async () => {
+    const t = await opened();
+    const pick = deferredPick(t);
+    await fireEvent.press(within(screen.getByTestId(`item-${t.c.problem.id}`)).getByRole('button', { name: 'Foto: Qalereya' }));
+    await act(async () => {
+      await t.db.run(`UPDATE executions SET id = ?, claim = 'accepted' WHERE id = ?`, [OTHER_EXECUTION, t.id]);
+      await t.db.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [OTHER_EXECUTION, t.id]);
+      t.services.feed.emit();
+    });
+    await screen.findByText('Zal');
+    await pick.resolve();
+    await eventually(async () => expect((await answers(t, OTHER_EXECUTION))[t.c.problem.id]?.photos).toHaveLength(1));
+  });
+
+  it('discards a problem medium whose pick finishes after its sheet closed and another item\'s opened', async () => {
+    const t = await opened();
+    await fireEvent.press(screen.getByRole('button', { name: 'Problem qeyd et: Temperatur' }));
+    const pick = deferredPick(t);
+    await fireEvent.press(within(await screen.findByTestId('problem-sheet')).getByRole('button', { name: 'Foto: Qalereya' }));
+    await fireEvent.press(within(screen.getByTestId('problem-sheet')).getByRole('button', { name: 'Ləğv et' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Problem qeyd et: Soyuducuda problem varmı?' }));
+    const sheet = await screen.findByTestId('problem-sheet');
+    await pick.resolve();
+    await eventually(async () => expect(await t.services.store.media(t.id)).toEqual([]));
+    expect(within(sheet).queryByRole('button', { name: 'Foto 1' })).toBeNull();
   });
 });
 

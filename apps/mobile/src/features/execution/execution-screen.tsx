@@ -1,4 +1,4 @@
-import { deriveProblems, type MediaKind, type MediaSource, progress, requirements, visibleItems } from '@taskop/contracts';
+import { deriveProblems, MEDIA_LIMITS, type MediaKind, type MediaSource, progress, requirements, visibleItems } from '@taskop/contracts';
 import { router } from 'expo-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,10 +28,17 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
   const data = useExecution(occurrenceId);
   const now = useNow();
   const [sectionIndex, setSectionIndex] = useState(0);
-  const [capture, setCapture] = useState<{ kind: MediaKind; target: MediaTarget } | null>(null);
+  const [capture, setCapture] = useState<{ kind: MediaKind; target: MediaTarget; session: number } | null>(null);
   const [draft, setDraft] = useState<ProblemDraft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const scroll = useRef<ScrollView>(null);
+  const focused = useRef(false);
+  // Read by work that outlives a render (a gallery pick, a camera capture): the execution's id can change meanwhile.
+  const executionIdRef = useRef<string | null>(null);
+  executionIdRef.current = data?.execution.id ?? null;
+  // The open problem draft, kept current synchronously, and which opening of the sheet it belongs to.
+  const draftRef = useRef<ProblemDraft | null>(null);
+  const draftSession = useRef(0);
   const content = data?.content.kind === 'ok' ? data.content.content : null;
   const answers = data?.execution.answers;
 
@@ -103,18 +110,41 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
     else Alert.alert(t('mobile.evidence.failed'));
   };
   const run = (job: () => Promise<unknown>) => void job().catch(report);
-  const attach = async (m: CapturedMedia, target: MediaTarget) => {
-    const id = await store.attachMedia(executionId, m, target);
-    if (target.field === 'problem') setDraft((d) => (d ? { ...d, mediaIds: [...d.mediaIds, id] } : d));
+  const updateDraft = (d: ProblemDraft | null) => {
+    draftRef.current = d;
+    setDraft(d);
+  };
+  const openDraft = (d: ProblemDraft) => {
+    draftSession.current += 1;
+    updateDraft(d);
+  };
+  const endDraft = () => {
+    draftSession.current += 1; // a pick still running for this draft is discarded when it resolves
+    updateDraft(null);
+  };
+  /** `session` is the problem sheet opening a pick was started from. */
+  const attach = async (m: CapturedMedia, target: MediaTarget, session: number) => {
+    const at = executionIdRef.current;
+    if (!at) return;
+    const id = await store.attachMedia(at, m, target);
+    if (target.field !== 'problem') return;
+    const d = draftRef.current;
+    if (session !== draftSession.current || !d || d.itemId !== target.itemId || d.mediaIds.length >= MEDIA_LIMITS.problemMaxMedia) {
+      // Its sheet was closed, another item's sheet is open, or the draft filled up meanwhile.
+      await store.removeMedia(executionIdRef.current ?? at, id);
+      return;
+    }
+    updateDraft({ ...d, mediaIds: [...d.mediaIds, id] });
   };
   const startCapture = (kind: MediaKind, source: MediaSource, target: MediaTarget) => {
+    const session = draftSession.current;
     if (source === 'camera') {
-      setCapture({ kind, target });
+      setCapture({ kind, target, session });
       return;
     }
     run(async () => {
       const picked = await pickFromGallery(kind);
-      if (picked) await attach(picked, target);
+      if (picked) await attach(picked, target, session);
     });
   };
   // Problem media are registered as they are attached; those the worker drops from the problem are removed again
@@ -124,7 +154,7 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
   };
   const savedProblemMedia = (itemId: string) => current[itemId]?.problem?.mediaIds ?? [];
   const closeDraft = (d: ProblemDraft) => {
-    setDraft(null);
+    endDraft();
     const saved = savedProblemMedia(d.itemId);
     discard(d.mediaIds.filter((id) => !saved.includes(id)));
   };
@@ -161,7 +191,14 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
           <Text style={styles.bannerText}>{banner}</Text>
         </View>
       ) : null}
-      <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        testID="execution-scroll"
+        ref={scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
         {section ? (
           <>
             <Text style={styles.muted}>{t('mobile.execution.section', { n: index + 1, total: content.sections.length })}</Text>
@@ -174,7 +211,9 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
                   key={item.id}
                   style={{ marginLeft: depth * spacing.md }}
                   onLayout={(e) => {
-                    if (item.id === focusItemId) scroll.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
+                    if (item.id !== focusItemId || focused.current) return;
+                    focused.current = true; // once: later re-layouts (answers, follow-ups) must not pull the worker back
+                    scroll.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
                   }}
                 >
                   <ItemField
@@ -190,7 +229,7 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
                     onOpenVideo={setPreview}
                     onFlag={() => {
                       const p = current[item.id]?.problem;
-                      setDraft({ itemId: item.id, severity: p?.severity ?? 'normal', note: p?.note ?? '', mediaIds: p?.mediaIds ?? [] });
+                      openDraft({ itemId: item.id, severity: p?.severity ?? 'normal', note: p?.note ?? '', mediaIds: p?.mediaIds ?? [] });
                     }}
                   />
                 </View>
@@ -213,13 +252,13 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
           liveOnly={draftItem.evidence.liveOnly}
           media={mediaById}
           existing={Boolean(current[draft.itemId]?.problem)}
-          onChange={setDraft}
+          onChange={updateDraft}
           onCapture={(kind, source) => startCapture(kind, source, { itemId: draft.itemId, field: 'problem' })}
           onSave={(problem) =>
             run(async () => {
               const dropped = [...new Set([...savedProblemMedia(draft.itemId), ...draft.mediaIds])].filter((id) => !problem?.mediaIds.includes(id));
               await store.setProblem(executionId, draft.itemId, problem);
-              setDraft(null);
+              endDraft();
               discard(dropped);
             })
           }
@@ -231,9 +270,9 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
           kind={capture.kind}
           onClose={() => setCapture(null)}
           onCaptured={(m) => {
-            const target = capture.target;
+            const { target, session } = capture;
             setCapture(null);
-            run(() => attach(m, target));
+            run(() => attach(m, target, session));
           }}
         />
       ) : null}
