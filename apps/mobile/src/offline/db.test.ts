@@ -8,8 +8,19 @@ describe('local database', () => {
   it('creates every table on a fresh database and records the schema version', async () => {
     const db = createDb(nodeDriver());
     expect(await migrate(db)).toBe(MIGRATIONS.length);
-    expect(await tables(db)).toEqual(['checklist_versions', 'executions', 'media', 'meta', 'occurrences', 'outbox']);
+    expect(await tables(db)).toEqual(['checklist_versions', 'executions', 'media', 'media_refusals', 'meta', 'occurrences', 'outbox']);
     expect(await db.first('PRAGMA user_version')).toEqual({ user_version: MIGRATIONS.length });
+  });
+
+  it('upgrades a version 1 database in place, keeping its executions', async () => {
+    const db = createDb(nodeDriver());
+    await migrate(db, MIGRATIONS.slice(0, 1));
+    await db.run(
+      `INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, started_at, updated_at) VALUES ('e', 'o', 'v', 'active', 'accepted', 's', 'u')`,
+    );
+    expect(await migrate(db)).toBe(2);
+    expect(await db.first('SELECT id, sync_note FROM executions')).toEqual({ id: 'e', sync_note: null });
+    expect(await db.first('SELECT count(*) AS n FROM media_refusals')).toEqual({ n: 0 });
   });
 
   it('does nothing when already migrated and keeps the data', async () => {

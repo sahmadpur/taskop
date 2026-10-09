@@ -3,6 +3,7 @@ import { iso } from './local-model';
 import { createMediaQueue, LOCAL_FILE_KEEP_DAYS, MEDIA_MAX_ATTEMPTS, mediaErrorKey, UPLOAD_TIMEOUT_MS, UploadTimeoutError, withUploadTimeout } from './media-queue';
 import { capturedPhoto, capturedVideo } from './testing/fake-transport';
 import { ME, OCC, T } from './testing/fixtures';
+import { listCommands } from './outbox';
 import { createHarness, type Harness } from './testing/harness';
 
 /** Starts, attaches a video (problem draft) then a photo, and marks both registered, as an acknowledged outbox would. */
@@ -83,21 +84,28 @@ describe('media queue', () => {
     expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
   });
 
-  it('parks a medium the server refuses and moves on to the next', async () => {
+  it('drops a medium the server refuses for good, notes why on its item, drops it from the answers and moves on', async () => {
     const h = await createHarness();
     const m = await twoMedia(h);
+    await h.db.run('DELETE FROM outbox'); // as an acknowledged outbox would leave it
     h.api.on('registerMedia', async (executionId, b) => {
       if (b.kind === 'photo') throw new ApiError(422, 'EVIDENCE_LIVE_ONLY', 'errors.EVIDENCE_LIVE_ONLY');
       return h.api.defaults.registerMedia(executionId, b);
     });
     expect(await h.mediaQueue.drain()).toBe('ok');
     expect(h.transport.uploads.map((u) => u.uri)).toEqual([m.video.localUri]);
-    expect(await h.mediaQueue.list()).toMatchObject([{ id: m.photoId, failedCode: 'EVIDENCE_LIVE_ONLY' }]);
+    expect(await h.mediaQueue.list()).toEqual([]);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
+    expect(h.transport.removed).toEqual([m.photo.localUri]);
+    expect(await h.store.mediaRefusals(m.id)).toEqual([{ mediaId: m.photoId, itemId: h.c.photo.id, errorKey: 'errors.EVIDENCE_LIVE_ONLY' }]);
+    // The evidence goes from the answers under a new revision, queued for the next push.
+    expect((await h.store.execution(m.id))!.answers[h.c.photo.id]).toBeUndefined();
+    expect(await listCommands(h.db)).toMatchObject([{ kind: 'answers', rev: 2, status: 'pending' }]);
     expect(mediaErrorKey('EVIDENCE_LIVE_ONLY')).toBe('errors.EVIDENCE_LIVE_ONLY');
     expect(mediaErrorKey('FILE_MISSING')).toBe('mobile.sync.mediaErrors.FILE_MISSING');
   });
 
-  it('marks a file missing from the phone as failed and skips the PUT when the server already has the file', async () => {
+  it('drops a file missing from the phone with a note, and skips the PUT when the server already has the file', async () => {
     const h = await createHarness();
     const m = await twoMedia(h);
     h.transport.files.delete(m.photo.localUri);
@@ -105,10 +113,49 @@ describe('media queue', () => {
     expect(await h.mediaQueue.drain()).toBe('ok');
     expect(h.transport.uploads).toEqual([]);
     expect(h.api.calls.map((c) => c.method)).toEqual(['registerMedia']);
-    expect((await rows(h)).map((r) => [r.id, r.failed_code, r.uploaded_at !== null])).toEqual([
-      [m.videoId, null, true],
-      [m.photoId, 'FILE_MISSING', false],
-    ]);
+    expect((await rows(h)).map((r) => [r.id, r.failed_code, r.uploaded_at !== null])).toEqual([[m.videoId, null, true]]);
+    expect(await h.store.mediaRefusals(m.id)).toEqual([{ mediaId: m.photoId, itemId: h.c.photo.id, errorKey: 'mobile.sync.mediaErrors.FILE_MISSING' }]);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
+  });
+
+  it.each<[string, string]>([
+    ['a refused confirmation', 'EXECUTION_NOT_ACTIVE'],
+    ['a confirmation for a medium the server does not know', 'NOT_FOUND'],
+  ])('%s drops the medium with a note instead of parking it red', async (_name, code) => {
+    const h = await createHarness();
+    const m = await twoMedia(h);
+    h.api.on('confirmUploaded', async (id) => {
+      if (id === m.photoId) throw new ApiError(409, code as never, `errors.${code}`);
+      return h.api.defaults.confirmUploaded(id);
+    });
+    expect(await h.mediaQueue.drain()).toBe('ok');
+    expect((await rows(h)).map((r) => r.id)).toEqual([m.videoId]);
+    expect(await h.store.mediaRefusals(m.id)).toMatchObject([{ mediaId: m.photoId, errorKey: `errors.${code}` }]);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
+  });
+
+  it('a problem medium refused for good is noted on the item whose problem names it', async () => {
+    const h = await createHarness();
+    const m = await twoMedia(h);
+    await h.store.setProblem(m.id, h.c.temp.id, { severity: 'normal', note: 'Sınıb', mediaIds: [m.videoId] });
+    h.transport.files.delete(m.video.localUri);
+    expect(await h.mediaQueue.drain()).toBe('ok');
+    expect(await h.store.mediaRefusals(m.id)).toEqual([{ mediaId: m.videoId, itemId: h.c.temp.id, errorKey: 'mobile.sync.mediaErrors.FILE_MISSING' }]);
+    expect((await h.store.execution(m.id))!.answers[h.c.temp.id]?.problem?.mediaIds).toEqual([]);
+  });
+
+  it('"Sil" on a file that failed to upload drops it with its note; attaching a new medium to the item clears the note', async () => {
+    const h = await createHarness();
+    const m = await twoMedia(h);
+    await h.db.run(`UPDATE media SET failed_code = 'UPLOAD_FAILED', attempts = 5 WHERE id = ?`, [m.photoId]);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 1 });
+    await h.mediaQueue.discard(m.videoId); // not failed: ignored
+    await h.mediaQueue.discard(m.photoId);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 0 });
+    expect(h.transport.removed).toEqual([m.photo.localUri]);
+    expect(await h.store.mediaRefusals(m.id)).toMatchObject([{ mediaId: m.photoId, errorKey: 'mobile.sync.mediaErrors.UPLOAD_FAILED' }]);
+    await h.store.attachMedia(m.id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    expect(await h.store.mediaRefusals(m.id)).toEqual([]);
   });
 
   it('deletes a local file only after upload and 7 days after its execution finished syncing', async () => {
@@ -151,7 +198,8 @@ describe('media queue', () => {
     ['counted as an attempt after a racing confirm', (h) => h.api.on('confirmUploaded', async () => {
       throw new ApiError(422, 'MEDIA_NOT_FOUND_IN_STORAGE', 'errors.MEDIA_NOT_FOUND_IN_STORAGE');
     })],
-    ['parked after a refused confirm', (h) => h.api.on('confirmUploaded', async () => {
+    ['dropped after a refused confirm', (h) => h.api.on('confirmUploaded', async (id) => {
+      if (await h.db.first('SELECT 1 FROM media WHERE id = ?', [id])) return h.api.defaults.confirmUploaded(id);
       throw new ApiError(409, 'EXECUTION_NOT_ACTIVE', 'errors.EXECUTION_NOT_ACTIVE');
     })],
   ])('stops for a medium removed mid-upload that would have been %s, and moves on', async (_name, arrange) => {

@@ -118,6 +118,15 @@ export type MediaTarget = { itemId: string; field: 'evidence' } | { itemId: stri
 
 export interface OccurrenceView extends LocalOccurrence {
   execution: LocalExecution | null;
+  /** The execution still has commands on the phone (waiting or failed). */
+  unsynced: boolean;
+}
+
+/** A medium the server refused for good (or the worker discarded after it failed), shown on its item until a new one is attached. */
+export interface MediaRefusal {
+  mediaId: string;
+  itemId: string | null;
+  errorKey: string;
 }
 
 /** The register-media body without `deviceTime`/`clientOffsetMs` (stamped at send). One builder for the outbox and the media queue. */
@@ -304,6 +313,8 @@ export function createExecutionStore(deps: StoreDeps) {
       const current = (m.kind === 'photo' ? e.answers[target.itemId]?.photos : e.answers[target.itemId]?.videos) ?? [];
       if (target.field === 'evidence' && current.length >= mediaLimitFor(item, m.kind)) throw new MediaLimitError();
       const itemId = target.field === 'evidence' ? target.itemId : null;
+      // A new medium on the item replaces the note about one the server refused there.
+      await tx.run('DELETE FROM media_refusals WHERE execution_id = ? AND item_id = ?', [executionId, target.itemId]);
       await tx.run(
         `INSERT INTO media (id, execution_id, item_id, kind, source, mime, bytes, width, height, duration_ms, captured_at, local_uri)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -375,7 +386,11 @@ export function createExecutionStore(deps: StoreDeps) {
       const rows = await db.all<OccurrenceRow>('SELECT * FROM occurrences ORDER BY starts_at, checklist_name');
       const executions = await db.all<ExecutionRow>('SELECT * FROM executions ORDER BY started_at');
       const byOccurrence = new Map(executions.map((r) => [r.occurrence_id, toExecution(r)])); // the newest wins
-      return rows.map((r) => ({ ...toOccurrence(r), execution: byOccurrence.get(r.id) ?? null }));
+      const queued = new Set((await db.all<{ execution_id: string }>('SELECT DISTINCT execution_id FROM outbox')).map((r) => r.execution_id));
+      return rows.map((r) => {
+        const execution = byOccurrence.get(r.id) ?? null;
+        return { ...toOccurrence(r), execution, unsynced: execution !== null && queued.has(execution.id) };
+      });
     },
     async occurrence(id: string): Promise<LocalOccurrence | null> {
       const row = await db.first<OccurrenceRow>('SELECT * FROM occurrences WHERE id = ?', [id]);
@@ -387,6 +402,13 @@ export function createExecutionStore(deps: StoreDeps) {
     },
     async media(executionId: string): Promise<LocalMedia[]> {
       return (await db.all<MediaRow>('SELECT * FROM media WHERE execution_id = ? ORDER BY captured_at, id', [executionId])).map(toMedia);
+    },
+    async mediaRefusals(executionId: string): Promise<MediaRefusal[]> {
+      const rows = await db.all<{ media_id: string; item_id: string | null; error_key: string }>(
+        'SELECT media_id, item_id, error_key FROM media_refusals WHERE execution_id = ? ORDER BY created_at, media_id',
+        [executionId],
+      );
+      return rows.map((r) => ({ mediaId: r.media_id, itemId: r.item_id, errorKey: r.error_key }));
     },
     /** Commands not yet accepted plus registered files not yet uploaded (the logout warning, spec §7.4). */
     async unsyncedCount(): Promise<number> {

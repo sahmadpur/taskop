@@ -4,6 +4,7 @@ import { clampOffset, type Clock, readOffset } from './clock';
 import type { Db } from './db';
 import { mediaRegisterBody } from './execution-store';
 import { iso, type LocalMedia, type MediaRow, toMedia } from './local-model';
+import { dropMedium } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import type { FileRemover } from './user-scope';
 
@@ -57,6 +58,8 @@ export interface MediaQueue {
   counts(): Promise<{ pending: number; failed: number }>;
   list(): Promise<MediaQueueEntry[]>;
   retryFailed(): Promise<void>;
+  /** "Sil" on a file that failed to upload: it is dropped like a refused one (see `dropMedium`). */
+  discard(id: string): Promise<void>;
 }
 
 /** The i18n key for a medium's failure: local reasons under mobile.sync.mediaErrors, API codes under errors. */
@@ -83,9 +86,22 @@ export function createMediaQueue(deps: {
   // The worker may remove a medium while it is in flight: every update below finds no row then, and the queue
   // simply stops for that medium.
 
-  async function park(id: string, code: string): Promise<'next'> {
-    const n = await db.run('UPDATE media SET failed_code = ?, attempts = attempts + 1 WHERE id = ?', [code, id]);
-    if (n > 0) feed.emit();
+  function removeFile(uri: string): void {
+    try {
+      transport.remove(uri);
+    } catch {
+      // Already gone.
+    }
+  }
+
+  /**
+   * No retry can ever fix this medium (its file is gone from the phone, or the server refused it for good): it is
+   * dropped with a note on its item instead of staying red forever, and the queue moves on.
+   */
+  async function refuse(id: string, errorKey: string): Promise<'next'> {
+    const uri = await db.transaction((tx) => dropMedium(tx, id, clock.now(), errorKey));
+    if (uri) removeFile(uri);
+    feed.emit();
     return 'next';
   }
 
@@ -108,7 +124,7 @@ export function createMediaQueue(deps: {
   }
 
   async function uploadOne(m: LocalMedia): Promise<Step> {
-    if (!transport.exists(m.localUri)) return park(m.id, 'FILE_MISSING');
+    if (!transport.exists(m.localUri)) return refuse(m.id, mediaErrorKey('FILE_MISSING'));
     let ticket: MediaUploadTicket;
     try {
       // Registering a known ID again only returns a fresh presigned URL (Part 1 Task 10, decision 1).
@@ -119,7 +135,7 @@ export function createMediaQueue(deps: {
       });
     } catch (e) {
       const f = classifyError(e);
-      return f.kind === 'permanent' ? park(m.id, f.code) : f.kind;
+      return f.kind === 'permanent' ? refuse(m.id, f.messageKey) : f.kind;
     }
     // The server already has the file: nothing to PUT or confirm.
     if (ticket.status === 'uploaded') return markUploaded(m.id);
@@ -137,7 +153,7 @@ export function createMediaQueue(deps: {
     } catch (e) {
       const f = classifyError(e);
       if (f.kind === 'permanent' && f.code === 'MEDIA_NOT_FOUND_IN_STORAGE') return countAttempt(m.id);
-      return f.kind === 'permanent' ? park(m.id, f.code) : f.kind;
+      return f.kind === 'permanent' ? refuse(m.id, f.messageKey) : f.kind;
     }
     return markUploaded(m.id);
   }
@@ -190,6 +206,10 @@ export function createMediaQueue(deps: {
     async retryFailed() {
       await db.run('UPDATE media SET failed_code = NULL, attempts = 0 WHERE failed_code IS NOT NULL AND uploaded_at IS NULL');
       feed.emit();
+    },
+    async discard(id) {
+      const row = await db.first<{ failed_code: string }>('SELECT failed_code FROM media WHERE id = ? AND failed_code IS NOT NULL AND uploaded_at IS NULL', [id]);
+      if (row) await refuse(id, mediaErrorKey(row.failed_code));
     },
   };
 }

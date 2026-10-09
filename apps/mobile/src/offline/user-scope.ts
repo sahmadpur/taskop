@@ -8,7 +8,7 @@ export interface FileRemover {
 export async function clearLocalData(db: Db, files: FileRemover): Promise<void> {
   const media = await db.all<{ local_uri: string }>('SELECT local_uri FROM media WHERE file_deleted_at IS NULL');
   await db.transaction(async (tx) => {
-    for (const table of ['outbox', 'media', 'executions', 'occurrences', 'checklist_versions', 'meta']) await tx.run(`DELETE FROM ${table}`);
+    for (const table of ['outbox', 'media', 'media_refusals', 'executions', 'occurrences', 'checklist_versions', 'meta']) await tx.run(`DELETE FROM ${table}`);
   });
   for (const m of media) {
     try {

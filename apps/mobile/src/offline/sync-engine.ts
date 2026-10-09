@@ -1,5 +1,4 @@
 import type {
-  Answers,
   ClaimCommand,
   ClaimRejectionReason,
   ClaimResult,
@@ -14,10 +13,10 @@ import type {
 import type { ChangeFeed } from './change-feed';
 import { clampOffset, type Clock, measureOffset, readOffset } from './clock';
 import { type Db, getMeta } from './db';
-import { withoutMedia } from './execution-store';
 import { type ExecutionRow, iso, normIso, toExecution } from './local-model';
 import type { MediaQueue } from './media-queue';
 import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
+import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import { applyPull, knownVersionIds } from './sync-pull';
 import type { FileRemover } from './user-scope';
@@ -86,6 +85,8 @@ export interface SyncEngine {
   refresh(): Promise<void>;
   /** "Yenidən cəhd et": failed commands and files go back to pending, then a run starts. */
   retryFailed(): Promise<void>;
+  /** "Sil" on a failed command (with what depends on it), see `discardFailedCommand`. */
+  discardCommand(seq: number): Promise<void>;
   stop(): void;
 }
 
@@ -101,52 +102,6 @@ export async function markFinishedSynced(db: Db, now: number): Promise<void> {
   );
 }
 
-const refersTo = (answers: Answers, mediaId: string): boolean =>
-  Object.values(answers).some((a) => a?.photos?.includes(mediaId) || a?.videos?.includes(mediaId) || a?.problem?.mediaIds.includes(mediaId));
-
-/** Gives every queued answers/complete command of an execution a new revision (payload and column alike). */
-async function requeueRevision(tx: Db, executionId: string, rev: number, answers: Answers | null): Promise<number> {
-  const queued = await tx.all<{ seq: number; payload: string }>(
-    `SELECT seq, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
-    [executionId],
-  );
-  for (const q of queued) {
-    const payload = { ...(JSON.parse(q.payload) as Record<string, unknown>), rev, ...(answers ? { answers } : {}) };
-    await tx.run('UPDATE outbox SET rev = ?, payload = ? WHERE seq = ?', [rev, JSON.stringify(payload), q.seq]);
-  }
-  return queued.length;
-}
-
-/**
- * The server refused a medium for good (MEDIA_TOO_LARGE, EVIDENCE_LIVE_ONLY, …). The medium is deleted and dropped
- * from the answers under a new revision, so the answers and completion still queued do not fail on an unknown medium;
- * the item's evidence requirement shows as missing again, the worker's signal to retake it.
- * Registration always precedes the answers that reference a medium, so every revision naming it is still queued: those
- * commands are rewritten in place, keeping their action time (an answer made before closes_at stays before it) and
- * their order before a completion. Only when none is queued is a new answers command appended.
- * Returns the local file to delete after the transaction commits.
- */
-async function dropRefusedMedium(tx: Db, cmd: OutboxCommand, now: number): Promise<string | null> {
-  await ackCommand(tx, cmd.seq);
-  const mediaId = cmd.refId;
-  if (!mediaId) return null;
-  // The worker may have removed the medium meanwhile: removeMedia already dropped it from the answers.
-  const medium = await tx.first<{ local_uri: string }>('SELECT local_uri FROM media WHERE id = ?', [mediaId]);
-  if (!medium) return null;
-  await tx.run('DELETE FROM media WHERE id = ?', [mediaId]);
-  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.executionId]);
-  if (!row) return medium.local_uri;
-  const e = toExecution(row);
-  if (!refersTo(e.answers, mediaId)) return medium.local_uri;
-  const answers = withoutMedia(e.answers, mediaId);
-  const rev = e.rev + 1;
-  await tx.run('UPDATE executions SET answers = ?, rev = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), rev, iso(now), e.id]);
-  if ((await requeueRevision(tx, e.id, rev, answers)) === 0) {
-    await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
-  }
-  return medium.local_uri;
-}
-
 /**
  * My other install already holds the claim: this phone continues that execution instead of losing its work.
  * The local execution, its media and its queued commands move to the server's execution ID. A copy of that execution
@@ -159,6 +114,7 @@ async function adoptExecution(tx: Db, from: string, to: string, now: number): Pr
   await tx.run(`UPDATE executions SET id = ?, claim = 'accepted', updated_at = ? WHERE id = ?`, [to, iso(now), from]);
   await tx.run('UPDATE media SET execution_id = ? WHERE execution_id = ?', [to, from]);
   await tx.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [to, from]);
+  await tx.run('UPDATE media_refusals SET execution_id = ? WHERE execution_id = ?', [to, from]);
   const shift = pulled?.rev ?? 0;
   if (shift === 0) return;
   await tx.run('UPDATE executions SET rev = rev + ?, synced_rev = ? WHERE id = ?', [shift, shift, to]);
@@ -188,23 +144,6 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
   if ((await requeueRevision(tx, e.id, rev, e.answers)) === 0) {
     await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
   }
-}
-
-/**
- * A completion refused for unmet requirements (e.g. a refused medium left an item without evidence) reopens the
- * execution while its window is still open, so the worker can fix it and complete again. After closes_at the
- * server's sweep makes it partial. A reopened execution drops the refused command (the next completion queues a fresh
- * one); otherwise the command is parked as failed. Returns whether it reopened.
- */
-async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: number): Promise<boolean> {
-  const reopened = await tx.run(
-    `UPDATE executions SET state = 'active', completed_at = NULL, finished_synced_at = NULL, updated_at = ?
-     WHERE id = ? AND state = 'completed'
-       AND EXISTS (SELECT 1 FROM occurrences o WHERE o.id = executions.occurrence_id AND o.closes_at > ?)`,
-    [iso(now), cmd.executionId, iso(now)],
-  );
-  if (reopened > 0) await ackCommand(tx, cmd.seq);
-  return reopened > 0;
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
@@ -331,15 +270,20 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       } catch (e) {
         const f = classifyError(e);
         if (f.kind === 'permanent') {
-          if (cmd.kind === 'media') {
-            const uri = await db.transaction((tx) => dropRefusedMedium(tx, cmd, clock.now()));
-            if (uri) removeFile(uri);
-          } else {
-            await db.transaction(async (tx) => {
-              if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, clock.now()))) return;
-              await failCommand(tx, cmd.seq, f.code, f.messageKey);
-            });
-          }
+          const now = clock.now();
+          const uris = await db.transaction(async (tx): Promise<string[]> => {
+            if (cmd.kind === 'media') {
+              await ackCommand(tx, cmd.seq);
+              const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, f.messageKey) : null;
+              return uri ? [uri] : [];
+            }
+            if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, now))) return [];
+            const resolved = await resolveTerminalRefusal(tx, cmd, f.code, f.messageKey, now);
+            if (resolved) return resolved;
+            await failCommand(tx, cmd.seq, f.code, f.messageKey);
+            return [];
+          });
+          uris.forEach(removeFile);
           feed.emit();
           continue;
         }
@@ -450,6 +394,12 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       await mediaQueue.retryFailed();
       feed.emit();
       await run('manual');
+    },
+    async discardCommand(seq) {
+      const uris = await db.transaction((tx) => discardFailedCommand(tx, seq, clock.now()));
+      uris.forEach(removeFile);
+      feed.emit();
+      await refresh();
     },
     stop() {
       stopped = true;

@@ -22,6 +22,7 @@ async function pruneOld(tx: Db, returnedIds: string[], now: number): Promise<voi
             OR EXISTS (SELECT 1 FROM outbox x WHERE x.execution_id = e.id)
             OR EXISTS (SELECT 1 FROM media m WHERE m.execution_id = e.id AND (m.uploaded_at IS NULL OR m.file_deleted_at IS NULL))))`;
   await tx.run(`DELETE FROM media WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
+  await tx.run(`DELETE FROM media_refusals WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
   await tx.run(`DELETE FROM executions WHERE occurrence_id IN (${prunable})`, params);
   await tx.run(`DELETE FROM occurrences WHERE id IN (${prunable})`, params);
 }
@@ -82,12 +83,14 @@ async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void
   if (queued > 0) return; // Local changes not sent yet win; the next pull sees their result.
   // The local lock at closes_at is sticky even before the server's sweep has run (decision 15).
   const state = local.state === 'partial' && x.state === 'active' ? 'partial' : x.state;
-  const takeAnswers = x.answersRev > local.rev;
+  // After a refusal was resolved (sync_note), local revisions the server never took are gone for good: the server's copy wins.
+  const takeAnswers = x.answersRev > local.rev || local.sync_note !== null;
   await tx.run(
-    `UPDATE executions SET state = ?, claim = ?, rejected_reason = ?, completed_at = ?, answers = ?, rev = ?, synced_rev = max(synced_rev, ?), updated_at = ?
+    `UPDATE executions SET state = ?, claim = ?, rejected_reason = ?, completed_at = ?, answers = ?, rev = ?, synced_rev = ?, updated_at = ?
      WHERE id = ?`,
     [state, claim, x.rejectedReason, x.completedAt ? normIso(x.completedAt) : local.completed_at,
-      takeAnswers ? JSON.stringify(x.answers) : local.answers, takeAnswers ? x.answersRev : local.rev, x.answersRev, iso(now), x.id],
+      takeAnswers ? JSON.stringify(x.answers) : local.answers, takeAnswers ? x.answersRev : local.rev,
+      takeAnswers ? x.answersRev : Math.max(local.synced_rev, x.answersRev), iso(now), x.id],
   );
 }
 

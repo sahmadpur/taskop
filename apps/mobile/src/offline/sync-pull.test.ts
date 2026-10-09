@@ -68,20 +68,22 @@ describe('pruning old occurrences', () => {
     await applyPull(db, syncResponse({ occurrences: [occurrence()] }), 0, NOW);
     await db.run(`INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, started_at, updated_at) VALUES ('x', ?, ?, 'completed', 'accepted', ?, ?)`, [OCC, VERSION, T.open, T.open]);
     await db.run(`INSERT INTO media (id, execution_id, kind, source, mime, bytes, captured_at, local_uri, uploaded_at, file_deleted_at) VALUES ('m', 'x', 'photo', 'camera', 'image/jpeg', 1, ?, 'u', ?, ?)`, [T.open, T.open, T.open]);
+    await db.run(`INSERT INTO media_refusals (media_id, execution_id, item_id, error_key, created_at) VALUES ('r', 'x', 'i', 'errors.MEDIA_TOO_LARGE', ?)`, [T.open]);
   };
   const counts = async (db: Awaited<ReturnType<typeof openTestDb>>) => ({
     occ: (await db.first<{ n: number }>('SELECT count(*) AS n FROM occurrences'))!.n,
     exe: (await db.first<{ n: number }>('SELECT count(*) AS n FROM executions'))!.n,
     med: (await db.first<{ n: number }>('SELECT count(*) AS n FROM media'))!.n,
+    ref: (await db.first<{ n: number }>('SELECT count(*) AS n FROM media_refusals'))!.n,
   });
 
   it('prunes a fully synced occurrence, its execution and media once its window closed over 7 days ago', async () => {
     const db = await openTestDb();
     await seed(db);
     await applyPull(db, syncResponse({ occurrences: [] }), 0, NOW + 6 * 24 * 60 * 60 * 1000);
-    expect(await counts(db)).toEqual({ occ: 1, exe: 1, med: 1 });
+    expect(await counts(db)).toEqual({ occ: 1, exe: 1, med: 1, ref: 1 });
     await applyPull(db, syncResponse({ occurrences: [] }), 0, OLD_NOW);
-    expect(await counts(db)).toEqual({ occ: 0, exe: 0, med: 0 });
+    expect(await counts(db)).toEqual({ occ: 0, exe: 0, med: 0, ref: 0 });
   });
 
   it('keeps an old occurrence that still has an unsynced command, media or answers', async () => {
@@ -89,7 +91,7 @@ describe('pruning old occurrences', () => {
     await seed(db);
     await appendCommand(db, { executionId: 'x', kind: 'complete', rev: 1, payload: {}, createdAt: T.open });
     await applyPull(db, syncResponse({ occurrences: [] }), 0, OLD_NOW);
-    expect(await counts(db)).toEqual({ occ: 1, exe: 1, med: 1 });
+    expect(await counts(db)).toEqual({ occ: 1, exe: 1, med: 1, ref: 1 });
     await db.run('DELETE FROM outbox');
     await db.run(`UPDATE media SET uploaded_at = NULL`);
     await applyPull(db, syncResponse({ occurrences: [] }), 0, OLD_NOW);

@@ -5,11 +5,11 @@ import { groupOccurrences, homeStats } from './group-occurrences';
 
 const view = (over: Partial<OccurrenceView> = {}): OccurrenceView => ({
   id: OCC, checklistId: 'c', checklistName: 'Açılış', siteId: 's', siteName: 'Filial', shiftName: null, localDate: '2026-11-02',
-  startsAt: T.starts, dueAt: T.due, closesAt: T.closes, status: 'pending', checklistVersionId: VERSION, claim: null, execution: null, ...over,
+  startsAt: T.starts, dueAt: T.due, closesAt: T.closes, status: 'pending', checklistVersionId: VERSION, claim: null, execution: null, unsynced: false, ...over,
 });
 const execution = (over: Partial<LocalExecution> = {}): LocalExecution => ({
   id: 'e', occurrenceId: OCC, checklistVersionId: VERSION, state: 'active', claim: 'accepted', rejectedReason: null, rejectedBy: null,
-  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, ...over,
+  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, updatedAt: T.open, syncNote: null, ...over,
 });
 const at = (iso: string) => Date.parse(iso);
 const place = (o: OccurrenceView, now: string) => {
@@ -29,6 +29,11 @@ describe('groupOccurrences', () => {
     ['my execution past closes_at: done', view({ execution: execution() }), T.closes, 'done', { action: 'view' }],
     ['missed today without an execution: done', view({ status: 'missed' }), '2026-11-02T08:00:00.000Z', 'done', { action: 'none' }],
     ['finished yesterday: not shown', view({ status: 'completed', localDate: '2026-11-01' }), T.open, null, {}],
+    // A night shift: yesterday's occurrence, finished by me a few hours ago, stays reachable.
+    ['my execution of yesterday finished within 24 h: done', view({ localDate: '2026-11-01', execution: execution({ state: 'completed', completedAt: '2026-11-01T22:00:00.000Z' }) }), T.open, 'done', { action: 'view' }],
+    ['my execution of yesterday locked within 24 h: done', view({ localDate: '2026-11-01', closesAt: '2026-11-01T23:00:00.000Z', execution: execution({ state: 'partial', lockedAt: '2026-11-01T23:00:00.000Z' }) }), T.open, 'done', { action: 'view' }],
+    ['my execution finished over 24 h ago: not shown', view({ localDate: '2026-10-31', closesAt: '2026-10-31T07:00:00.000Z', execution: execution({ state: 'completed', completedAt: '2026-10-31T06:00:00.000Z' }) }), T.open, null, {}],
+    ['an older execution with unsent or failed commands: done', view({ localDate: '2026-10-30', closesAt: '2026-10-30T07:00:00.000Z', unsynced: true, execution: execution({ state: 'completed', completedAt: '2026-10-30T06:00:00.000Z' }) }), T.open, 'done', { action: 'view' }],
   ])('%s', (_name, o, now, key, card) => {
     const placed = place(o, now);
     expect(placed?.key ?? null).toBe(key);

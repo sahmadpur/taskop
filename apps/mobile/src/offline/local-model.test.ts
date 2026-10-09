@@ -16,7 +16,8 @@ describe('local rows', () => {
     const e = toExecution({
       id: 'e', occurrence_id: 'o', checklist_version_id: 'v', state: 'active', claim: 'pending', rejected_reason: null, rejected_by: null,
       started_at: 's', completed_at: null, locked_at: null, answers: '{"i":{"number":5}}', rev: 2, synced_rev: 1, finished_synced_at: null, updated_at: 'u',
+      sync_note: 'errors.EXECUTION_NOT_ACTIVE',
     });
-    expect(e).toMatchObject({ occurrenceId: 'o', answers: { i: { number: 5 } }, rev: 2, syncedRev: 1, claim: 'pending' });
+    expect(e).toMatchObject({ occurrenceId: 'o', answers: { i: { number: 5 } }, rev: 2, syncedRev: 1, claim: 'pending', updatedAt: 'u', syncNote: 'errors.EXECUTION_NOT_ACTIVE' });
   });
 });

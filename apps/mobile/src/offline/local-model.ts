@@ -76,6 +76,7 @@ export interface ExecutionRow {
   synced_rev: number;
   finished_synced_at: string | null;
   updated_at: string;
+  sync_note: string | null;
 }
 
 export interface LocalExecution {
@@ -94,6 +95,9 @@ export interface LocalExecution {
   rev: number;
   syncedRev: number;
   finishedSyncedAt: string | null;
+  updatedAt: string;
+  /** The i18n key of why the server refused this execution's work for good ("Server qəbul etmədi: …"); null when none. */
+  syncNote: string | null;
 }
 
 export const toExecution = (r: ExecutionRow): LocalExecution => ({
@@ -111,6 +115,8 @@ export const toExecution = (r: ExecutionRow): LocalExecution => ({
   rev: r.rev,
   syncedRev: r.synced_rev,
   finishedSyncedAt: r.finished_synced_at,
+  updatedAt: r.updated_at,
+  syncNote: r.sync_note,
 });
 
 export interface MediaRow {

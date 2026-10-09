@@ -109,9 +109,12 @@ describe('pushing the outbox', () => {
     const original = { run: h.db.run, transaction: h.db.transaction };
     h.db.run = failAck(original.run);
     h.db.transaction = (<T>(fn: (tx: Db) => Promise<T>) => original.transaction((tx) => fn({ ...tx, run: failAck(tx.run) }))) as Db['transaction'];
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     await h.engine.run('manual');
     h.engine.stop();
     Object.assign(h.db, original);
+    expect(logged).toHaveBeenCalledWith('[sync] Unexpected error; backing off', 'disk I/O error');
+    logged.mockRestore();
     expect(revs(h)).toEqual([1]);
     expect(await outboxCounts(h.db)).toEqual({ pending: 1, failed: 0 });
     expect(await h.store.execution(id)).toMatchObject({ rev: 1, syncedRev: 0 });
@@ -203,6 +206,7 @@ describe('media registration', () => {
     expect(await h.store.execution(id)).toMatchObject({ rev: 3, syncedRev: 3, answers: { [h.c.temp.id]: { number: 5 } } });
     expect(await h.store.media(id)).toEqual([]);
     expect(h.transport.removed).toEqual([photo.localUri]);
+    expect(await h.store.mediaRefusals(id)).toEqual([{ mediaId: expect.any(String), itemId: h.c.photo.id, errorKey: 'errors.MEDIA_TOO_LARGE' }]);
     expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
     expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 0 });
     expect(h.engine.status()).toMatchObject({ pending: 0, failed: 0 });
@@ -394,22 +398,6 @@ describe('failures', () => {
     expect((await listCommands(h.db)).filter((c) => c.kind === 'complete')).toMatchObject([{ status: 'pending' }]);
   });
 
-  it('a completion refused after closes_at stays completed', async () => {
-    const h = await createHarness();
-    const id = await h.store.start(OCC, ME);
-    await h.store.patchAnswer(id, h.c.problem.id, { optionIds: [h.c.no.id] });
-    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
-    await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
-    expect(await h.store.complete(id)).toEqual({ ok: true });
-    h.api.on('complete', async () => {
-      throw new ApiError(422, 'REQUIREMENTS_UNMET', 'errors.REQUIREMENTS_UNMET');
-    });
-    h.clock.set('2026-11-02T07:05:00.000Z');
-    await h.engine.run('manual');
-    expect(await listCommands(h.db)).toMatchObject([{ kind: 'complete', status: 'failed', errorCode: 'REQUIREMENTS_UNMET' }]);
-    expect(await h.store.execution(id)).toMatchObject({ state: 'completed', completedAt: T.open });
-  });
-
   it('a failed answers command is superseded by the next revision', async () => {
     const h = await createHarness();
     const id = await h.store.start(OCC, ME);
@@ -448,6 +436,129 @@ describe('failures', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+/** Answers everything so the store accepts a completion. */
+async function completeAll(h: Harness, id: string) {
+  await h.store.patchAnswer(id, h.c.problem.id, { optionIds: [h.c.no.id] });
+  await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+  await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+  expect(await h.store.complete(id)).toEqual({ ok: true });
+}
+
+const refuse = (code: string, status = 409) => async (): Promise<never> => {
+  throw new ApiError(status, code as never, `errors.${code}`);
+};
+
+describe('refusals no retry can fix', () => {
+  it('a completion refused for unmet requirements after closes_at is resolved: partial, a note, and the server copy on the next pull', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await completeAll(h, id);
+    h.api.on('complete', refuse('REQUIREMENTS_UNMET', 422));
+    h.clock.set('2026-11-02T07:05:00.000Z');
+    h.api.sync = syncResponse({ executions: [myExecution({ id, state: 'partial', answersRev: 2, answers: { [h.c.temp.id]: { number: 5 } } })] });
+    await h.engine.run('manual');
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(indicatorOf(h.engine.status())).toBe('synced');
+    expect(await h.store.execution(id)).toMatchObject({
+      state: 'partial', completedAt: null, syncNote: 'errors.REQUIREMENTS_UNMET', finishedSyncedAt: '2026-11-02T07:05:00.000Z',
+      // The pull took the server's answers and revision although the local revision (3) was higher.
+      rev: 2, syncedRev: 2, answers: { [h.c.temp.id]: { number: 5 } },
+    });
+  });
+
+  it.each(['answers', 'complete'] as const)('%s refused because the execution is no longer active is resolved, never red', async (kind) => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await h.engine.run('manual');
+    if (kind === 'answers') await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    else await completeAll(h, id);
+    h.api.on('saveAnswers', refuse('EXECUTION_NOT_ACTIVE'));
+    h.api.on('complete', refuse('EXECUTION_NOT_ACTIVE'));
+    h.api.sync = syncResponse({ executions: [myExecution({ id, state: 'completed', completedAt: T.due, answersRev: 0, answers: {} })] });
+    await h.engine.run('manual');
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+    expect(indicatorOf(h.engine.status())).toBe('synced');
+    expect(await h.store.execution(id)).toMatchObject({ state: 'completed', completedAt: T.due, answers: {}, rev: 0, syncNote: 'errors.EXECUTION_NOT_ACTIVE' });
+    expect((await h.store.execution(id))!.finishedSyncedAt).not.toBeNull();
+  });
+
+  it.each(['NOT_FOUND', 'NOT_EXECUTOR'])('a claim refused with %s drops the execution\'s queued work and keeps it read-only with a note', async (code) => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ occurrences: [occurrence(), occurrence({ id: OCC2, checklistName: 'Kassa yoxlaması' })], checklistVersions: [versionOf(h.c.content)] }));
+    h.api.on('claim', async (b) => {
+      if (b.occurrenceId === OCC) throw new ApiError(code === 'NOT_FOUND' ? 404 : 403, code as never, `errors.${code}`);
+      return h.api.defaults.claim(b);
+    });
+    const first = await h.store.start(OCC, ME);
+    const photo = capturedPhoto(h.transport);
+    await h.store.attachMedia(first, photo, { itemId: h.c.photo.id, field: 'evidence' });
+    await h.store.patchAnswer(first, h.c.temp.id, { number: 5 });
+    const second = await h.store.start(OCC2, ME);
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['claim', 'claim', 'pull']);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await h.store.media(first)).toEqual([]);
+    expect(h.transport.removed).toEqual([photo.localUri]);
+    expect(await h.store.execution(first)).toMatchObject({ state: 'rejected', claim: 'rejected', syncNote: `errors.${code}` });
+    expect((await h.store.execution(first))!.finishedSyncedAt).not.toBeNull();
+    expect(await h.store.execution(second)).toMatchObject({ claim: 'accepted', syncNote: null });
+    expect(indicatorOf(h.engine.status())).toBe('synced');
+  });
+
+  it('any other refusal stays red until the worker retries or discards it', async () => {
+    const h = await createHarness();
+    h.api.on('claim', refuse('CLOCK_INVALID', 422));
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.engine.run('manual');
+    expect(indicatorOf(h.engine.status())).toBe('failed');
+    const [claim] = await listCommands(h.db);
+    await h.engine.discardCommand(claim!.seq);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(indicatorOf(h.engine.status())).toBe('synced');
+    expect(await h.store.execution(id)).toMatchObject({ state: 'rejected', syncNote: 'errors.CLOCK_INVALID' });
+    h.api.reset('claim');
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['claim', 'pull', 'pull']);
+  });
+
+  it('"Sil" on failed answers removes them; the execution stays open and the next pull takes the server copy', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 4 });
+    await h.engine.run('manual');
+    h.api.on('saveAnswers', refuse('VALIDATION_FAILED', 400));
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 5 });
+    await h.engine.run('manual');
+    const failed = (await listCommands(h.db)).find((c) => c.status === 'failed')!;
+    // A pending command cannot be discarded.
+    await h.engine.discardCommand(failed.seq + 1000);
+    await h.engine.discardCommand(failed.seq);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(indicatorOf(h.engine.status())).toBe('synced');
+    h.api.sync = syncResponse({ executions: [myExecution({ id, answersRev: 1, answers: { [h.c.temp.id]: { number: 4 } } })] });
+    await h.engine.run('manual');
+    expect(await h.store.execution(id)).toMatchObject({ state: 'active', rev: 1, syncedRev: 1, answers: { [h.c.temp.id]: { number: 4 } }, syncNote: 'errors.VALIDATION_FAILED' });
+    h.api.reset('saveAnswers');
+    await h.store.patchAnswer(id, h.c.temp.id, { number: 6 });
+    await h.engine.run('manual');
+    expect(revs(h).at(-1)).toBe(2);
+  });
+
+  it('"Sil" on a failed completion reopens the execution while its window is open', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await completeAll(h, id);
+    h.api.on('complete', refuse('VALIDATION_FAILED', 400));
+    await h.engine.run('manual');
+    const failed = (await listCommands(h.db)).find((c) => c.kind === 'complete')!;
+    expect(failed.status).toBe('failed');
+    await h.engine.discardCommand(failed.seq);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await h.store.execution(id)).toMatchObject({ state: 'active', completedAt: null, syncNote: 'errors.VALIDATION_FAILED' });
   });
 });
 

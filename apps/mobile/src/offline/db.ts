@@ -142,6 +142,18 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX outbox_execution ON outbox (execution_id, kind);
   `,
+  // v2: what the server refused for good, shown to the worker instead of a red row that can never clear.
+  `
+  ALTER TABLE executions ADD COLUMN sync_note TEXT;
+  CREATE TABLE media_refusals (
+    media_id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    item_id TEXT,
+    error_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX media_refusals_execution ON media_refusals (execution_id, item_id);
+  `,
 ];
 
 export async function migrate(db: Db, migrations: readonly string[] = MIGRATIONS): Promise<number> {

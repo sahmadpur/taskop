@@ -1,4 +1,5 @@
 import type { OccurrenceView } from '@/offline/execution-store';
+import type { LocalExecution } from '@/offline/local-model';
 
 export const GROUP_KEYS = ['now', 'inProgress', 'upcoming', 'done'] as const;
 export type GroupKey = (typeof GROUP_KEYS)[number];
@@ -18,8 +19,18 @@ export interface CardModel {
 export type Groups = Record<GroupKey, CardModel[]>;
 
 const CLOSED_STATUSES: ReadonlySet<string> = new Set(['completed', 'partial', 'missed', 'cancelled', 'audit_pending', 'audited']);
+const RECENT_MS = 24 * 60 * 60 * 1000;
 
-/** Spec §7.3: İndi (open; overdue in red), Davam edən (my open execution), Gələcək (not open yet), Bitmiş (finished today). */
+/** When my execution stopped being open: completed, locked at closes_at, or (refused, rejected) last changed. */
+function finishedAt(e: LocalExecution): number {
+  return Date.parse(e.completedAt ?? e.lockedAt ?? e.updatedAt);
+}
+
+/**
+ * Spec §7.3: İndi (open; overdue in red), Davam edən (my open execution), Gələcək (not open yet), Bitmiş (finished
+ * today). Bitmiş also keeps my executions that still have commands on the phone, or that finished within the last
+ * 24 h whatever their date (a night shift's occurrence belongs to yesterday), so they stay reachable.
+ */
 export function groupOccurrences(list: OccurrenceView[], userId: string, now: number, today: string): Groups {
   const groups: Groups = { now: [], inProgress: [], upcoming: [], done: [] };
   for (const o of list) {
@@ -30,7 +41,8 @@ export function groupOccurrences(list: OccurrenceView[], userId: string, now: nu
     if (e?.state === 'active' && now < closes) {
       groups.inProgress.push({ occurrence: o, overdue: now >= due, late: false, claimedBy: null, action: 'continue' });
     } else if (e || CLOSED_STATUSES.has(o.status) || now >= closes) {
-      if (o.localDate !== today) continue;
+      const keep = o.localDate === today || (e !== null && (o.unsynced || now - finishedAt(e) < RECENT_MS));
+      if (!keep) continue;
       const late = e?.completedAt ? Date.parse(e.completedAt) >= due : false;
       groups.done.push({ occurrence: o, overdue: false, late, claimedBy, action: e ? 'view' : 'none' });
     } else if (now < Date.parse(o.startsAt)) {
