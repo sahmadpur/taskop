@@ -40,7 +40,15 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'Obyektlər' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Rollar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Audit jurnalı' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Problemlər' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Parametrlər' })).toBeInTheDocument();
+  });
+
+  it('shows the problems page to users who may view assignments', async () => {
+    state.current = { status: 'authenticated', me: me(['assignments.view']) };
+    renderShell();
+    expect(await screen.findByRole('link', { name: 'Problemlər' })).toHaveAttribute('href', '/problems');
+    expect(screen.getByRole('link', { name: 'İcra cədvəli' })).toBeInTheDocument();
   });
 
   it('AppShell redirects to login when the session ends', async () => {

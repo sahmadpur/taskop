@@ -10,6 +10,7 @@ import {
   TenantWorkspaceLayout,
 } from '@/features/checklists/routes';
 import { AuditPage } from '@/features/audit/audit-page';
+import { ProblemsPage } from '@/features/executions/problems-page';
 import { AcceptInvitePage } from '@/features/auth/accept-invite-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -109,6 +110,7 @@ const rosterRoute = createRoute({
 });
 const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shifts', component: ShiftsPage });
 const scheduleRoute = createRoute({ getParentRoute: () => appLayout, path: '/schedule', component: ScheduleRoute, validateSearch: scheduleSearch });
+const problemsRoute = createRoute({ getParentRoute: () => appLayout, path: '/problems', component: () => <ProblemsPage /> });
 const assignmentsRoute = createRoute({ getParentRoute: () => appLayout, path: '/assignments', component: AssignmentsPage });
 const newAssignmentRoute = createRoute({
   getParentRoute: () => appLayout,
@@ -230,6 +232,7 @@ export const routeTree = rootRoute.addChildren([
     newAssignmentRoute,
     assignmentDetailRoute,
     scheduleRoute,
+    problemsRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,
