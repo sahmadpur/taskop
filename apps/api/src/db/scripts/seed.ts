@@ -1,6 +1,6 @@
 import { hash } from '@node-rs/argon2';
-import { countItems, regenerateIds } from '@taskop/contracts';
-import { eq } from 'drizzle-orm';
+import { addDays, countItems, localDateOf, regenerateIds } from '@taskop/contracts';
+import { and, eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { uuidv7 } from 'uuidv7';
 import { siteLabel } from '../../tenancy/sites.service';
@@ -56,15 +56,47 @@ async function seedDemoChecklists(tx: Tx, tenantId: string, ownerId: string): Pr
   await tx.insert(schema.tenantTemplates).values({ tenantId, name: 'Növbə təhvili', category: 'other', content: handover, itemCount: countItems(handover), ...by });
 }
 
-async function main(): Promise<void> {
-  const url = process.env.DATABASE_OWNER_URL;
-  if (!url) throw new Error('DATABASE_OWNER_URL is required');
+/** Idempotent: a shift, this week's roster for elvin and one daily assignment (occurrences come from the cron). */
+async function seedDemoScheduling(tx: Tx, tenantId: string, ownerId: string): Promise<void> {
+  const existing = await tx.select({ id: schema.shifts.id }).from(schema.shifts).where(eq(schema.shifts.tenantId, tenantId)).limit(1);
+  if (existing.length) return;
+  const [warehouse] = await tx.select({ id: schema.sites.id }).from(schema.sites).where(and(eq(schema.sites.tenantId, tenantId), eq(schema.sites.name, 'Anbar №1')));
+  const [elvin] = await tx.select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.username, 'elvin')));
+  const [cleaning] = await tx
+    .select({ id: schema.checklists.id })
+    .from(schema.checklists)
+    .where(and(eq(schema.checklists.tenantId, tenantId), eq(schema.checklists.name, 'Gündəlik təmizlik yoxlaması')));
+  if (!warehouse || !elvin || !cleaning) return;
+  const today = localDateOf(new Date(), 'Asia/Baku');
+  const shiftId = uuidv7();
+  await tx.insert(schema.shifts).values({ id: shiftId, tenantId, name: 'Səhər', startTime: '08:00', endTime: '16:00' });
+  await tx.insert(schema.shiftRoster).values(Array.from({ length: 7 }, (_, i) => ({ tenantId, userId: elvin.id, shiftId, siteId: warehouse.id, date: addDays(today, i) })));
+  const assignmentId = uuidv7();
+  await tx.insert(schema.assignments).values({
+    id: assignmentId,
+    tenantId,
+    checklistId: cleaning.id,
+    siteId: warehouse.id,
+    name: 'Səhər təmizliyi',
+    schedule: { kind: 'daily', every: 1, startDate: today, endDate: null, skipDates: [] },
+    timing: { mode: 'fixed', startTime: '09:00', dueAfterMinutes: 120, graceMinutes: 60 },
+    createdByUserId: ownerId,
+  });
+  await tx.insert(schema.assignmentAssignees).values({ tenantId, assignmentId, userId: elvin.id });
+}
+
+export async function seed(url: string): Promise<void> {
   const db = drizzle(url, { schema });
   await seedGlobalTemplates(db);
   const [existing] = await db.select().from(schema.tenants).where(eq(schema.tenants.orgCode, 'demo'));
   if (existing) {
     const [owner] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, 'owner@demo.taskop.az'));
-    if (owner) await db.transaction((tx) => seedDemoChecklists(tx, existing.id, owner.id));
+    if (owner) {
+      await db.transaction(async (tx) => {
+        await seedDemoChecklists(tx, existing.id, owner.id);
+        await seedDemoScheduling(tx, existing.id, owner.id);
+      });
+    }
     console.log('Demo tenant already exists');
     await db.$client.end();
     return;
@@ -110,15 +142,26 @@ async function main(): Promise<void> {
       await tx.insert(schema.userSites).values({ tenantId, userId: id, siteId });
     }
     await seedDemoChecklists(tx, tenantId, ownerId);
+    await seedDemoScheduling(tx, tenantId, ownerId);
   });
   await db.$client.end();
   console.log('Demo tenant "demo" created.');
   console.log('  Owner:   owner@demo.taskop.az / DemoPassword123');
   console.log('  Manager: manager@demo.taskop.az / DemoPassword123');
   console.log('  Workers: org code "demo", usernames elvin / nigar, PIN 482915');
+  console.log('  Scheduling: shift "Səhər", daily "Səhər təmizliyi" at Anbar №1 (occurrences appear once the API has started)');
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const url = process.env.DATABASE_OWNER_URL;
+  if (!url) throw new Error('DATABASE_OWNER_URL is required');
+  await seed(url);
+}
+
+// Run only as a script (tsx seed.ts), not when imported.
+if (process.argv[1]?.endsWith('seed.ts')) {
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
