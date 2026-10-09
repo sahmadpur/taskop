@@ -3,6 +3,11 @@ import {
   assignmentDtoSchema,
   assignmentListQuerySchema,
   assignmentPreviewSchema,
+  cancelOccurrenceInputSchema,
+  myOccurrenceQuerySchema,
+  occurrenceDetailSchema,
+  occurrenceDtoSchema,
+  occurrenceListQuerySchema,
   createAssignmentInputSchema,
   pageOf,
   previewAssignmentInputSchema,
@@ -36,3 +41,9 @@ export class PreviewAssignmentDto extends createZodDto(previewAssignmentInputSch
 export class AssignmentPageResponse extends createZodDto(pageOf(assignmentDtoSchema)) {}
 export class AssignmentDetailResponse extends createZodDto(assignmentDetailSchema) {}
 export class AssignmentPreviewResponse extends createZodDto(assignmentPreviewSchema) {}
+
+export class OccurrenceListQueryDto extends createZodDto(occurrenceListQuerySchema) {}
+export class MyOccurrenceQueryDto extends createZodDto(myOccurrenceQuerySchema) {}
+export class CancelOccurrenceDto extends createZodDto(cancelOccurrenceInputSchema) {}
+export class OccurrencePageResponse extends createZodDto(pageOf(occurrenceDtoSchema)) {}
+export class OccurrenceDetailResponse extends createZodDto(occurrenceDetailSchema) {}

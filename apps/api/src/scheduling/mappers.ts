@@ -1,5 +1,5 @@
-import { type AssignmentDto, type OccurrenceDto, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
-import type { assignments, occurrences } from '../db/schema';
+import { type AssignmentDto, type OccurrenceDto, type OccurrenceHistoryEntry, recurrenceSchema, type ShiftDto, timingSchema, type UserRef } from '@taskop/contracts';
+import type { assignments, occurrences, occurrenceStatusHistory } from '../db/schema';
 
 /** Postgres `time` reads back as 'HH:MM:SS'. */
 export const hhmm = (t: string): string => t.slice(0, 5);
@@ -84,4 +84,16 @@ export const toAssignmentDto = (r: AssignmentJoinedRow): AssignmentDto => ({
   assignees: r.assignees,
   createdAt: r.a.createdAt.toISOString(),
   updatedAt: r.a.updatedAt.toISOString(),
+});
+
+export const toHistoryEntry = (r: { h: typeof occurrenceStatusHistory.$inferSelect; actorName: string | null }): OccurrenceHistoryEntry => ({
+  fromStatus: r.h.fromStatus,
+  toStatus: r.h.toStatus,
+  at: r.h.at.toISOString(),
+  actor: r.h.actorUserId
+    ? { kind: 'user', name: r.actorName }
+    : r.h.actorPlatformAdminId
+      ? { kind: 'platform', name: null }
+      : { kind: 'system', name: null },
+  reason: r.h.reason,
 });
