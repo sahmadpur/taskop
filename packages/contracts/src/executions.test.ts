@@ -6,8 +6,8 @@ import {
   blankContent,
   type ChecklistContent,
   claimCommandSchema,
-  type MediaKind,
   mediaLimitFor,
+  type RegisteredMedia,
   newItem,
   newRule,
   newSection,
@@ -21,7 +21,10 @@ const P1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e51';
 const P2 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e52';
 const P3 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e53';
 const V1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e54';
-const media = new Map<string, MediaKind>([[P1, 'photo'], [P2, 'photo'], [P3, 'photo'], [V1, 'video']]);
+/** Evidence photo on the problem item. */
+const E1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e55';
+/** Problem-only photo (no item). */
+const N1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e56';
 
 function fixture() {
   const problem = newItem('yes_no') as YesNoItem;
@@ -65,9 +68,39 @@ describe('answers schema', () => {
 
 describe('answerIssues', () => {
   const f = fixture();
+  const media = new Map<string, RegisteredMedia>([
+    [P1, { kind: 'photo', itemId: f.photo.id }],
+    [P2, { kind: 'photo', itemId: f.photo.id }],
+    [P3, { kind: 'photo', itemId: f.photo.id }],
+    [V1, { kind: 'video', itemId: f.photo.id }],
+    [E1, { kind: 'photo', itemId: f.problem.id }],
+    [N1, { kind: 'photo', itemId: null }],
+  ]);
   const code = (answers: Answers) => answerIssues(f.content, answers, media).map((i) => [i.path.join('.'), i.code]);
   it.each<[string, () => Answers, string[][]]>([
-    ['valid answers', () => ({ [f.problem.id]: { optionIds: [f.problem.options[0].id], photos: [P1] }, [f.temp.id]: { number: 5 }, [f.photo.id]: { photos: [P1, P2] }, [f.day.id]: { datetime: '2026-11-02' } }), []],
+    [
+      'valid answers',
+      () => ({
+        [f.problem.id]: { optionIds: [f.problem.options[0].id], photos: [E1] },
+        [f.temp.id]: { number: 5, problem: { severity: 'normal', note: 'x', mediaIds: [N1] } },
+        [f.photo.id]: { photos: [P1, P2], problem: { severity: 'normal', note: 'x', mediaIds: [P3] } },
+        [f.day.id]: { datetime: '2026-11-02' },
+      }),
+      [],
+    ],
+    ['the same medium twice in one list', () => ({ [f.photo.id]: { photos: [P1, P1] } }), [[`answers.${f.photo.id}.photos.1`, 'executions.issues.invalidValue']]],
+    [
+      'the same medium twice in a problem',
+      () => ({ [f.temp.id]: { number: 5, problem: { severity: 'normal', note: 'x', mediaIds: [N1, N1] } } }),
+      [[`answers.${f.temp.id}.problem.mediaIds.1`, 'executions.issues.invalidValue']],
+    ],
+    ['a medium registered for another item', () => ({ [f.problem.id]: { photos: [P1] } }), [[`answers.${f.problem.id}.photos.0`, 'executions.issues.unknownMedia']]],
+    ['a problem-only medium as item evidence', () => ({ [f.problem.id]: { photos: [N1] } }), [[`answers.${f.problem.id}.photos.0`, 'executions.issues.unknownMedia']]],
+    [
+      'another item’s medium in a problem',
+      () => ({ [f.temp.id]: { number: 5, problem: { severity: 'normal', note: 'x', mediaIds: [P1] } } }),
+      [[`answers.${f.temp.id}.problem.mediaIds.0`, 'executions.issues.unknownMedia']],
+    ],
     ['an unknown item', () => ({ [ID]: { text: 'x' } }), [[`answers.${ID}`, 'executions.issues.unknownItem']]],
     ['an option of another item', () => ({ [f.problem.id]: { optionIds: [ID] } }), [[`answers.${f.problem.id}.optionIds`, 'executions.issues.unknownOption']]],
     ['two options on yes/no', () => ({ [f.problem.id]: { optionIds: f.problem.options.map((o) => o.id) } }), [[`answers.${f.problem.id}.optionIds`, 'executions.issues.invalidValue']]],
@@ -81,7 +114,7 @@ describe('answerIssues', () => {
     ['a video id among photos', () => ({ [f.photo.id]: { photos: [V1] } }), [[`answers.${f.photo.id}.photos.0`, 'executions.issues.unknownMedia']]],
     [
       'an unregistered problem medium',
-      () => ({ [f.temp.id]: { number: 5, problem: { severity: 'normal', note: 'x', mediaIds: [P1, ID] } } }),
+      () => ({ [f.temp.id]: { number: 5, problem: { severity: 'normal', note: 'x', mediaIds: [N1, ID] } } }),
       [[`answers.${f.temp.id}.problem.mediaIds.1`, 'executions.issues.unknownMedia']],
     ],
   ])('%s', (_name, answers, expected) => {

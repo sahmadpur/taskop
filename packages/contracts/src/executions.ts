@@ -93,7 +93,7 @@ export function evidenceAllows(item: Item, kind: MediaKind): boolean {
   return hasRules(item) && item.rules.some((r) => (kind === 'photo' ? r.then.requirePhoto : r.then.requireVideo));
 }
 
-/** How many media of `kind` an item's answer may hold (also the server's MEDIA_LIMIT_REACHED cap). */
+/** How many media of `kind` an item's answer may hold (the server's MEDIA_LIMIT_REACHED storage cap derives from it). */
 export function mediaLimitFor(item: Item, kind: MediaKind): number {
   if (item.type === 'photo' || item.type === 'video') return item.type === kind ? item.maxCount : 0;
   return evidenceAllows(item, kind) ? MEDIA_LIMITS.evidencePerItem : 0;
@@ -105,15 +105,31 @@ const DATETIME_FORMATS = {
   datetime: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/,
 } as const;
 
+/** A medium registered on the execution, as answers may reference it: its kind and the item it was taken for (null = problem-only). */
+export interface RegisteredMedia {
+  kind: MediaKind;
+  itemId: string | null;
+}
+
 /**
  * Checks answers against the pinned version (spec §6.3): item IDs, value types, options, limits and media IDs.
- * `media` maps the media IDs registered on the execution to their kind. Answers to hidden items are allowed.
+ * `media` maps the media IDs registered on the execution. An item's photos/videos must be media registered for that
+ * item; a problem's media may also be problem-only ones. A medium listed twice in one list is invalid.
+ * Answers to hidden items are allowed.
  */
-export function answerIssues(content: ChecklistContent, answers: Answers, media: ReadonlyMap<string, MediaKind>): ContentIssue[] {
+export function answerIssues(content: ChecklistContent, answers: Answers, media: ReadonlyMap<string, RegisteredMedia>): ContentIssue[] {
   const items = new Map<string, Item>();
   walkItems(content, (item) => items.set(item.id, item));
   const issues: ContentIssue[] = [];
   const add = (path: (string | number)[], code: ExecutionIssueCode) => issues.push({ path: ['answers', ...path], code });
+  /** Duplicates, then each id against `fits`. */
+  const checkIds = (path: (string | number)[], ids: readonly string[], fits: (m: RegisteredMedia) => boolean) => {
+    ids.forEach((id, i) => {
+      const m = media.get(id);
+      if (ids.indexOf(id) !== i) add([...path, i], 'executions.issues.invalidValue');
+      else if (!m || !fits(m)) add([...path, i], 'executions.issues.unknownMedia');
+    });
+  };
   for (const [itemId, a] of Object.entries(answers)) {
     const item = items.get(itemId);
     if (!item) {
@@ -139,15 +155,14 @@ export function answerIssues(content: ChecklistContent, answers: Answers, media:
       const ids = a[field];
       if (ids === undefined) continue;
       const limit = mediaLimitFor(item, kind);
-      if (limit === 0) add([itemId, field], 'executions.issues.invalidValue');
-      else if (ids.length > limit) add([itemId, field], 'executions.issues.tooManyMedia');
-      ids.forEach((id, i) => {
-        if (media.get(id) !== kind) add([itemId, field, i], 'executions.issues.unknownMedia');
-      });
+      if (limit === 0) {
+        add([itemId, field], 'executions.issues.invalidValue');
+        continue;
+      }
+      if (ids.length > limit) add([itemId, field], 'executions.issues.tooManyMedia');
+      checkIds([itemId, field], ids, (m) => m.kind === kind && m.itemId === item.id);
     }
-    a.problem?.mediaIds.forEach((id, i) => {
-      if (!media.has(id)) add([itemId, 'problem', 'mediaIds', i], 'executions.issues.unknownMedia');
-    });
+    if (a.problem) checkIds([itemId, 'problem', 'mediaIds'], a.problem.mediaIds, (m) => m.itemId === null || m.itemId === item.id);
   }
   return issues;
 }
@@ -225,10 +240,10 @@ export type CompleteResult = z.infer<typeof completeResultSchema>;
 export const mediaUploadTicketSchema = z.object({
   mediaId: idSchema,
   status: mediaStatusSchema,
-  /** Presigned PUT, valid 15 min; send exactly `headers`. */
-  uploadUrl: z.url(),
+  /** Presigned PUT, valid 15 min; send exactly `headers`. Null once the medium is uploaded: nothing more to send. */
+  uploadUrl: z.url().nullable(),
   headers: z.record(z.string(), z.string()),
-  expiresAt: isoDateTimeSchema,
+  expiresAt: isoDateTimeSchema.nullable(),
 });
 export type MediaUploadTicket = z.infer<typeof mediaUploadTicketSchema>;
 

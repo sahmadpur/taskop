@@ -44,7 +44,7 @@ describe('media upload, confirmation, viewing and cleanup against SeaweedFS', ()
     return { id: body.id, ticket: res.body as MediaUploadTicket };
   }
   const upload = (ticket: MediaUploadTicket, body: Buffer) =>
-    fetch(ticket.uploadUrl, { method: 'PUT', body: new Uint8Array(body), headers: { 'Content-Type': ticket.headers['Content-Type']! } });
+    fetch(ticket.uploadUrl!, { method: 'PUT', body: new Uint8Array(body), headers: { 'Content-Type': ticket.headers['Content-Type']! } });
   const mediaRow = async (id: string) =>
     (await ownerQuery<{ status: string; storage_key: string; purged: boolean }>('select status, storage_key, storage_purged_at is not null as purged from execution_media where id = $1', [id])).rows[0]!;
 
@@ -61,7 +61,7 @@ describe('media upload, confirmation, viewing and cleanup against SeaweedFS', ()
     expect((await w.workers[1].api.post(`/api/v1/media/${id}/uploaded`)).body.error.code).toBe('NOT_EXECUTOR');
   });
 
-  it('refuses a replayed registration once the medium is uploaded, so stored evidence cannot be overwritten', async () => {
+  it('answers a replayed registration of an uploaded medium without a new PUT URL, so stored evidence cannot be overwritten', async () => {
     const { w, executionId, api } = await liveExecution(t);
     const bytes = Buffer.alloc(100, 5);
     const { id, ticket } = await registerBytes(api, executionId, w.c.photo.id, bytes.length);
@@ -69,7 +69,8 @@ describe('media upload, confirmation, viewing and cleanup against SeaweedFS', ()
     expect((await api.post(`/api/v1/media/${id}/uploaded`)).body.status).toBe('uploaded');
     const now = new Date().toISOString();
     const replay = await api.post(`/api/v1/executions/${executionId}/media`, photoBody(w.c.photo.id, { id, bytes: bytes.length, capturedAt: now, deviceTime: now }));
-    expect([replay.status, replay.body.error.code]).toEqual([409, 'EXECUTION_NOT_ACTIVE']);
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    expect(replay.body).toEqual({ mediaId: id, status: 'uploaded', uploadUrl: null, headers: {}, expiresAt: null });
   });
 
   it('confirming before the PUT finished is refused and can be retried', async () => {

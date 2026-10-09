@@ -22,6 +22,9 @@ const tooLarge = (cmd: RegisterMediaCommandDto): boolean =>
       (cmd.durationMs ?? 0) > MEDIA_LIMITS.videoMaxSeconds * 1000 ||
       Math.min(cmd.width ?? 0, cmd.height ?? 0) > MEDIA_LIMITS.videoMaxShortEdge;
 
+/** Registrations kept per item and kind: room for retakes of media the worker removed on the phone. */
+const storageCap = (limit: number): number => Math.max(limit * 3, 10);
+
 /**
  * Photos and videos (spec §6.7). The file goes straight from the phone to storage; the API only signs and checks.
  * Lock order: the occurrence row, then the execution row (same as ExecutionsService).
@@ -36,7 +39,10 @@ export class MediaService {
     private readonly access: ExecutionAccess,
   ) {}
 
-  /** Registers the medium as pending and returns a presigned PUT; the same id again returns a fresh URL. */
+  /**
+   * Registers the medium as pending and returns a presigned PUT; the same id again returns a fresh URL while pending,
+   * and the uploaded status without any URL once confirmed.
+   */
   async register(p: Principal, executionId: string, cmd: RegisterMediaCommandDto): Promise<MediaUploadTicket> {
     const tx = this.db.tx();
     const receivedAt = this.clock.now();
@@ -50,7 +56,7 @@ export class MediaService {
     if (known) {
       if (known.executionId !== executionId) throw new AppError('NOT_FOUND');
       // A fresh PUT URL for a confirmed medium would let the executor overwrite stored evidence.
-      if (known.status === 'uploaded') throw new AppError('EXECUTION_NOT_ACTIVE');
+      if (known.status === 'uploaded') return { mediaId: known.id, status: 'uploaded', uploadUrl: null, headers: {}, expiresAt: null };
       return this.ticket(known);
     }
     const capturedAt = new Date(cmd.capturedAt);
@@ -89,14 +95,18 @@ export class MediaService {
     return this.ticket(row!);
   }
 
-  /** POST /media/:id/uploaded: the object must exist with the registered size and type (spec §6.7). */
+  /**
+   * POST /media/:id/uploaded: the object must exist with the registered size and type (spec §6.7).
+   * The media row is locked first, so media.cleanup cannot delete the object between the check and the update.
+   */
   async confirmUploaded(p: Principal, mediaId: string): Promise<MediaConfirmResult> {
     const tx = this.db.tx();
     const [row] = await tx
       .select({ m: getTableColumns(executionMedia), executorUserId: executions.executorUserId })
       .from(executionMedia)
       .innerJoin(executions, eq(executions.id, executionMedia.executionId))
-      .where(eq(executionMedia.id, mediaId));
+      .where(eq(executionMedia.id, mediaId))
+      .for('update', { of: executionMedia });
     if (!row) throw new AppError('NOT_FOUND');
     if (row.executorUserId !== p.userId) throw new AppError('NOT_EXECUTOR');
     if (row.m.status === 'uploaded') return { mediaId, status: 'uploaded', uploadedAt: row.m.uploadedAt?.toISOString() ?? null };
@@ -122,7 +132,11 @@ export class MediaService {
     return { url: get.url, expiresAt: get.expiresAt.toISOString() };
   }
 
-  /** Item, kind, live-only (FR-12.05–06) and count checks against the pinned version. */
+  /**
+   * Item, kind, live-only (FR-12.05–06) and storage-cap checks against the pinned version. Media the worker removed
+   * on the phone stay registered, so retakes need room (`storageCap`). The exact limit
+   * (maxCount, evidence per item) is checked on the answers.
+   */
   private async assertRoom(e: ExecutionRow, cmd: RegisterMediaCommandDto): Promise<void> {
     const content = await this.lookups.content(e.checklistVersionId);
     const tx = this.db.tx();
@@ -140,7 +154,8 @@ export class MediaService {
       .select({ n: count() })
       .from(executionMedia)
       .where(and(eq(executionMedia.executionId, e.id), eq(executionMedia.itemId, item.id), eq(executionMedia.kind, cmd.kind)));
-    if ((r?.n ?? 0) >= mediaLimitFor(item, cmd.kind)) throw new AppError('MEDIA_LIMIT_REACHED');
+    const limit = mediaLimitFor(item, cmd.kind);
+    if (limit === 0 || (r?.n ?? 0) >= storageCap(limit)) throw new AppError('MEDIA_LIMIT_REACHED');
   }
 
   private async ticket(m: MediaRow): Promise<MediaUploadTicket> {

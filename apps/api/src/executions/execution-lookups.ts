@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type ChecklistContent, type ClaimRef, type Item, type MediaKind, walkItems } from '@taskop/contracts';
+import { type ChecklistContent, type ClaimRef, type Item, type RegisteredMedia, walkItems } from '@taskop/contracts';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { storedContent } from '../checklists/content';
 import { DbService } from '../db/db.service';
@@ -28,10 +28,14 @@ export class ExecutionLookups {
     return new Map(rows.map(({ occurrenceId, ...claim }) => [occurrenceId, claim]));
   }
 
-  /** Media registered on an execution, by id: what answers may reference (spec §6.3). */
-  async mediaKinds(executionId: string): Promise<Map<string, MediaKind>> {
-    const rows = await this.db.tx().select({ id: executionMedia.id, kind: executionMedia.kind }).from(executionMedia).where(eq(executionMedia.executionId, executionId));
-    return new Map(rows.map((r) => [r.id, r.kind]));
+  /** Media registered on an execution, by id, with kind and item: what answers may reference (spec §6.3). */
+  async registeredMedia(executionId: string): Promise<Map<string, RegisteredMedia>> {
+    const rows = await this.db
+      .tx()
+      .select({ id: executionMedia.id, kind: executionMedia.kind, itemId: executionMedia.itemId })
+      .from(executionMedia)
+      .where(eq(executionMedia.executionId, executionId));
+    return new Map(rows.map((r) => [r.id, { kind: r.kind, itemId: r.itemId }]));
   }
 }
 

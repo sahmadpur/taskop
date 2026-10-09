@@ -1,6 +1,6 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { MEDIA_LIMITS } from '@taskop/contracts';
-import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { perTenant, tenantsWith } from '../common/per-tenant';
 import { DbService } from '../db/db.service';
@@ -38,20 +38,29 @@ export class MediaJobs implements OnModuleInit {
     return perTenant(this.db, this.logger, 'Media cleanup', tenantIds, () => this.cleanupTenant(cutoff));
   }
 
+  /**
+   * Claims the rows first (locked, still pending, not yet purged), then deletes their objects. A confirmation that
+   * committed in between is not claimed; one that comes later waits for this transaction (it locks the row) and then
+   * finds no object.
+   */
   private async cleanupTenant(cutoff: Date): Promise<number> {
     const tx = this.db.tx();
-    const rows = await tx
-      .select({ id: executionMedia.id, executionId: executionMedia.executionId, storageKey: executionMedia.storageKey })
+    const due = tx
+      .select({ id: executionMedia.id })
       .from(executionMedia)
       .where(and(eq(executionMedia.status, 'pending'), isNull(executionMedia.storagePurgedAt), lte(executionMedia.createdAt, cutoff)))
       .orderBy(asc(executionMedia.id))
-      .limit(1000);
-    const now = this.clock.now();
-    for (const m of rows) {
+      .limit(1000)
+      .for('update', { skipLocked: true });
+    const claimed = await tx
+      .update(executionMedia)
+      .set({ storagePurgedAt: this.clock.now() })
+      .where(and(inArray(executionMedia.id, due), eq(executionMedia.status, 'pending'), isNull(executionMedia.storagePurgedAt)))
+      .returning({ id: executionMedia.id, executionId: executionMedia.executionId, storageKey: executionMedia.storageKey });
+    for (const m of claimed) {
       await this.s3.delete(m.storageKey);
-      await tx.update(executionMedia).set({ storagePurgedAt: now }).where(eq(executionMedia.id, m.id));
       this.logger.warn({ mediaId: m.id, executionId: m.executionId }, 'Medium never confirmed as uploaded; storage object deleted');
     }
-    return rows.length;
+    return claimed.length;
   }
 }

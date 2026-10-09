@@ -231,7 +231,7 @@ export class ExecutionsService {
 
   /** Item ids, value types and media against the pinned version (spec §6.3) → 400 VALIDATION_FAILED with issues. */
   private async assertValidAnswers(content: ChecklistContent, executionId: string, answers: Answers): Promise<void> {
-    const issues = answerIssues(content, answers, await this.lookups.mediaKinds(executionId));
+    const issues = answerIssues(content, answers, await this.lookups.registeredMedia(executionId));
     if (issues.length) throw new AppError('VALIDATION_FAILED', { details: { issues } });
   }
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
-import { claimBody, claimOk, executionWorld, photoBody } from './execution-fixtures';
+import { answersBody, claimBody, claimOk, executionWorld, photoBody, publishNextVersion, registerPhoto } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
 import { type Api, MONDAY_0800 } from './scheduling-fixtures';
@@ -51,18 +51,37 @@ describe('media registration (POST /executions/:id/media)', () => {
     expect([res.status, res.body.error.code]).toEqual([422, code]);
   });
 
-  it('caps media per item and refuses evidence the item does not take', async () => {
+  it('caps stored media per item at max(3 × the limit, 10) and refuses evidence the item does not take', async () => {
     const { w, executionId, api } = await started();
-    expect((await register(api, executionId, photoBody(w.c.photo.id))).status).toBe(200);
-    expect((await register(api, executionId, photoBody(w.c.photo.id))).status).toBe(200);
-    const third = await register(api, executionId, photoBody(w.c.photo.id));
-    expect([third.status, third.body.error.code]).toEqual([422, 'MEDIA_LIMIT_REACHED']);
+    // maxCount 2 → room for 10 registrations (retakes); the exact maxCount is checked on the answers.
+    for (let i = 0; i < 10; i++) expect((await register(api, executionId, photoBody(w.c.photo.id))).status).toBe(200);
+    const eleventh = await register(api, executionId, photoBody(w.c.photo.id));
+    expect([eleventh.status, eleventh.body.error.code]).toEqual([422, 'MEDIA_LIMIT_REACHED']);
     expect((await register(api, executionId, photoBody(w.c.note.id))).body.error.code).toBe('MEDIA_LIMIT_REACHED');
     // The problem item takes photo evidence through its rule, and is not live-only.
     expect((await register(api, executionId, photoBody(w.c.problem.id, { source: 'gallery' }))).status).toBe(200);
     expect((await register(api, executionId, photoBody(null))).status).toBe(200);
     const unknown = await register(api, executionId, photoBody('0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f'));
     expect([unknown.status, unknown.body.error.fields]).toEqual([400, { itemId: 'executions.issues.unknownItem' }]);
+  });
+
+  it('lets the worker retake the photo of a maxCount 1 item; the answers hold only the latest', async () => {
+    const w = await executionWorld(t);
+    const next = structuredClone(w.c.content);
+    const photoItem = next.sections[0]!.items.find((i) => i.id === w.c.photo.id)!;
+    if (photoItem.type === 'photo') photoItem.maxCount = 1;
+    await publishNextVersion(w.owner, w.checklistId, next);
+    clock.set('2026-11-02T04:20:00Z');
+    const api = w.workers[0].api;
+    const executionId = await claimOk(api, w.occurrenceId, '2026-11-02T04:10:00.000Z');
+    const first = await registerPhoto(api, executionId, w.c.photo.id);
+    // The worker removed the first photo on the phone and took another.
+    const retake = await registerPhoto(api, executionId, w.c.photo.id);
+    const answers = (photos: string[]) => answersBody(1, { [w.c.photo.id]: { photos } }, '2026-11-02T04:20:00.000Z');
+    const both = await api.put(`/api/v1/executions/${executionId}/answers`, answers([first, retake]));
+    expect([both.status, both.body.error.issues.map((i: { code: string }) => i.code)]).toEqual([400, ['executions.issues.tooManyMedia']]);
+    const latest = await api.put(`/api/v1/executions/${executionId}/answers`, answers([retake]));
+    expect(latest.status, JSON.stringify(latest.body)).toBe(200);
   });
 
   it('lets only the executor register, also on a rejected claim, and checks the device clock', async () => {
