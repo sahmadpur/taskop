@@ -41,7 +41,8 @@
         "expo-image-picker",
         { "photosPermission": "Taskop sübut kimi qalereyadan foto və video seçmək üçün icazə istəyir." }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
