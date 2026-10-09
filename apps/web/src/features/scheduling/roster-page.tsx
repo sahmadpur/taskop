@@ -98,28 +98,26 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
         }
       />
       <div className="flex flex-wrap items-end gap-3">
-        {
-          <div className="grid gap-1.5">
-            <Label htmlFor="roster-site">{t('scheduling.roster.site')}</Label>
-            <NativeSelect
-              id="roster-site"
-              value={siteId ?? ''}
-              onChange={(e) => setSiteId(e.target.value || null)}
-              disabled={sites.isPending}
-              className="w-64"
-            >
-              <option value="">{t('scheduling.roster.chooseSite')}</option>
-              {(sites.data ?? [])
-                .filter((s) => s.active)
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-            </NativeSelect>
-            {sites.isError && <p className="text-destructive text-sm">{errorText(t, sites.error)}</p>}
-          </div>
-        }
+        <div className="grid gap-1.5">
+          <Label htmlFor="roster-site">{t('scheduling.roster.site')}</Label>
+          <NativeSelect
+            id="roster-site"
+            value={siteId ?? ''}
+            onChange={(e) => setSiteId(e.target.value || null)}
+            disabled={sites.isPending}
+            className="w-64"
+          >
+            <option value="">{t('scheduling.roster.chooseSite')}</option>
+            {(sites.data ?? [])
+              .filter((s) => s.active)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+          </NativeSelect>
+          {sites.isError && <p className="text-destructive text-sm">{errorText(t, sites.error)}</p>}
+        </div>
         <Button variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}>
           {t('scheduling.roster.prevWeek')}
         </Button>
