@@ -18,8 +18,8 @@ import type { MediaQueue } from './media-queue';
 import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
 import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
-import { applyPull, knownVersionIds } from './sync-pull';
-import type { FileRemover } from './user-scope';
+import { knownVersionIds, mergePull } from './sync-pull';
+import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
 
@@ -63,6 +63,8 @@ export interface ClaimRejection {
 
 export interface SyncEngineDeps {
   db: Db;
+  /** The signed-in user this engine syncs for: nothing it brings back is written once another user (or nobody) is signed in. */
+  userId: string;
   api: SyncApi;
   clock: Clock;
   feed: ChangeFeed;
@@ -147,7 +149,7 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
-  const { db, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, beforeRun } = deps;
+  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, beforeRun } = deps;
   let status: SyncStatus = { pending: 0, failed: 0, running: false, online: isOnline(), lastSyncedAt: null, clockOffsetMs: 0, blockedByAuth: false };
   const listeners = new Set<() => void>();
   let running: Promise<void> | null = null;
@@ -271,7 +273,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         const f = classifyError(e);
         if (f.kind === 'permanent') {
           const now = clock.now();
-          const uris = await db.transaction(async (tx): Promise<string[]> => {
+          const uris = await ownedTransaction(db, userId, async (tx): Promise<string[]> => {
             if (cmd.kind === 'media') {
               await ackCommand(tx, cmd.seq);
               const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, f.messageKey) : null;
@@ -283,24 +285,26 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
             await failCommand(tx, cmd.seq, f.code, f.messageKey);
             return [];
           });
+          if (uris === NOT_OWNER) return 'ok';
           uris.forEach(removeFile);
           feed.emit();
           continue;
         }
-        if (f.kind === 'retry') await noteAttempt(db, cmd.seq);
+        if (f.kind === 'retry') await ownedTransaction(db, userId, (tx) => noteAttempt(tx, cmd.seq));
         return f.kind;
       }
       if (cmd.kind === 'answers' && (result as SaveAnswersResult).stale) {
-        await db.transaction((tx) => requeueStaleAnswers(tx, cmd, (result as SaveAnswersResult).rev));
+        if ((await ownedTransaction(db, userId, (tx) => requeueStaleAnswers(tx, cmd, (result as SaveAnswersResult).rev))) === NOT_OWNER) return 'ok';
         feed.emit();
         continue;
       }
       // If the worker superseded or removed this command while it was in flight, ack deletes nothing and the newer one goes next.
-      const rejection = await db.transaction(async (tx) => {
+      const rejection = await ownedTransaction(db, userId, async (tx) => {
         const r = await applyResult(tx, cmd, result, clock.now());
         await ackCommand(tx, cmd.seq);
         return r;
       });
+      if (rejection === NOT_OWNER) return 'ok';
       feed.emit();
       if (rejection) onClaimRejected(rejection);
     }
@@ -316,7 +320,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       return classifyError(e).kind === 'auth' ? 'auth' : 'retry';
     }
     const receivedAt = clock.now();
-    await applyPull(db, res, clampOffset(measureOffset(res.serverTime, sentAt, receivedAt)), receivedAt);
+    const offsetMs = clampOffset(measureOffset(res.serverTime, sentAt, receivedAt));
+    if ((await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt))) === NOT_OWNER) return 'ok';
     feed.emit();
     return 'ok';
   }
@@ -329,7 +334,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     if (pulled !== 'ok' || stopped) return pulled;
     const drained = await mediaQueue.drain(() => stopped);
     if (drained !== 'ok' || stopped) return drained;
-    await markFinishedSynced(db, clock.now());
+    await ownedTransaction(db, userId, (tx) => markFinishedSynced(tx, clock.now()));
     await mediaQueue.cleanup();
     return 'ok';
   }
@@ -390,13 +395,14 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     },
     refresh,
     async retryFailed() {
-      await retryFailedCommands(db);
+      await ownedTransaction(db, userId, (tx) => retryFailedCommands(tx));
       await mediaQueue.retryFailed();
       feed.emit();
       await run('manual');
     },
     async discardCommand(seq) {
-      const uris = await db.transaction((tx) => discardFailedCommand(tx, seq, clock.now()));
+      const uris = await ownedTransaction(db, userId, (tx) => discardFailedCommand(tx, seq, clock.now()));
+      if (uris === NOT_OWNER) return;
       uris.forEach(removeFile);
       feed.emit();
       await refresh();

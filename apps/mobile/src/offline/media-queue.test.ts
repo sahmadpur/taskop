@@ -60,7 +60,7 @@ describe('media queue', () => {
     // A new process: a fresh queue over the same database and files.
     h.net.online = true;
     h.transport.respond(() => 200);
-    const restarted = createMediaQueue({ db: h.db, api: h.api.api, clock: h.clock, transport: h.transport, feed: h.feed, isOnline: () => true });
+    const restarted = createMediaQueue({ db: h.db, userId: ME, api: h.api.api, clock: h.clock, transport: h.transport, feed: h.feed, isOnline: () => true });
     expect(await restarted.drain()).toBe('ok');
     expect((await rows(h)).every((r) => r.uploaded_at !== null)).toBe(true);
   });

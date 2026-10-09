@@ -67,3 +67,4 @@ Minor review findings left open, and rulings made while building Part 1.
 - Task 17: isolation tests don't assert tenant A state unchanged after foreign 404.
 - Task 18: seed assumes the first yes_no option and rules[0].
 - Final review minor 6 (accepted): an offline `started → in_progress` is stamped with the deviceTime of the collapsed latest answers command, not of the first edit.
+- Final re-review (mobile): a pull, push result or upload confirmation that landed after a logout or a user switch (the 10 s shutdown wait gives up before the 30 s request bound) wrote the previous user's data into the cleared store — resolved: every sync and media-queue write runs in `ownedTransaction`, which checks the signed-in user inside the transaction and skips the writes and their side effects.

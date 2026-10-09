@@ -29,43 +29,46 @@ async function pruneOld(tx: Db, returnedIds: string[], now: number): Promise<voi
 
 /** Spec §6.1, applied in one transaction. Occurrences missing from the response were cancelled or reassigned (Part 1 #14). */
 export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
-  await db.transaction(async (tx) => {
-    await setMeta(tx, 'clockOffsetMs', String(offsetMs));
-    await setMeta(tx, 'lastSyncedAt', iso(now));
-    for (const v of res.checklistVersions) {
-      // Versions never change once published, so a known ID is kept as it is.
-      await tx.run(
-        'INSERT INTO checklist_versions (id, checklist_id, number, schema_version, content, received_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING',
-        [v.id, v.checklistId, v.number, v.schemaVersion, JSON.stringify(v.content), iso(now)],
-      );
-    }
-    for (const o of res.occurrences) {
-      await tx.run(
-        `INSERT INTO occurrences (id, checklist_id, checklist_name, site_id, site_name, shift_name, local_date, starts_at, due_at, closes_at, status,
-           checklist_version_id, claim_execution_id, claim_user_id, claim_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           checklist_name = excluded.checklist_name, site_name = excluded.site_name, shift_name = excluded.shift_name,
-           local_date = excluded.local_date, starts_at = excluded.starts_at, due_at = excluded.due_at, closes_at = excluded.closes_at,
-           status = excluded.status, checklist_version_id = excluded.checklist_version_id,
-           claim_execution_id = excluded.claim_execution_id, claim_user_id = excluded.claim_user_id, claim_name = excluded.claim_name`,
-        [
-          o.id, o.checklistId, o.checklistName, o.siteId, o.siteName, o.shiftName, o.localDate,
-          normIso(o.startsAt), normIso(o.dueAt), normIso(o.closesAt), o.status, o.checklistVersionId,
-          o.claim?.executionId ?? null, o.claim?.executorUserId ?? null, o.claim?.executorName ?? null,
-        ],
-      );
-    }
-    await pruneOld(tx, res.occurrences.map((o) => o.id), now);
-    await tx.run(
-      `DELETE FROM occurrences
-       WHERE id NOT IN (SELECT value FROM json_each(?))
-         AND id NOT IN (SELECT occurrence_id FROM executions)`,
-      [JSON.stringify(res.occurrences.map((o) => o.id))],
-    );
-    for (const x of res.executions) await mergeExecution(tx, x, now);
-  });
+  await db.transaction((tx) => mergePull(tx, res, offsetMs, now));
 }
+
+/** `applyPull` inside the caller's transaction. */
+export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
+  await setMeta(tx, 'clockOffsetMs', String(offsetMs));
+  await setMeta(tx, 'lastSyncedAt', iso(now));
+  for (const v of res.checklistVersions) {
+    // Versions never change once published, so a known ID is kept as it is.
+    await tx.run(
+      'INSERT INTO checklist_versions (id, checklist_id, number, schema_version, content, received_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING',
+      [v.id, v.checklistId, v.number, v.schemaVersion, JSON.stringify(v.content), iso(now)],
+    );
+  }
+  for (const o of res.occurrences) {
+    await tx.run(
+      `INSERT INTO occurrences (id, checklist_id, checklist_name, site_id, site_name, shift_name, local_date, starts_at, due_at, closes_at, status,
+         checklist_version_id, claim_execution_id, claim_user_id, claim_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         checklist_name = excluded.checklist_name, site_name = excluded.site_name, shift_name = excluded.shift_name,
+         local_date = excluded.local_date, starts_at = excluded.starts_at, due_at = excluded.due_at, closes_at = excluded.closes_at,
+         status = excluded.status, checklist_version_id = excluded.checklist_version_id,
+         claim_execution_id = excluded.claim_execution_id, claim_user_id = excluded.claim_user_id, claim_name = excluded.claim_name`,
+      [
+        o.id, o.checklistId, o.checklistName, o.siteId, o.siteName, o.shiftName, o.localDate,
+        normIso(o.startsAt), normIso(o.dueAt), normIso(o.closesAt), o.status, o.checklistVersionId,
+        o.claim?.executionId ?? null, o.claim?.executorUserId ?? null, o.claim?.executorName ?? null,
+      ],
+    );
+  }
+  await pruneOld(tx, res.occurrences.map((o) => o.id), now);
+  await tx.run(
+    `DELETE FROM occurrences
+     WHERE id NOT IN (SELECT value FROM json_each(?))
+       AND id NOT IN (SELECT occurrence_id FROM executions)`,
+    [JSON.stringify(res.occurrences.map((o) => o.id))],
+  );
+  for (const x of res.executions) await mergeExecution(tx, x, now);
+ }
 
 async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void> {
   const claim = x.state === 'rejected' ? 'rejected' : 'accepted';

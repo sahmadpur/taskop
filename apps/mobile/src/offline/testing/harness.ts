@@ -40,10 +40,10 @@ export async function createHarness(o: { at?: string; db?: Db } = {}): Promise<H
   const store = createExecutionStore({ db, clock, newId: testIds(clock), device: DEVICE, files: transport, feed, onWrite: (kind) => writes.push(kind) });
   const api = createFakeApi();
   const net = { online: true };
-  const mediaQueue = createMediaQueue({ db, api: api.api, clock, transport, feed, isOnline: () => net.online });
+  const mediaQueue = createMediaQueue({ db, userId: ME, api: api.api, clock, transport, feed, isOnline: () => net.online });
   const rejections: ClaimRejection[] = [];
   const engine = createSyncEngine({
-    db, api: api.api, clock, feed, mediaQueue, files: transport,
+    db, userId: ME, api: api.api, clock, feed, mediaQueue, files: transport,
     isOnline: () => net.online,
     onClaimRejected: (r) => rejections.push(r),
     beforeRun: () => store.lockExpired(),

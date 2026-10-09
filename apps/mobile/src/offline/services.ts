@@ -47,7 +47,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
   await ensureUser(db, userId, transport);
   const feed = createChangeFeed();
   let triggers: SyncTriggers | null = null;
-  const mediaQueue = createMediaQueue({ db, api, clock, transport, feed, isOnline: deps.isOnline });
+  const mediaQueue = createMediaQueue({ db, userId, api, clock, transport, feed, isOnline: deps.isOnline });
   const store = createExecutionStore({
     db,
     clock,
@@ -60,6 +60,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
   });
   const engine = createSyncEngine({
     db,
+    userId,
     api,
     clock,
     feed,

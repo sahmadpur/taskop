@@ -352,7 +352,7 @@ describe('failures', () => {
       const h = await createHarness();
       let calls = 0;
       const engine = createSyncEngine({
-        db: h.db, api: h.api.api, clock: h.clock, feed: h.feed, mediaQueue: h.mediaQueue, files: h.transport,
+        db: h.db, userId: ME, api: h.api.api, clock: h.clock, feed: h.feed, mediaQueue: h.mediaQueue, files: h.transport,
         isOnline: () => true,
         onClaimRejected: () => undefined,
         beforeRun: async () => {

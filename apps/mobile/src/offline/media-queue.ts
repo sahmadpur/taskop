@@ -6,7 +6,7 @@ import { mediaRegisterBody } from './execution-store';
 import { iso, type LocalMedia, type MediaRow, toMedia } from './local-model';
 import { dropMedium } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
-import type { FileRemover } from './user-scope';
+import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export interface MediaTransport extends FileRemover {
   exists(uri: string): boolean;
@@ -74,6 +74,8 @@ type Step = DrainOutcome | 'next';
 
 export function createMediaQueue(deps: {
   db: Db;
+  /** The signed-in user this queue uploads for: nothing is written once another user (or nobody) is signed in. */
+  userId: string;
   api: SyncApi;
   clock: Clock;
   transport: MediaTransport;
@@ -81,10 +83,12 @@ export function createMediaQueue(deps: {
   /** A transport error while offline is the network; while online it counts as an attempt. */
   isOnline: () => boolean;
 }): MediaQueue {
-  const { db, api, clock, transport, feed, isOnline } = deps;
+  const { db, userId, api, clock, transport, feed, isOnline } = deps;
 
   // The worker may remove a medium while it is in flight: every update below finds no row then, and the queue
-  // simply stops for that medium.
+  // simply stops for that medium. After a logout or a user switch every update is skipped and the queue stops ('ok').
+
+  const owned = <T>(fn: (tx: Db) => Promise<T>) => ownedTransaction(db, userId, fn);
 
   function removeFile(uri: string): void {
     try {
@@ -98,8 +102,9 @@ export function createMediaQueue(deps: {
    * No retry can ever fix this medium (its file is gone from the phone, or the server refused it for good): it is
    * dropped with a note on its item instead of staying red forever, and the queue moves on.
    */
-  async function refuse(id: string, errorKey: string): Promise<'next'> {
-    const uri = await db.transaction((tx) => dropMedium(tx, id, clock.now(), errorKey));
+  async function refuse(id: string, errorKey: string): Promise<Step> {
+    const uri = await owned((tx) => dropMedium(tx, id, clock.now(), errorKey));
+    if (uri === NOT_OWNER) return 'ok';
     if (uri) removeFile(uri);
     feed.emit();
     return 'next';
@@ -110,15 +115,20 @@ export function createMediaQueue(deps: {
    * throwing while online). Network errors never count.
    */
   async function countAttempt(id: string): Promise<Step> {
-    const n = await db.run('UPDATE media SET attempts = attempts + 1 WHERE id = ?', [id]);
-    if (n === 0) return 'next';
-    const parked = await db.run(`UPDATE media SET failed_code = 'UPLOAD_FAILED' WHERE id = ? AND attempts >= ?`, [id, MEDIA_MAX_ATTEMPTS]);
-    if (parked > 0) feed.emit();
+    const counted = await owned(async (tx) => {
+      const n = await tx.run('UPDATE media SET attempts = attempts + 1 WHERE id = ?', [id]);
+      if (n === 0) return null;
+      return (await tx.run(`UPDATE media SET failed_code = 'UPLOAD_FAILED' WHERE id = ? AND attempts >= ?`, [id, MEDIA_MAX_ATTEMPTS])) > 0;
+    });
+    if (counted === NOT_OWNER) return 'ok';
+    if (counted === null) return 'next';
+    if (counted) feed.emit();
     return 'retry';
   }
 
-  async function markUploaded(id: string): Promise<'next'> {
-    const n = await db.run('UPDATE media SET uploaded_at = ? WHERE id = ?', [iso(clock.now()), id]);
+  async function markUploaded(id: string): Promise<Step> {
+    const n = await owned((tx) => tx.run('UPDATE media SET uploaded_at = ? WHERE id = ?', [iso(clock.now()), id]));
+    if (n === NOT_OWNER) return 'ok';
     if (n > 0) feed.emit();
     return 'next';
   }
@@ -170,21 +180,21 @@ export function createMediaQueue(deps: {
     },
     async cleanup() {
       const now = clock.now();
-      const due = await db.all<{ id: string; local_uri: string }>(
-        `SELECT m.id, m.local_uri FROM media m JOIN executions e ON e.id = m.execution_id
-         WHERE m.uploaded_at IS NOT NULL AND m.file_deleted_at IS NULL
-           AND e.finished_synced_at IS NOT NULL AND e.finished_synced_at <= ?`,
-        [iso(now - LOCAL_FILE_KEEP_DAYS * DAY_MS)],
-      );
-      for (const r of due) {
-        try {
-          transport.remove(r.local_uri);
-        } catch {
-          // Already gone.
+      const removed = await owned(async (tx) => {
+        const due = await tx.all<{ id: string; local_uri: string }>(
+          `SELECT m.id, m.local_uri FROM media m JOIN executions e ON e.id = m.execution_id
+           WHERE m.uploaded_at IS NOT NULL AND m.file_deleted_at IS NULL
+             AND e.finished_synced_at IS NOT NULL AND e.finished_synced_at <= ?`,
+          [iso(now - LOCAL_FILE_KEEP_DAYS * DAY_MS)],
+        );
+        // The file goes first: a row left unmarked (the transaction failed) is only removed again next time.
+        for (const r of due) {
+          removeFile(r.local_uri);
+          await tx.run('UPDATE media SET file_deleted_at = ? WHERE id = ?', [iso(now), r.id]);
         }
-        await db.run('UPDATE media SET file_deleted_at = ? WHERE id = ?', [iso(now), r.id]);
-      }
-      return due.length;
+        return due.length;
+      });
+      return removed === NOT_OWNER ? 0 : removed;
     },
     async counts() {
       const r = await db.first<{ pending: number; failed: number }>(
@@ -204,8 +214,8 @@ export function createMediaQueue(deps: {
       return found.map((r) => ({ id: r.id, kind: r.kind, checklistName: r.checklist_name, failedCode: r.failed_code, attempts: r.attempts }));
     },
     async retryFailed() {
-      await db.run('UPDATE media SET failed_code = NULL, attempts = 0 WHERE failed_code IS NOT NULL AND uploaded_at IS NULL');
-      feed.emit();
+      const reset = await owned((tx) => tx.run('UPDATE media SET failed_code = NULL, attempts = 0 WHERE failed_code IS NOT NULL AND uploaded_at IS NULL'));
+      if (reset !== NOT_OWNER) feed.emit();
     },
     async discard(id) {
       const row = await db.first<{ failed_code: string }>('SELECT failed_code FROM media WHERE id = ? AND failed_code IS NOT NULL AND uploaded_at IS NULL', [id]);
