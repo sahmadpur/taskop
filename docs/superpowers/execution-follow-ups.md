@@ -1,5 +1,14 @@
-git add apps/api/src/db/scripts/seed.ts apps/api/test/seed-demo.test.ts docs/superpowers/execution-follow-ups.md
-git commit -m "feat(api): seed a demo partial execution with problems; record execution follow-ups" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+# Mobile execution & offline sync — follow-ups
+
+Items found while building sub-project 4 that are out of its scope. ⚑ marks the ones to look at first.
+
+- ⚑ **Platform-admin reads.** `GET /executions/:id`, `GET /problems` and `GET /media/:id/url` are tenant-only. Platform admins see execution summaries in the occurrence drawer through the existing platform routes, but cannot open the detail or media yet. Add `platform/tenants/:tenantId/...` variants with the `route-mode` pattern if support needs them.
+- ⚑ **Merge PR #2's deployment plan edits** listed in `docs/superpowers/plans/2026-10-09-mobile-execution-1-api.md` ("Deployment plan note").
+- **A failed completion rolls back its answers.** `REQUIREMENTS_UNMET` discards the answers sent with the completion; the phone still has them and the earlier answers commands stored them. Store them first in a separate transaction if workers report lost edits.
+- **Concurrent duplicate claims** (the same `id` sent twice in parallel) can produce one `500` from the primary-key race; the retry returns the stored result. Map `executions_pkey` to a replay if it shows up in logs.
+- **Problem media cap at registration** is `5 × item count` per execution for `itemId: null` media; the exact "≤ 5 per manual problem" is enforced on the answers.
+- **Problem lifecycle** (owner, due date, resolution: FR-13.07–09) → sub-project 5. **Alerts** on new problems and status changes (FR-13.04) → sub-project 6.
+- **Media retention per plan** (NFR-10.03) → sub-project 9. `media.cleanup` only removes never-uploaded objects.
 
 ## Deferred review findings (Part 1)
 
@@ -55,3 +64,4 @@ Minor review findings left open, and rulings made while building Part 1.
 - Task 16: problems cursor is a bare id — deleted problem row ends paging early.
 - Task 16: non-null assertions occurrence!/version!.number! in execution-queries.
 - Task 17: isolation tests don't assert tenant A state unchanged after foreign 404.
+- Task 18: seed assumes the first yes_no option and rules[0].
