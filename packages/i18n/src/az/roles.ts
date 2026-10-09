@@ -31,6 +31,8 @@ export default {
     audit: 'Audit',
     checklists: 'Yoxlama vərəqələri',
     templates: 'Şablonlar',
+    assignments: 'Təyinatlar',
+    shifts: 'Növbələr',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -47,5 +49,10 @@ export default {
     checklists_manage: 'Yoxlama vərəqələrini yaratmaq və redaktə etmək',
     checklists_publish: 'Yoxlama vərəqələrini dərc etmək',
     templates_manage: 'Şablonları idarə etmək',
+    assignments_view: 'Təyinatlara və icralara baxmaq',
+    assignments_manage: 'Təyinatları idarə etmək',
+    assignments_extended_window: '24 saatdan uzun icra müddəti təyin etmək',
+    shifts_view: 'Növbələrə baxmaq',
+    shifts_manage: 'Növbələri və növbə cədvəlini idarə etmək',
   },
 } as const;
