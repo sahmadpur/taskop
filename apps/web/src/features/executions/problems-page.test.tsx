@@ -42,6 +42,12 @@ describe('ProblemsPage', () => {
     expect(router.state.location.search).toEqual({ date: '2026-11-02', occurrence: 'o1', tab: 'execution' });
   });
 
+  it('shows a loading line until the first page arrives', async () => {
+    mocks.api.problems.list.mockReturnValue(new Promise(() => {}));
+    renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    expect(await screen.findByText('Yüklənir…')).toBeInTheDocument();
+  });
+
   it('loads more pages and sends every filter', async () => {
     mocks.api.problems.list.mockImplementation(async (q: { cursor?: string }) =>
       q.cursor ? { items: [problem({ id: 'p3', itemLabel: 'Qapı' })], nextCursor: null } : { items: [problem()], nextCursor: 'p1' },

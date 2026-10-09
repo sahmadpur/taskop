@@ -96,6 +96,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
         </NativeSelect>
       </div>
       {rangeError && <p className="text-destructive text-sm">{t(rangeError)}</p>}
+      {!rangeError && problems.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
       {!rangeError && problems.error && <p className="text-destructive">{errorText(t, problems.error)}</p>}
       {!rangeError && problems.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('executions.problemsPage.empty')}</p>}
       {!rangeError && items.length > 0 && (

@@ -30,9 +30,16 @@ describe('ExecutionTab', () => {
     expect(screen.getByText(/^Serverə çatıb:/)).toHaveTextContent('13:00');
     expect(screen.getByText('87,5%')).toBeInTheDocument();
     expect(screen.getByText('5/6 cavab')).toBeInTheDocument();
-    expect(await screen.findByText('android 15 · tətbiq 1.0.0 · Telefon saatı serverdən 400 san fərqlənir')).toBeInTheDocument();
+    expect(await screen.findByText('android 15 · tətbiq 1.0.0 · Telefon saatı serverdən 400 san irəlidədir')).toBeInTheDocument();
     expect(await screen.findByRole('region', { name: 'Zal' })).toBeInTheDocument();
     expect(mocks.api.executions.get).toHaveBeenCalledWith('x1');
+  });
+
+  it('shows a negative clock offset as its absolute value with the phone behind the server', async () => {
+    const counted = summary({ clockSuspect: true });
+    mocks.api.executions.get.mockResolvedValue(executionFixture().detail({ ...counted, clockOffsetMs: -400_000 }));
+    renderWithProviders(<ExecutionTab occurrence={occurrenceDetail({ execution: counted })} />);
+    expect(await screen.findByText('android 15 · tətbiq 1.0.0 · Telefon saatı serverdən 400 san geridədir')).toBeInTheDocument();
   });
 
   it('says when nothing has been executed yet', () => {

@@ -47,9 +47,10 @@ function ExecutionAnswers({ id }: { id: string }) {
 
 const deviceLine = (t: TFunction, summary: ExecutionSummary, d: ExecutionDetail): string => {
   const device = t('executions.device', { platform: d.device.platform, osVersion: d.device.osVersion, appVersion: d.device.appVersion });
-  return summary.clockSuspect && d.clockOffsetMs !== null
-    ? `${device} · ${t('executions.clockOffset', { seconds: Math.round(d.clockOffsetMs / 1000) })}`
-    : device;
+  if (!summary.clockSuspect || d.clockOffsetMs === null) return device;
+  // clockOffsetMs is device minus server: positive means the phone runs ahead.
+  const key = d.clockOffsetMs < 0 ? 'executions.clockOffsetBehind' : 'executions.clockOffsetAhead';
+  return `${device} · ${t(key, { seconds: Math.round(Math.abs(d.clockOffsetMs) / 1000) })}`;
 };
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
