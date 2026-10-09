@@ -20,6 +20,7 @@ export default function AppLayout() {
         <Tabs.Screen name="change-secret" options={{ href: null }} />
         <Tabs.Screen name="sync" options={HIDDEN} />
         <Tabs.Screen name="execution/[id]/index" options={HIDDEN} />
+        <Tabs.Screen name="execution/[id]/finish" options={HIDDEN} />
       </Tabs>
     </OfflineProvider>
   );

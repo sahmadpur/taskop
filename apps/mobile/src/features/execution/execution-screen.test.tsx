@@ -1,9 +1,11 @@
 import { blankContent, type ChecklistContent, MEDIA_LIMITS, type MultiChoiceItem, newItem, newSection, type NumberItem, type SingleChoiceItem } from '@taskop/contracts';
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import '@/lib/i18n';
 import { capturedPhoto, type FakeTransport } from '@/offline/testing/fake-transport';
 import { ME, myExecution, OCC, occurrence, OTHER, OTHER_EXECUTION, syncResponse, T, VERSION2, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
+import { ScrollView } from 'react-native';
+import { OfflineServicesProvider } from '@/offline/context';
 import { createTestServices, type TestServices } from '@/offline/testing/test-services';
 import { ExecutionScreen } from './execution-screen';
 import { readOnlyReason } from './use-execution';
@@ -163,6 +165,37 @@ describe('ExecutionScreen', () => {
   it('opens the section of the item the finish screen jumped to', async () => {
     await opened((t) => t.c.photo.id);
     expect(screen.getByText('Bölmə 2/2')).toBeTruthy();
+  });
+  it('jumps to an item every time, also when the screen stays mounted and the item is the same', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    await t.services.store.start(OCC, ME);
+    const ui = (nonce: string) => (
+      <OfflineServicesProvider services={t.services}>
+        <ExecutionScreen occurrenceId={OCC} focusItemId={t.c.photo.id} focusNonce={nonce} />
+      </OfflineServicesProvider>
+    );
+    const view = await render(ui('1')); // the same tree for every rerender, so the screen stays mounted
+    await screen.findByText('Vitrin');
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => undefined);
+    const lay = (y: number) => fireEvent(screen.getByTestId(`item-${t.c.photo.id}`), 'layout', { nativeEvent: { layout: { y, x: 0, width: 300, height: 50 } } });
+    await lay(420);
+    expect(scrollTo).toHaveBeenCalledWith({ y: 420, animated: true });
+
+    // Same nonce again: nothing new. A new nonce while the section is still shown scrolls again, without a new layout.
+    scrollTo.mockClear();
+    await view.rerender(ui('2'));
+    expect(scrollTo).toHaveBeenCalledWith({ y: 420, animated: true });
+
+    // The worker pages away, then a jump to the same item brings the section back and scrolls once it lays out.
+    await fireEvent.press(screen.getByRole('button', { name: 'Əvvəlki bölmə' }));
+    await screen.findByText('Zal');
+    await view.rerender(ui('3'));
+    expect(await screen.findByText('Vitrin')).toBeTruthy();
+    scrollTo.mockClear();
+    await lay(300);
+    expect(scrollTo).toHaveBeenCalledWith({ y: 300, animated: true });
+    scrollTo.mockRestore();
   });
 });
 

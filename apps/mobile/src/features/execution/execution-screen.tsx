@@ -22,7 +22,7 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 /** Spec §7.3: one scrolling screen per section, progress bar, every item type, inline follow-ups, evidence, ⚑ problems. Autosaves. */
-export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: string; focusItemId?: string }) {
+export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occurrenceId: string; focusItemId?: string; focusNonce?: string }) {
   const { t } = useTranslation();
   const { store, userId } = useOffline();
   const data = useExecution(occurrenceId);
@@ -33,6 +33,9 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
   const [preview, setPreview] = useState<string | null>(null);
   const scroll = useRef<ScrollView>(null);
   const focused = useRef(false);
+  // Where the displayed section's items sit in the scroll content, and which section is displayed (read by the focus effect).
+  const itemY = useRef(new Map<string, number>());
+  const shownSection = useRef(0);
   // Read by work that outlives a render (a gallery pick, a camera capture): the execution's id can change meanwhile.
   const executionIdRef = useRef<string | null>(null);
   executionIdRef.current = data?.execution.id ?? null;
@@ -42,16 +45,28 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
   const content = data?.content.kind === 'ok' ? data.content.content : null;
   const answers = data?.execution.answers;
 
-  // A jump from the finish screen opens the item's section; the item's onLayout then scrolls to it.
+  // A jump from the finish screen opens the item's section and scrolls to it. `focusNonce` changes on every jump, so
+  // jumping again to the same item (screen still mounted, worker scrolled or paged away) works too.
   useEffect(() => {
     if (!content || !answers || !focusItemId) return;
+    focused.current = false;
     const target = visibleItems(content, answers).find((v) => v.item.id === focusItemId);
     const index = target ? content.sections.findIndex((s) => s.id === target.sectionId) : -1;
-    if (index >= 0) setSectionIndex(index);
+    if (index < 0) return;
+    if (index === shownSection.current) {
+      // The section is already on screen, so its items will not lay out again: scroll from what we know.
+      const y = itemY.current.get(focusItemId);
+      if (y !== undefined) {
+        focused.current = true;
+        scroll.current?.scrollTo({ y, animated: true });
+      }
+    } else setSectionIndex(index);
     // Only when the target changes or the content first arrives, not on every answer.
-  }, [content, focusItemId]);
+  }, [content, focusItemId, focusNonce]);
 
   useEffect(() => {
+    shownSection.current = sectionIndex;
+    itemY.current.clear();
     scroll.current?.scrollTo({ y: 0, animated: false });
   }, [sectionIndex]);
 
@@ -211,6 +226,7 @@ export function ExecutionScreen({ occurrenceId, focusItemId }: { occurrenceId: s
                   key={item.id}
                   style={{ marginLeft: depth * spacing.md }}
                   onLayout={(e) => {
+                    itemY.current.set(item.id, e.nativeEvent.layout.y);
                     if (item.id !== focusItemId || focused.current) return;
                     focused.current = true; // once: later re-layouts (answers, follow-ups) must not pull the worker back
                     scroll.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
