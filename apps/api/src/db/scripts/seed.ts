@@ -213,8 +213,8 @@ export async function seed(url: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.insert(schema.tenants).values({ id: tenantId, name: 'Demo MMC', orgCode: 'demo' });
     const roleIds = await seedTenantDefaults(tx, tenantId);
-    const [branchType] = await tx.select().from(schema.siteTypes).where(eq(schema.siteTypes.name, 'Filial'));
-    const [zoneType] = await tx.select().from(schema.siteTypes).where(eq(schema.siteTypes.name, 'Zona'));
+    const [branchType] = await tx.select().from(schema.siteTypes).where(and(eq(schema.siteTypes.tenantId, tenantId), eq(schema.siteTypes.name, 'Filial')));
+    const [zoneType] = await tx.select().from(schema.siteTypes).where(and(eq(schema.siteTypes.tenantId, tenantId), eq(schema.siteTypes.name, 'Zona')));
     const site = async (name: string, typeId: string, parent?: { id: string; path: string }) => {
       const id = uuidv7();
       const path = parent ? `${parent.path}.${siteLabel(id)}` : siteLabel(id);
