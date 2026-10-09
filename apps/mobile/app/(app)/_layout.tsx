@@ -14,11 +14,12 @@ export default function AppLayout() {
   if (s.status !== 'authenticated') return null;
   return (
     <OfflineProvider userId={s.me.user.id} timeZone={s.me.tenant.timezone}>
-      <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary }}>
+      <Tabs backBehavior="history" screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary }}>
         <Tabs.Screen name="index" options={{ title: t('mobile.tabs.home'), tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} /> }} />
         <Tabs.Screen name="profile" options={{ title: t('mobile.tabs.profile'), tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} /> }} />
         <Tabs.Screen name="change-secret" options={{ href: null }} />
         <Tabs.Screen name="sync" options={HIDDEN} />
+        <Tabs.Screen name="execution/[id]/index" options={HIDDEN} />
       </Tabs>
     </OfflineProvider>
   );
