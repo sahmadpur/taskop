@@ -50,6 +50,20 @@
       "when": 1791536003001,
       "tag": "0006_scheduling_security",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791550493261,
+      "tag": "0007_executions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791550493590,
+      "tag": "0008_executions_security",
+      "breakpoints": true
     }
   ]
 }
