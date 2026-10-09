@@ -3,6 +3,8 @@ import { PlatformTenantInterceptor } from '../checklists/platform-tenant.interce
 import { AssignmentRules } from './assignment-rules';
 import { PlatformTenantAssignmentsController, TenantAssignmentsController } from './assignments.controller';
 import { AssignmentsService } from './assignments.service';
+import { JobsService } from './jobs.service';
+import { OccurrenceJobs } from './occurrence-jobs';
 import { OccurrenceQueries } from './occurrence-queries';
 import { OccurrenceWriter } from './occurrence-writer';
 import { PlatformModule } from '../platform/platform.module';
@@ -16,6 +18,6 @@ import { ShiftsService } from './shifts.service';
 @Module({
   imports: [PlatformModule],
   controllers: [TenantShiftsController, PlatformTenantShiftsController, TenantRosterController, PlatformTenantRosterController, TenantAssignmentsController, PlatformTenantAssignmentsController],
-  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners],
+  providers: [SchedulingScope, ShiftsService, RosterService, PlatformTenantInterceptor, OccurrenceWriter, OccurrenceQueries, AssignmentRules, AssignmentsService, SchedulingListeners, OccurrenceJobs, JobsService],
 })
 export class SchedulingModule {}

@@ -21,6 +21,10 @@ const configSchema = z.object({
   RL_LOGIN_ACCOUNT_PER_MIN: z.coerce.number().int().min(1).default(10),
   RL_SIGNUP_IP_PER_HOUR: z.coerce.number().int().min(1).default(10),
   RL_FORGOT_IP_PER_HOUR: z.coerce.number().int().min(1).default(10),
+  /** Start pg-boss workers (spec §5). Tests turn it off and call OccurrenceJobs directly. */
+  JOBS_ENABLED: z.stringbool().default(true),
+  /** Register the cron schedules. Off for tests that start workers but must not touch other tenants. */
+  JOBS_CRON: z.stringbool().default(true),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

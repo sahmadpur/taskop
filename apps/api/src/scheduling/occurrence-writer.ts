@@ -91,9 +91,10 @@ export class OccurrenceWriter {
         .onConflictDoNothing({ target: [occurrences.assignmentId, occurrences.localDate], where: sql`status <> 'cancelled'` })
         .returning({ id: occurrences.id });
     }
+    const horizon = zonedTimeToUtc(addDays(today, SCHEDULING_LIMITS.horizonDays + 1), 0, tz);
     await tx
       .update(assignments)
-      .set({ materializedUntil: zonedTimeToUtc(addDays(today, SCHEDULING_LIMITS.horizonDays + 1), 0, tz) })
+      .set({ materializedUntil: until && until > horizon ? until : horizon })
       .where(eq(assignments.id, a.id));
     if (created.length) {
       const ids = created.map((c) => c.id);
