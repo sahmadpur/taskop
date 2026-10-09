@@ -17,6 +17,7 @@ export * from './checklist-validate.js';
 export * from './checklist-ids.js';
 export * from './checklist-logic.js';
 export * from './execution-logic.js';
+export * from './executions.js';
 export * from './templates.js';
 export * from './checklists.js';
 export * from './scheduling-time.js';
