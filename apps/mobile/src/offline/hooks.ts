@@ -3,16 +3,24 @@ import { useOffline } from './context';
 import type { OfflineServices } from './services';
 import type { SyncStatus } from './sync-engine';
 
-/** Runs `query` now and again after every local change or sync result. `undefined` while the first run is pending. */
+/**
+ * Runs `query` now and again after every local change or sync result. `undefined` while the first run is pending.
+ * A failed run is logged and keeps the last good value; the next change runs it again.
+ */
 export function useLiveQuery<T>(query: (s: OfflineServices) => Promise<T>, deps: readonly unknown[]): T | undefined {
   const services = useOffline();
   const [value, setValue] = useState<T | undefined>(undefined);
   useEffect(() => {
     let alive = true;
     const load = () => {
-      void query(services).then((v) => {
-        if (alive) setValue(v);
-      });
+      query(services).then(
+        (v) => {
+          if (alive) setValue(v);
+        },
+        (e: unknown) => {
+          if (alive) console.error('[offline] A local query failed', e);
+        },
+      );
     };
     load();
     const off = services.feed.subscribe(load);
