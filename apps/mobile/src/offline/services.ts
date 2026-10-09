@@ -9,6 +9,9 @@ import { type ClaimRejection, createSyncEngine, type SyncEngine, type SyncTrigge
 import { type AppStatePort, type NetworkPort, startSyncTriggers, type SyncTriggers } from './sync-triggers';
 import { clearLocalData, ensureUser } from './user-scope';
 
+/** How long a logout or a user switch waits for a running sync to end. */
+export const SHUTDOWN_WAIT_MS = 10_000;
+
 export interface ServiceDeps {
   db: Db;
   api: SyncApi;
@@ -44,7 +47,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
   await ensureUser(db, userId, transport);
   const feed = createChangeFeed();
   let triggers: SyncTriggers | null = null;
-  const mediaQueue = createMediaQueue({ db, api, clock, transport, feed });
+  const mediaQueue = createMediaQueue({ db, api, clock, transport, feed, isOnline: deps.isOnline });
   const store = createExecutionStore({
     db,
     clock,
@@ -78,7 +81,16 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     triggers?.stop();
     unsubscribe.splice(0).forEach((off) => off());
     engine.stop();
-    await engine.idle();
+    // Requests and uploads are bounded, but a logout or a user switch must never hang on a run that does not end.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const gaveUp = await Promise.race([
+      engine.idle().then(() => false),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), SHUTDOWN_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (gaveUp) console.warn(`[offline] The running sync did not end within ${SHUTDOWN_WAIT_MS / 1000} s; shutting down anyway`);
   };
   return {
     userId,

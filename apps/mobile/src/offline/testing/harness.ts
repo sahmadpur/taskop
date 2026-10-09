@@ -39,8 +39,8 @@ export async function createHarness(o: { at?: string; db?: Db } = {}): Promise<H
   const writes: WriteKind[] = [];
   const store = createExecutionStore({ db, clock, newId: testIds(clock), device: DEVICE, files: transport, feed, onWrite: (kind) => writes.push(kind) });
   const api = createFakeApi();
-  const mediaQueue = createMediaQueue({ db, api: api.api, clock, transport, feed });
   const net = { online: true };
+  const mediaQueue = createMediaQueue({ db, api: api.api, clock, transport, feed, isOnline: () => net.online });
   const rejections: ClaimRejection[] = [];
   const engine = createSyncEngine({
     db, api: api.api, clock, feed, mediaQueue, files: transport,

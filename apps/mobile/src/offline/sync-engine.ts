@@ -383,8 +383,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     if (pushed !== 'ok' || stopped) return pushed;
     const pulled = await pull();
     if (pulled !== 'ok' || stopped) return pulled;
-    const drained = await mediaQueue.drain();
-    if (drained !== 'ok') return drained;
+    const drained = await mediaQueue.drain(() => stopped);
+    if (drained !== 'ok' || stopped) return drained;
     await markFinishedSynced(db, clock.now());
     await mediaQueue.cleanup();
     return 'ok';

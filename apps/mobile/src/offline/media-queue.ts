@@ -14,10 +14,29 @@ export interface MediaTransport extends FileRemover {
 }
 
 export const MEDIA_MAX_ATTEMPTS = 5;
+/** One presigned PUT may take this long (a 60 s video on a slow link); longer counts as a network failure. */
+export const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 export const LOCAL_FILE_KEEP_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 export type DrainOutcome = 'ok' | 'retry' | 'auth';
+
+/** An upload that did not settle in UPLOAD_TIMEOUT_MS: a network failure (retried later, never counted as an attempt). */
+export class UploadTimeoutError extends Error {
+  constructor() {
+    super('The upload did not finish in time');
+    this.name = 'UploadTimeoutError';
+  }
+}
+
+/** Bounds a transport upload by UPLOAD_TIMEOUT_MS (the native upload cannot be aborted, only abandoned). */
+export function withUploadTimeout<T>(upload: Promise<T>, ms: number = UPLOAD_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new UploadTimeoutError()), ms);
+  });
+  return Promise.race([upload, expired]).finally(() => clearTimeout(timer));
+}
 
 export interface MediaQueueEntry {
   id: string;
@@ -28,8 +47,11 @@ export interface MediaQueueEntry {
 }
 
 export interface MediaQueue {
-  /** Uploads every waiting file, one at a time, photos first. Stops at the first retryable failure. */
-  drain(): Promise<DrainOutcome>;
+  /**
+   * Uploads every waiting file, one at a time, photos first. Stops at the first retryable failure, and returns 'ok'
+   * early once `shouldStop` says so (checked between media: the engine stopped for a logout or a user switch).
+   */
+  drain(shouldStop?: () => boolean): Promise<DrainOutcome>;
   /** Deletes local files uploaded and finished syncing more than 7 days ago. Returns how many. */
   cleanup(): Promise<number>;
   counts(): Promise<{ pending: number; failed: number }>;
@@ -47,8 +69,16 @@ const WAITING = 'registered_at IS NOT NULL AND uploaded_at IS NULL AND failed_co
 /** What one medium's step tells the drain loop: an outcome stops it, 'next' moves on to the next medium. */
 type Step = DrainOutcome | 'next';
 
-export function createMediaQueue(deps: { db: Db; api: SyncApi; clock: Clock; transport: MediaTransport; feed: ChangeFeed }): MediaQueue {
-  const { db, api, clock, transport, feed } = deps;
+export function createMediaQueue(deps: {
+  db: Db;
+  api: SyncApi;
+  clock: Clock;
+  transport: MediaTransport;
+  feed: ChangeFeed;
+  /** A transport error while offline is the network; while online it counts as an attempt. */
+  isOnline: () => boolean;
+}): MediaQueue {
+  const { db, api, clock, transport, feed, isOnline } = deps;
 
   // The worker may remove a medium while it is in flight: every update below finds no row then, and the queue
   // simply stops for that medium.
@@ -59,7 +89,10 @@ export function createMediaQueue(deps: { db: Db; api: SyncApi; clock: Clock; tra
     return 'next';
   }
 
-  /** A failure a later try may fix (bad PUT status, no upload URL, confirm before the object landed). Network errors never count. */
+  /**
+   * A failure a later try may fix (bad PUT status, no upload URL, confirm before the object landed, the transport
+   * throwing while online). Network errors never count.
+   */
   async function countAttempt(id: string): Promise<Step> {
     const n = await db.run('UPDATE media SET attempts = attempts + 1 WHERE id = ?', [id]);
     if (n === 0) return 'next';
@@ -94,8 +127,9 @@ export function createMediaQueue(deps: { db: Db; api: SyncApi; clock: Clock; tra
     let status: number;
     try {
       status = await transport.upload(m.localUri, ticket.uploadUrl, ticket.headers);
-    } catch {
-      return 'retry';
+    } catch (e) {
+      // A timeout or a lost connection is retried freely; anything else that keeps failing must not block the queue forever.
+      return e instanceof UploadTimeoutError || !isOnline() ? 'retry' : countAttempt(m.id);
     }
     if (status < 200 || status >= 300) return countAttempt(m.id);
     try {
@@ -109,8 +143,9 @@ export function createMediaQueue(deps: { db: Db; api: SyncApi; clock: Clock; tra
   }
 
   return {
-    async drain() {
+    async drain(shouldStop = () => false) {
       for (;;) {
+        if (shouldStop()) return 'ok';
         const row = await db.first<MediaRow>(`SELECT * FROM media WHERE ${WAITING} ORDER BY CASE kind WHEN 'photo' THEN 0 ELSE 1 END, captured_at, id LIMIT 1`);
         if (!row) return 'ok';
         const outcome = await uploadOne(toMedia(row));

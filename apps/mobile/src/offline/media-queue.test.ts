@@ -1,6 +1,6 @@
 import { ApiError } from '@taskop/api-client';
 import { iso } from './local-model';
-import { createMediaQueue, LOCAL_FILE_KEEP_DAYS, MEDIA_MAX_ATTEMPTS, mediaErrorKey } from './media-queue';
+import { createMediaQueue, LOCAL_FILE_KEEP_DAYS, MEDIA_MAX_ATTEMPTS, mediaErrorKey, UPLOAD_TIMEOUT_MS, UploadTimeoutError, withUploadTimeout } from './media-queue';
 import { capturedPhoto, capturedVideo } from './testing/fake-transport';
 import { ME, OCC, T } from './testing/fixtures';
 import { createHarness, type Harness } from './testing/harness';
@@ -50,14 +50,16 @@ describe('media queue', () => {
   it('resumes after the app is killed mid-upload', async () => {
     const h = await createHarness();
     await twoMedia(h);
+    h.net.online = false; // the connection dropped
     h.transport.respond(() => {
       throw new Error('connection reset');
     });
     expect(await h.mediaQueue.drain()).toBe('retry');
     expect((await rows(h)).map((r) => [r.uploaded_at, r.attempts])).toEqual([[null, 0], [null, 0]]);
     // A new process: a fresh queue over the same database and files.
+    h.net.online = true;
     h.transport.respond(() => 200);
-    const restarted = createMediaQueue({ db: h.db, api: h.api.api, clock: h.clock, transport: h.transport, feed: h.feed });
+    const restarted = createMediaQueue({ db: h.db, api: h.api.api, clock: h.clock, transport: h.transport, feed: h.feed, isOnline: () => true });
     expect(await restarted.drain()).toBe('ok');
     expect((await rows(h)).every((r) => r.uploaded_at !== null)).toBe(true);
   });
@@ -164,5 +166,71 @@ describe('media queue', () => {
     const left = await rows(h);
     expect(left.map((r) => r.id)).toEqual([m.videoId]);
     expect(h.api.calls.filter((c) => c.method === 'registerMedia').map((c) => (c.body as { id: string }).id)).toEqual([m.photoId, m.videoId]);
+  });
+
+  it('an upload that times out is a network failure: retried later, never counted', async () => {
+    const h = await createHarness();
+    await twoMedia(h);
+    h.transport.respond(() => {
+      throw new UploadTimeoutError();
+    });
+    for (let i = 0; i < MEDIA_MAX_ATTEMPTS + 1; i++) expect(await h.mediaQueue.drain()).toBe('retry');
+    expect((await rows(h)).map((r) => [r.failed_code, r.attempts])).toEqual([[null, 0], [null, 0]]);
+  });
+
+  it('an upload that keeps throwing while online counts as attempts, parks after 5 and stops blocking the queue', async () => {
+    const h = await createHarness();
+    const m = await twoMedia(h);
+    h.transport.respond((uri) => {
+      if (uri === m.photo.localUri) throw new Error('unsupported URL');
+      return 200;
+    });
+    for (let i = 1; i <= MEDIA_MAX_ATTEMPTS; i++) expect(await h.mediaQueue.drain()).toBe('retry');
+    expect(await h.mediaQueue.list()).toMatchObject([
+      { id: m.photoId, failedCode: 'UPLOAD_FAILED', attempts: MEDIA_MAX_ATTEMPTS },
+      { id: m.videoId, failedCode: null, attempts: 0 },
+    ]);
+    expect(await h.mediaQueue.drain()).toBe('ok');
+    expect((await rows(h)).find((r) => r.id === m.videoId)?.uploaded_at).not.toBeNull();
+  });
+
+  it('an upload that throws while the phone is offline is not counted', async () => {
+    const h = await createHarness();
+    await twoMedia(h);
+    h.net.online = false;
+    h.transport.respond(() => {
+      throw new Error('connection lost');
+    });
+    expect(await h.mediaQueue.drain()).toBe('retry');
+    expect((await rows(h)).map((r) => r.attempts)).toEqual([0, 0]);
+  });
+
+  it('stops between media when asked to', async () => {
+    const h = await createHarness();
+    await twoMedia(h);
+    let stop = false;
+    h.transport.respond(() => {
+      stop = true;
+      return 200;
+    });
+    expect(await h.mediaQueue.drain(() => stop)).toBe('ok');
+    expect(h.transport.uploads).toHaveLength(1);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 0 });
+  });
+});
+
+describe('withUploadTimeout', () => {
+  it('rejects with UploadTimeoutError after 10 minutes and passes a settled upload through', async () => {
+    jest.useFakeTimers();
+    try {
+      expect(UPLOAD_TIMEOUT_MS).toBe(600_000);
+      await expect(withUploadTimeout(Promise.resolve(201))).resolves.toBe(201);
+      const hung = withUploadTimeout(new Promise<number>(() => undefined));
+      const outcome = expect(hung).rejects.toBeInstanceOf(UploadTimeoutError);
+      await jest.advanceTimersByTimeAsync(UPLOAD_TIMEOUT_MS);
+      await outcome;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

@@ -156,6 +156,20 @@ describe('pushing the outbox', () => {
     expect(most).toBe(1);
     expect(h.api.calls.filter((c) => c.method === 'confirmUploaded')).toHaveLength(1);
   });
+
+  it('stops draining the media queue between files once stopped', async () => {
+    const h = await createHarness();
+    const id = await h.store.start(OCC, ME);
+    await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    await h.store.attachMedia(id, capturedPhoto(h.transport), { itemId: h.c.photo.id, field: 'evidence' });
+    h.transport.respond(() => {
+      h.engine.stop();
+      return 200;
+    });
+    await h.engine.run('manual');
+    expect(h.transport.uploads).toHaveLength(1);
+    expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 0 });
+  });
 });
 
 describe('media registration', () => {

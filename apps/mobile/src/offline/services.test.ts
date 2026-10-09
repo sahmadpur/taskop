@@ -51,4 +51,30 @@ describe('offline services', () => {
     await t.services.syncNow('manual');
     expect(t.api.calls).toEqual([]);
   });
+
+  it('stops waiting for a sync that never settles after 10 s, so logout still clears', async () => {
+    jest.useFakeTimers();
+    try {
+      const t = await createTestServices({ online: true });
+      await t.seed();
+      t.api.on('pull', () => new Promise(() => undefined));
+      void t.services.syncNow('manual');
+      await jest.advanceTimersByTimeAsync(0);
+      expect(t.services.engine.status().running).toBe(true);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      let cleared = false;
+      const clearing = t.services.clearAll().then(() => {
+        cleared = true;
+      });
+      await jest.advanceTimersByTimeAsync(9_999);
+      expect(cleared).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+      await clearing;
+      expect(await t.services.store.occurrences()).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('[offline]'));
+      warn.mockRestore();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
