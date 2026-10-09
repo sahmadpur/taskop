@@ -15,14 +15,26 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     ports: ['1025:1025', '8025:8025']
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
+    ports: ['8333:8333']
+    volumes:
+      - seaweedfsdata:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+  # One-off: creates the private bucket; exits once it exists (restarts until SeaweedFS answers).
+  seaweedfs-init:
+    image: amazon/aws-cli:latest
+    depends_on: [seaweedfs]
+    restart: on-failure
     environment:
-      MINIO_ROOT_USER: taskop
-      MINIO_ROOT_PASSWORD: taskop_dev_password
-    ports: ['9000:9000', '9001:9001']
-    volumes: ['miniodata:/data']
+      AWS_ACCESS_KEY_ID: taskop
+      AWS_SECRET_ACCESS_KEY: taskop_dev_password
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint:
+      - sh
+      - -c
+      - aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket taskop-media || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket taskop-media
 volumes:
   pgdata: {}
-  miniodata: {}
+  seaweedfsdata: {}

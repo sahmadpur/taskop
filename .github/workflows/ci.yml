@@ -41,6 +41,11 @@ jobs:
       MAIL_FROM: Taskop <no-reply@taskop.ci>
       COOKIE_SECURE: 'false'
       LOG_LEVEL: warn
+      # The API only needs these to boot; the e2e flow (Part 3) drives executions through the API without uploads.
+      S3_ENDPOINT: http://localhost:8333
+      S3_PUBLIC_ENDPOINT: http://localhost:8333
+      S3_ACCESS_KEY: ci
+      S3_SECRET_KEY: ci-secret
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
