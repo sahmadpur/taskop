@@ -7,6 +7,7 @@ import { TaskListeners } from './task-listeners';
 import { TaskProblems } from './task-problems';
 import { TaskQueries } from './task-queries';
 import { TaskScope } from './task-scope';
+import { TaskSync } from './task-sync';
 import { TaskWorkService } from './task-work.service';
 import { TaskWriter } from './task-writer';
 import { TasksController } from './tasks.controller';
@@ -16,6 +17,7 @@ import { TasksService } from './tasks.service';
 @Module({
   imports: [SchedulingModule],
   controllers: [TasksController],
-  providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter, TaskWorkService, TaskMediaService, TaskJobs, TaskListeners],
+  providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter, TaskWorkService, TaskMediaService, TaskJobs, TaskListeners, TaskSync],
+  exports: [TaskSync],
 })
 export class TasksModule {}
