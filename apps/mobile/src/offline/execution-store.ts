@@ -410,11 +410,12 @@ export function createExecutionStore(deps: StoreDeps) {
       );
       return rows.map((r) => ({ mediaId: r.media_id, itemId: r.item_id, errorKey: r.error_key }));
     },
-    /** Commands not yet accepted plus registered files not yet uploaded (the logout warning, spec §7.4). */
+    /** Commands not yet accepted, registered files not yet uploaded, and task responses typed or photographed but not submitted (the logout warning, spec §7.4). */
     async unsyncedCount(): Promise<number> {
       const row = await db.first<{ n: number }>(
         `SELECT (SELECT count(*) FROM outbox)
-              + (SELECT count(*) FROM media WHERE registered_at IS NOT NULL AND uploaded_at IS NULL AND file_deleted_at IS NULL) AS n`,
+              + (SELECT count(*) FROM media WHERE registered_at IS NOT NULL AND uploaded_at IS NULL AND file_deleted_at IS NULL)
+              + (SELECT count(*) FROM task_drafts WHERE submitted_at IS NULL AND (text <> '' OR media_ids <> '[]')) AS n`,
       );
       return row?.n ?? 0;
     },

@@ -231,4 +231,59 @@ describe('task refusals', () => {
       ['task.submit', expect.any(String)],
     ]);
   });
+
+  it('TASK_STATE_INVALID keeps a registered, not yet uploaded photo of an accepted submission, and drops an unregistered stray', async () => {
+    const h = await withTask();
+    await h.tasks.start(TASK);
+    const sent = await h.tasks.attachMedia(TASK, capturedPhoto(h.transport));
+    const stray = await h.tasks.attachMedia(TASK, capturedPhoto(h.transport));
+    const strayUri = (await h.db.first<{ local_uri: string }>('SELECT local_uri FROM media WHERE id = ?', [stray]))!.local_uri;
+    // The submission that lists `sent` was accepted; its file is registered but still uploading, and the new draft no longer lists it.
+    await h.db.run(`UPDATE media SET registered_at = ? WHERE id = ?`, [T.open, sent]);
+    await h.db.run(`UPDATE task_drafts SET media_ids = '[]'`);
+    await h.db.run(`DELETE FROM outbox WHERE kind = 'task.media'`);
+    h.api.on('taskStart', async () => {
+      h.api.sync = syncResponse({ tasks: [syncTask({ status: 'cancelled', rev: 9, cancelReason: 'Lazım deyil' })] });
+      throw new ApiError(409, 'TASK_STATE_INVALID', 'errors.TASK_STATE_INVALID');
+    });
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    expect((await h.db.all<{ id: string }>('SELECT id FROM media')).map((m) => m.id)).toEqual([sent]);
+    expect(h.transport.removed).toEqual([strayUri]);
+  });
+
+  it('CLOCK_INVALID on a task photo registration parks it and keeps the photo for "Yenidən cəhd et"', async () => {
+    const h = await withTask();
+    await h.tasks.start(TASK);
+    const photo = capturedPhoto(h.transport);
+    const id = await h.tasks.attachMedia(TASK, photo);
+    await h.tasks.submit(TASK);
+    h.api.on('taskRegisterMedia', refuse(422, 'CLOCK_INVALID'));
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    expect((await listCommands(h.db)).filter((c) => c.kind === 'task.media').map((c) => [c.refId, c.status, c.errorCode])).toEqual([[id, 'failed', 'CLOCK_INVALID']]);
+    expect(await counts(h)).toMatchObject({ media: 1 });
+    expect(h.transport.removed).toEqual([]);
+    expect((await h.tasks.task(TASK))!.draft!.mediaIds).toEqual([id]);
+    expect(await h.tasks.refusals(TASK)).toEqual([]);
+    // The submission naming the photo waits for it.
+    expect(h.api.calls.map((c) => c.method)).toEqual(['taskStart', 'taskRegisterMedia', 'pull']);
+    expect((await listCommands(h.db)).map((c) => [c.kind, c.status])).toEqual([['task.media', 'failed'], ['task.submit', 'pending']]);
+    h.api.reset('taskRegisterMedia');
+    await h.engine.retryFailed();
+    expect(h.api.calls.map((c) => c.method).slice(3, 5)).toEqual(['taskRegisterMedia', 'taskSubmit']);
+    expect(await listCommands(h.db)).toEqual([]);
+  });
+
+  it('a refused instruction photo of a task the phone does not hold leaves no note behind', async () => {
+    const h = await createHarness();
+    h.net.online = false;
+    await h.tasks.queueInstructionMedia(TASK, [capturedPhoto(h.transport)]);
+    h.api.on('taskRegisterMedia', refuse(422, 'MEDIA_TOO_LARGE'));
+    h.api.sync = syncResponse({ tasks: [] });
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    expect(await h.db.first('SELECT count(*) AS n FROM media_refusals')).toEqual({ n: 0 });
+    expect(await counts(h)).toEqual({ tasks: 0, drafts: 0, media: 0, outbox: 0 });
+  });
 });

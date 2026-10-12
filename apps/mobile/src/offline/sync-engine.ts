@@ -288,7 +288,10 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         // The task may have left the phone while the command was in flight.
         if (!(await tx.first('SELECT 1 AS one FROM tasks WHERE id = ?', [cmd.entityId]))) return null;
         if (cmd.kind === 'task.submit') await tx.run('DELETE FROM task_drafts WHERE task_id = ? AND submission_id = ?', [cmd.entityId, cmd.refId]);
-        await mergeTask(tx, syncTaskSchema.parse(result), now, cmd.seq);
+        // An answer the phone cannot read must not jam the outbox: the command is acked without merging, and the next pull brings the server's copy.
+        const parsed = syncTaskSchema.safeParse(result);
+        if (parsed.success) await mergeTask(tx, parsed.data, now, cmd.seq);
+        else console.warn(`[sync] The answer to ${cmd.kind} was not a task; the next pull brings the server's copy`);
         return null;
       }
     }

@@ -735,4 +735,22 @@ describe('task commands', () => {
     expect(await h.db.first('SELECT local_status, sync_note FROM tasks')).toEqual({ local_status: 'new', sync_note: 'errors.CLOCK_INVALID' });
     expect(await h.db.first('SELECT text, submitted_at FROM task_drafts')).toEqual({ text: 'Hazırdır', submitted_at: null });
   });
+
+  it('an unreadable answer to a task command is acked without merging, the submitted draft goes, and the queue moves on', async () => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ checklistVersions: [versionOf(h.c.content)], tasks: [syncTask()] }));
+    h.api.sync = syncResponse({ tasks: [syncTask()] });
+    await h.db.run(`UPDATE tasks SET local_status = 'completed'`);
+    await h.db.run('INSERT INTO task_drafts (task_id, submission_id, text, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?)', [TASK, SUB, 'Hazırdır', T.open, T.open]);
+    await queueTask(h, 'task.submit', { id: SUB, text: 'Hazırdır', mediaIds: [], submittedAt: T.open }, SUB);
+    await queueTask(h, 'task.start', { at: T.open });
+    h.api.on('taskSubmit', async () => ({ unexpected: true }) as never);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await h.engine.run('manual');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+    expect(methods(h)).toEqual(['taskSubmit', 'taskStart', 'pull']);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await h.db.first('SELECT count(*) AS n FROM task_drafts')).toEqual({ n: 0 });
+  });
 });

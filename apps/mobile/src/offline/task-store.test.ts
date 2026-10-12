@@ -138,4 +138,19 @@ describe('task store', () => {
     expect(await h.tasks.task(TASK)).toMatchObject({ status: 'completed', draft: null, unsynced: false, failedKey: null });
     expect(await h.db.first('SELECT uploaded_at FROM media WHERE id = ?', [id])).toEqual({ uploaded_at: T.open });
   });
+
+  it('counts an unsubmitted draft with text or media in the logout warning, and not an empty one or a submitted one', async () => {
+    const h = await withTask({ status: 'in_progress' });
+    h.net.online = false;
+    await h.tasks.saveText(TASK, '');
+    expect(await h.store.unsyncedCount()).toBe(0);
+    await h.tasks.saveText(TASK, 'Yarım qalıb');
+    expect(await h.store.unsyncedCount()).toBe(1);
+    await h.tasks.saveText(TASK, '');
+    await h.tasks.attachMedia(TASK, capturedPhoto(h.transport));
+    await h.db.run(`DELETE FROM outbox`);
+    expect(await h.store.unsyncedCount()).toBe(1);
+    await h.db.run(`UPDATE task_drafts SET submitted_at = ?`, [T.open]);
+    expect(await h.store.unsyncedCount()).toBe(0);
+  });
 });

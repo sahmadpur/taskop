@@ -84,13 +84,14 @@ export async function appendCommand(tx: Db, c: AppendInput): Promise<void> {
 /**
  * The oldest pending command, so each execution's and each task's commands go in order (a medium's registration before
  * the submission that lists it). A failed claim, task accept or task start holds back the later commands of its entity:
- * without it they could only fail.
+ * without it they could only fail. So does a parked task photo registration for the task's submission, which would name an unknown medium.
  */
 export async function nextCommand(db: Db): Promise<OutboxCommand | null> {
   const row = await db.first<OutboxRow>(
     `SELECT * FROM outbox o
      WHERE o.status = 'pending'
        AND NOT EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = o.entity_type AND c.entity_id = o.entity_id AND c.kind IN ('claim', 'task.accept', 'task.start') AND c.status = 'failed' AND c.seq < o.seq)
+       AND NOT (o.kind = 'task.submit' AND EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = 'task' AND c.entity_id = o.entity_id AND c.kind = 'task.media' AND c.status = 'failed' AND c.seq < o.seq))
      ORDER BY o.seq LIMIT 1`,
   );
   return row ? toCommand(row) : null;

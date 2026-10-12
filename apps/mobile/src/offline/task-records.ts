@@ -123,7 +123,8 @@ export async function dropTaskMedium(tx: Db, taskId: string, mediaId: string, no
     const payload = JSON.parse(q.payload) as { mediaIds?: string[] };
     await tx.run('UPDATE outbox SET payload = ? WHERE seq = ?', [JSON.stringify({ ...payload, mediaIds: (payload.mediaIds ?? []).filter((x) => x !== mediaId) }), q.seq]);
   }
-  if (errorKey) {
+  // Only a task the phone holds shows the note (a manager's instruction photo of a task never pulled has none).
+  if (errorKey && (await tx.first('SELECT 1 AS one FROM tasks WHERE id = ?', [taskId]))) {
     await tx.run(`INSERT OR REPLACE INTO media_refusals (media_id, owner_type, owner_id, item_id, error_key, created_at) VALUES (?, 'task', ?, NULL, ?, ?)`, [
       mediaId, taskId, errorKey, iso(now),
     ]);

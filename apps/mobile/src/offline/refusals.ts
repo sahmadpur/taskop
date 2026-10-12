@@ -227,17 +227,24 @@ export async function resolveTaskRefusal(
   }
   if (code === 'TASK_STATE_INVALID') {
     // The response photos in the draft stay (the read-only draft still shows them; a later submission registers them again),
-    // but no registration can succeed now. Every other medium of the task (instruction photos, a task the phone does not hold) has no home and goes.
+    // but no registration can succeed now. Every other medium of the task (instruction photos, a task the phone does not hold) has no home and goes,
+    // except a registered file still uploading: it belongs to an earlier accepted submission, and the server still takes its upload.
     await tx.run(`DELETE FROM outbox WHERE entity_type = 'task' AND entity_id = ? AND kind = 'task.media'`, [cmd.entityId]);
     const orphans = await tx.all<{ id: string; local_uri: string; file_deleted_at: string | null }>(
       `SELECT id, local_uri, file_deleted_at FROM media
        WHERE owner_type = 'task' AND owner_id = ?
+         AND (registered_at IS NULL OR uploaded_at IS NOT NULL)
          AND id NOT IN (SELECT value FROM json_each(coalesce((SELECT media_ids FROM task_drafts WHERE task_id = ?), '[]')))`,
       [cmd.entityId, cmd.entityId],
     );
     for (const m of orphans) await tx.run('DELETE FROM media WHERE id = ?', [m.id]);
     await revertTask(tx, cmd.entityId, messageKey, now);
     return { files: orphans.filter((m) => m.file_deleted_at === null).map((m) => m.local_uri), removed: null };
+  }
+  if (cmd.kind === 'task.media' && code === 'CLOCK_INVALID') {
+    // A clock offset problem, not a refusal of the photo: parked like a status command, so the next pull refreshes the offset and "Yenidən cəhd et" registers it.
+    await failCommand(tx, cmd.seq, code, messageKey);
+    return { files: [], removed: null };
   }
   if (cmd.kind === 'task.media') {
     await ackCommand(tx, cmd.seq);
