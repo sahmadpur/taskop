@@ -1,8 +1,8 @@
 import { ApiError } from '@taskop/api-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mediaFileIssue, mediaKindOfMime, type PendingMedia, prepareFiles, uploadInstructionMedia } from './media-files';
+import { mediaFileIssue, mediaKindOfMime, type PendingMedia, prepareFiles, readMediaMeta, uploadInstructionMedia } from './media-files';
 
-const mocks = vi.hoisted(() => ({ api: { tasks: { registerMedia: vi.fn() }, taskMedia: { confirmUploaded: vi.fn() } } }));
+const mocks = vi.hoisted(() => ({ api: { tasks: { registerMedia: vi.fn(), get: vi.fn() }, taskMedia: { confirmUploaded: vi.fn() } } }));
 vi.mock('@/lib/session', () => ({ api: mocks.api }));
 
 const MB = 1024 * 1024;
@@ -21,7 +21,19 @@ const ticket = (id: string) => ({
 beforeEach(() => {
   vi.resetAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
+
+/** A video element that reports `props` once its source is set (jsdom cannot decode); `fail` makes it error instead. */
+const fakeVideo = (props: Partial<Record<'videoWidth' | 'videoHeight' | 'duration', number>>, fail = false) => {
+  const el: Record<string, unknown> = { videoWidth: 0, videoHeight: 0, duration: Number.NaN, ...props };
+  Object.defineProperty(el, 'src', {
+    set: () => queueMicrotask(() => (fail ? (el.onerror as () => void)() : (el.onloadedmetadata as () => void)())),
+  });
+  return el as unknown as HTMLVideoElement;
+};
+const fakeImage = (naturalWidth: number, naturalHeight: number, decode = () => Promise.resolve()) => ({ naturalWidth, naturalHeight, decode, src: '' }) as unknown as HTMLImageElement;
+const blob = () => file('v.mp4', 'video/mp4');
 
 describe('instruction media files', () => {
   it('accepts JPEG, PNG, MP4 and MOV within MEDIA_LIMITS and names the problem otherwise', () => {
@@ -128,5 +140,84 @@ describe('instruction media files', () => {
     expect(await uploadInstructionMedia('t1', [ahead, behind], serverTime, () => {})).toBe(0);
     const sent = mocks.api.tasks.registerMedia.mock.calls.map((c) => (c[1] as { capturedAt: string }).capturedAt);
     expect(sent).toEqual([serverTime, '2026-11-02T03:00:00.000Z']);
+  });
+
+  it('stamps the picked time when the save sent no request, and sends a fresh GET\'s updatedAt once if the API finds the clock ahead', async () => {
+    const [a, b] = (await prepareFiles([file('a.jpg', 'image/jpeg'), file('b.jpg', 'image/jpeg')], 5, async () => photoMeta)) as [PendingMedia, PendingMedia];
+    const ahead = { ...a, capturedAt: '2026-11-02T04:30:00.000Z' };
+    const fine = { ...b, capturedAt: '2026-11-02T03:00:00.000Z' };
+    mocks.api.tasks.get.mockResolvedValue({ updatedAt: '2026-11-02T04:00:00.000Z' });
+    mocks.api.tasks.registerMedia.mockImplementation(async (_task: string, body: { id: string; capturedAt: string }) => {
+      if (body.capturedAt > '2026-11-02T04:02:00.000Z') throw new ApiError(422, 'CLOCK_INVALID', 'errors.CLOCK_INVALID');
+      return { ...ticket(body.id), uploadUrl: null };
+    });
+    mocks.api.taskMedia.confirmUploaded.mockResolvedValue({ status: 'uploaded' });
+    expect(await uploadInstructionMedia('t1', [ahead, fine], null, () => {})).toBe(0);
+    const sent = mocks.api.tasks.registerMedia.mock.calls.map((c) => (c[1] as { id: string; capturedAt: string }).capturedAt);
+    // The first file: picked, refused, then the task's own time; the second: picked, accepted. One GET, only on the refusal.
+    expect(sent).toEqual(['2026-11-02T04:30:00.000Z', '2026-11-02T04:00:00.000Z', '2026-11-02T03:00:00.000Z']);
+    expect(mocks.api.tasks.get).toHaveBeenCalledTimes(1);
+    expect(mocks.api.tasks.get).toHaveBeenCalledWith('t1');
+  });
+
+  it('does not retry a clock refusal when the task\'s time would not change the stamp, or cannot be read', async () => {
+    const [a] = (await prepareFiles([file('a.jpg', 'image/jpeg')], 5, async () => photoMeta)) as [PendingMedia];
+    const picked = { ...a, capturedAt: '2026-11-02T03:00:00.000Z' };
+    mocks.api.tasks.registerMedia.mockRejectedValue(new ApiError(422, 'CLOCK_INVALID', 'errors.CLOCK_INVALID'));
+    mocks.api.tasks.get.mockResolvedValueOnce({ updatedAt: '2026-11-02T04:00:00.000Z' }).mockRejectedValueOnce(new Error('offline'));
+    const changes: Array<[string, Partial<PendingMedia>]> = [];
+    expect(await uploadInstructionMedia('t1', [picked], null, (id, patch) => changes.push([id, patch]))).toBe(1);
+    expect(mocks.api.tasks.registerMedia).toHaveBeenCalledTimes(1);
+    expect(changes.at(-1)).toEqual([a.id, { state: 'failed', error: 'tasks.dialog.uploadClock' }]);
+    mocks.api.tasks.registerMedia.mockClear();
+    expect(await uploadInstructionMedia('t1', [{ ...a, capturedAt: '2026-11-02T05:00:00.000Z' }], null, () => {})).toBe(1);
+    expect(mocks.api.tasks.registerMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('readMediaMeta', () => {
+  beforeEach(() => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }));
+  });
+
+  it('reads a photo\'s and a video\'s size and length', async () => {
+    expect(await readMediaMeta(file('a.jpg', 'image/jpeg'), 'photo', { createImage: () => fakeImage(1600, 1200) })).toEqual({ width: 1600, height: 1200, durationMs: null });
+    expect(await readMediaMeta(blob(), 'video', { createVideo: () => fakeVideo({ videoWidth: 1280, videoHeight: 720, duration: 12.3456 }) })).toEqual({
+      width: 1280,
+      height: 720,
+      durationMs: 12_346,
+    });
+  });
+
+  it('treats zero, NaN and infinite sizes and lengths as unknown', async () => {
+    expect(await readMediaMeta(file('a.jpg', 'image/jpeg'), 'photo', { createImage: () => fakeImage(0, 0) })).toEqual({ width: null, height: null, durationMs: null });
+    expect(await readMediaMeta(blob(), 'video', { createVideo: () => fakeVideo({ videoWidth: 0, videoHeight: 0, duration: Number.POSITIVE_INFINITY }) })).toEqual({
+      width: null,
+      height: null,
+      durationMs: null,
+    });
+    expect(await readMediaMeta(blob(), 'video', { createVideo: () => fakeVideo({ videoWidth: 640, videoHeight: 480, duration: 0 }) })).toEqual({ width: 640, height: 480, durationMs: null });
+  });
+
+  it('gives up after the timeout and when the browser errors', async () => {
+    vi.useFakeTimers();
+    const never = new Promise<void>(() => {});
+    const stuck = readMediaMeta(file('a.jpg', 'image/jpeg'), 'photo', { createImage: () => fakeImage(1, 1, () => never), timeoutMs: 10_000 });
+    const rejected = expect(stuck).rejects.toThrow('timeout');
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejected;
+    vi.useRealTimers();
+    await expect(readMediaMeta(blob(), 'video', { createVideo: () => fakeVideo({}, true) })).rejects.toThrow('metadata');
+  });
+
+  it('accepts a video the browser cannot decode (allowed type, no size or length), but not an undecodable photo', async () => {
+    const read = async (f: File) => {
+      throw new Error(`decode ${f.name}`);
+    };
+    const prepared = await prepareFiles([file('v.mp4', 'video/mp4'), file('p.jpg', 'image/jpeg')], 5, read);
+    expect(prepared.map((p) => [p.file.name, p.state, p.error, p.meta])).toEqual([
+      ['v.mp4', 'waiting', null, { width: null, height: null, durationMs: null }],
+      ['p.jpg', 'refused', 'errors.MEDIA_TYPE_INVALID', { width: null, height: null, durationMs: null }],
+    ]);
   });
 });
