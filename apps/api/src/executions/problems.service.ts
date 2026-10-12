@@ -35,6 +35,7 @@ export class ProblemsService {
         checklistName: checklists.name,
         executorName: users.fullName,
         versionId: executions.checklistVersionId,
+        executionState: executions.state,
       })
       .from(executionProblems)
       .innerJoin(occurrences, eq(occurrences.id, executionProblems.occurrenceId))
@@ -68,8 +69,14 @@ export class ProblemsService {
         severity: r.pr.severity,
         note: r.pr.note,
         mediaIds: r.pr.mediaIds,
+        // Filled from execution_media in the shared toProblemDtos (Task 6).
+        media: [],
         executorName: r.executorName,
         createdAt: r.pr.createdAt.toISOString(),
+        // Read from the tasks table once it exists (Task 6).
+        resolution: 'none' as const,
+        taskId: null,
+        executionState: r.executionState,
       })),
       nextCursor: rows.length > q.limit ? page[page.length - 1]!.pr.id : null,
     };

@@ -318,7 +318,7 @@ describe('execution endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url} ${init.body ?? ''}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [] });
       if (url.endsWith('/answers')) return json(200, { executionId: id, rev: 2, stale: false, state: 'active', progress });
       if (url.endsWith('/complete')) return json(200, { executionId: id, state: 'completed', completedAt: '2026-11-02T05:00:00.000Z', late: false, progress, score: null });
       if (url.endsWith(`/executions/${id}/media`)) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: { 'Content-Type': 'image/jpeg' }, expiresAt: '2026-11-02T04:15:00.000Z' });

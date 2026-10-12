@@ -6,16 +6,7 @@ import { executionSummarySchema } from './execution-summary.js';
 import { answerSchema, claimRefSchema, deviceInfoSchema, EXECUTION_LIMITS, mediaKindSchema, mediaSourceSchema, mediaStatusSchema } from './executions.js';
 import { occurrenceDtoSchema, occurrenceStatusSchema, userRefSchema } from './occurrences.js';
 import { dayNumber, localDateSchema } from './scheduling-time.js';
-
-/** `knownVersionIds=a,b` in the query string: versions the phone already holds. */
-export const syncQuerySchema = z.object({
-  knownVersionIds: z
-    .string()
-    .optional()
-    .transform((s) => (s ? s.split(',').filter(Boolean) : []))
-    .pipe(z.array(idSchema).max(200)),
-});
-export type SyncQuery = z.input<typeof syncQuerySchema>;
+import { problemResolutionSchema } from './tasks.js';
 
 export const syncOccurrenceSchema = z.object({
   id: idSchema,
@@ -64,14 +55,6 @@ export const myExecutionSchema = z.object({
 });
 export type MyExecution = z.infer<typeof myExecutionSchema>;
 
-export const syncResponseSchema = z.object({
-  serverTime: isoDateTimeSchema,
-  occurrences: z.array(syncOccurrenceSchema),
-  checklistVersions: z.array(syncChecklistVersionSchema),
-  executions: z.array(myExecutionSchema),
-});
-export type SyncResponse = z.infer<typeof syncResponseSchema>;
-
 export const executionMediaDtoSchema = z.object({
   id: idSchema,
   itemId: idSchema.nullable(),
@@ -97,6 +80,9 @@ export const executionProblemSchema = z.object({
   note: z.string().nullable(),
   mediaIds: z.array(idSchema),
   createdAt: isoDateTimeSchema,
+  resolution: problemResolutionSchema,
+  /** The task created from this problem (spec §6.2 "Problem endpoints"). */
+  taskId: idSchema.nullable(),
 });
 export type ExecutionProblem = z.infer<typeof executionProblemSchema>;
 
@@ -116,6 +102,10 @@ export const executionDetailSchema = executionSummarySchema.extend({
 });
 export type ExecutionDetail = z.infer<typeof executionDetailSchema>;
 
+/** A problem medium as the apps draw it (Spec decision 24). A purged object keeps `pending`. */
+export const problemMediaRefSchema = z.object({ id: idSchema, kind: mediaKindSchema, status: mediaStatusSchema });
+export type ProblemMediaRef = z.infer<typeof problemMediaRefSchema>;
+
 export const problemDtoSchema = z.object({
   id: idSchema,
   executionId: idSchema,
@@ -132,8 +122,14 @@ export const problemDtoSchema = z.object({
   severity: problemSeveritySchema,
   note: z.string().nullable(),
   mediaIds: z.array(idSchema),
+  /** The same media as `mediaIds`, in that order, with kind and upload status (Spec decision 24). */
+  media: z.array(problemMediaRefSchema),
   executorName: z.string(),
   createdAt: isoDateTimeSchema,
+  resolution: problemResolutionSchema,
+  taskId: idSchema.nullable(),
+  /** `active` = the run is still open: no task can be created from the problem yet (PROBLEM_NOT_CLOSED). */
+  executionState: executionStateSchema,
 });
 export type ProblemDto = z.infer<typeof problemDtoSchema>;
 
@@ -145,6 +141,7 @@ export const problemListQuerySchema = cursorQuerySchema
     checklistId: idSchema.optional(),
     severity: problemSeveritySchema.optional(),
     source: problemSourceSchema.optional(),
+    resolution: problemResolutionSchema.optional(),
   })
   .superRefine((v, ctx) => {
     const days = dayNumber(v.to) - dayNumber(v.from) + 1;

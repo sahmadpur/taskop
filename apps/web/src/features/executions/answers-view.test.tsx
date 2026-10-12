@@ -73,7 +73,7 @@ describe('AnswersView', () => {
   it('shows a manual problem\'s media that are also the item\'s evidence only once', async () => {
     const f = executionFixture();
     // The manual problem on the photo item attaches the item's own photo m1 and an extra photo pm1.
-    const problems = [{ id: 'pr9', itemId: f.photo.id, source: 'manual' as const, severity: 'normal' as const, note: 'Sınıq', mediaIds: ['m1', 'pm1'], createdAt: '2026-11-02T04:20:00.000Z' }];
+    const problems = [{ id: 'pr9', itemId: f.photo.id, source: 'manual' as const, severity: 'normal' as const, note: 'Sınıq', mediaIds: ['m1', 'pm1'], resolution: 'none' as const, taskId: null, createdAt: '2026-11-02T04:20:00.000Z' }];
     renderWithProviders(<AnswersView content={f.content} answers={f.answers} media={f.media} problems={problems} />);
     const photoItem = screen.getByRole('listitem', { name: 'Ümumi görünüş' });
     // m1 (evidence) once + pm1 (problem-only) once; the pending m2 is an img, not a button.

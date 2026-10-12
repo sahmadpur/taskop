@@ -117,6 +117,9 @@ export class SyncService {
         clockSuspect: x.clockSuspect,
         mediaPending,
       })),
+      // Filled by TaskSync (Task 16).
+      tasks: [],
+      removedTaskIds: [],
     };
   }
 }

@@ -137,6 +137,8 @@ export const syncResponse = (over: Partial<SyncResponse> = {}): SyncResponse => 
   occurrences: [occurrence()],
   checklistVersions: [],
   executions: [],
+  tasks: [],
+  removedTaskIds: [],
   ...over,
 });
 

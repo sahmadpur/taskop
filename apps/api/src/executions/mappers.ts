@@ -62,6 +62,9 @@ export const toProblemEntry = (p: typeof executionProblems.$inferSelect): Execut
   note: p.note,
   mediaIds: p.mediaIds,
   createdAt: p.createdAt.toISOString(),
+  // Read from the tasks table once it exists (Task 6).
+  resolution: 'none',
+  taskId: null,
 });
 
 export const asDevice = (v: unknown): DeviceInfo => v as DeviceInfo;

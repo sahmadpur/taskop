@@ -15,7 +15,8 @@ vi.mock('@/lib/session', () => ({
 const problem = (over: Partial<ProblemDto> = {}): ProblemDto => ({
   id: 'p1', executionId: 'x1', occurrenceId: 'o1', localDate: '2026-11-02', siteId: 'site1', siteName: 'Anbar', checklistId: 'c1',
   checklistName: 'Açılış', itemId: 'i1', itemLabel: 'Temperatur', source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır',
-  mediaIds: ['m1', 'm2'], executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', ...over,
+  mediaIds: ['m1', 'm2'], media: [{ id: 'm1', kind: 'photo', status: 'uploaded' }, { id: 'm2', kind: 'video', status: 'pending' }],
+  executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', resolution: 'none', taskId: null, executionState: 'completed', ...over,
 });
 
 beforeEach(() => {
@@ -23,7 +24,7 @@ beforeEach(() => {
   mocks.api.sites.list.mockResolvedValue([{ id: 'site1', name: 'Anbar' }]);
   mocks.api.checklists.list.mockResolvedValue({ items: [{ id: 'c1', name: 'Açılış' }], nextCursor: null });
   mocks.api.problems.list.mockResolvedValue({
-    items: [problem(), problem({ id: 'p2', itemId: 'i2', itemLabel: null, source: 'rule', severity: 'normal', note: null, mediaIds: [] })],
+    items: [problem(), problem({ id: 'p2', itemId: 'i2', itemLabel: null, source: 'rule', severity: 'normal', note: null, mediaIds: [], media: [] })],
     nextCursor: null,
   });
 });

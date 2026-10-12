@@ -103,9 +103,9 @@ export function executionFixture() {
     [video.id]: { videos: ['v1'] },
   };
   const problems: ExecutionProblem[] = [
-    { id: 'pr1', itemId: problem.id, source: 'rule', severity: 'critical', note: null, mediaIds: [], createdAt: CREATED },
-    { id: 'pr2', itemId: temp.id, source: 'rule', severity: 'normal', note: 'isti', mediaIds: [], createdAt: CREATED },
-    { id: 'pr3', itemId: temp.id, source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır', mediaIds: ['pm1'], createdAt: CREATED },
+    { id: 'pr1', itemId: problem.id, source: 'rule', severity: 'critical', note: null, mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED },
+    { id: 'pr2', itemId: temp.id, source: 'rule', severity: 'normal', note: 'isti', mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED },
+    { id: 'pr3', itemId: temp.id, source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır', mediaIds: ['pm1'], resolution: 'none', taskId: null, createdAt: CREATED },
   ];
   const detail = (over: Partial<ExecutionDetail> = {}): ExecutionDetail => ({
     ...summary(),

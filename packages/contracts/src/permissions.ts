@@ -11,6 +11,7 @@ export const PERMISSION_GROUPS = [
   { group: 'templates', keys: ['templates.manage'] },
   { group: 'assignments', keys: ['assignments.view', 'assignments.manage', 'assignments.extended_window'] },
   { group: 'shifts', keys: ['shifts.view', 'shifts.manage'] },
+  { group: 'tasks', keys: ['tasks.view', 'tasks.manage'] },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_GROUPS)[number]['keys'][number];
@@ -39,14 +40,14 @@ export const SYSTEM_ROLE_DEFAULTS: Record<SystemRoleKey, SystemRoleDefault> = {
   manager: {
     name: 'Manager',
     dataScope: 'site_subtree',
-    permissions: ['sites.view', 'teams.view', 'users.view', 'checklists.view', 'checklists.manage', 'assignments.view', 'assignments.manage', 'shifts.view', 'shifts.manage'],
+    permissions: ['sites.view', 'teams.view', 'users.view', 'checklists.view', 'checklists.manage', 'assignments.view', 'assignments.manage', 'shifts.view', 'shifts.manage', 'tasks.view', 'tasks.manage'],
     editable: true,
   },
   worker: { name: 'Worker', dataScope: 'own', permissions: [], editable: true },
   auditor: {
     name: 'Auditor',
     dataScope: 'all',
-    permissions: ['sites.view', 'users.view', 'audit.view', 'checklists.view', 'assignments.view', 'shifts.view'],
+    permissions: ['sites.view', 'users.view', 'audit.view', 'checklists.view', 'assignments.view', 'shifts.view', 'tasks.view'],
     editable: true,
   },
 };
