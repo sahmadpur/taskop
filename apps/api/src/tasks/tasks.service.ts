@@ -105,10 +105,12 @@ export class TasksService {
     const edited = Object.keys(set).length > 0;
     let reassigned = false;
     if (dto.assignee) {
-      const next = await this.assignees.resolve(p, dto.assignee);
-      // Spec Decision 21: the same person (no team) or the same team (nobody accepted) is not a change.
-      const same = next.userId ? t.assigneeUserId === next.userId && t.assigneeTeamId === null : t.assigneeTeamId === next.teamId && t.assigneeUserId === null;
+      const a = dto.assignee;
+      // Spec Decision 21: the same person (no team) or the same team (nobody accepted) is not a change. Checked on the
+      // request, before resolve, so re-sending a deactivated assignee alongside other edits still works.
+      const same = 'userId' in a ? t.assigneeUserId === a.userId && t.assigneeTeamId === null : t.assigneeTeamId === a.teamId && t.assigneeUserId === null;
       if (!same) {
+        const next = await this.assignees.resolve(p, a);
         reassigned = true;
         set.assigneeUserId = next.userId;
         set.assigneeTeamId = next.teamId;

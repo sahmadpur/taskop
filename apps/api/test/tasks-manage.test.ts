@@ -178,4 +178,16 @@ describe('managing tasks', () => {
     const res = await w2.api.post(`/api/v1/tasks/${task.id}/media`, taskMediaBody('response', videoExtra));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
+
+  it('accepts the unchanged assignee alongside other edits even after they were deactivated', async () => {
+    const w = await taskWorld(t);
+    const task = await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }));
+    expect((await w.owner.post(`/api/v1/users/${w.workers[0].id}/deactivate`)).status).toBe(200);
+    const res = await w.manager.api.patch(`/api/v1/tasks/${task.id}`, { title: 'Yeni ad', assignee: { userId: w.workers[0].id } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ title: 'Yeni ad', status: 'new', assignee: { id: w.workers[0].id }, assigneeInactive: true });
+    expect(await auditActions(task.id)).toEqual(['task.created', 'task.updated']);
+    const other = await w.manager.api.patch(`/api/v1/tasks/${task.id}`, { assignee: { userId: w.workers[1].id } });
+    expect(other.status, JSON.stringify(other.body)).toBe(200);
+  });
 });
