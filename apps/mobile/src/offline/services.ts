@@ -6,6 +6,7 @@ import { createExecutionStore, type ExecutionStore, type WriteKind } from './exe
 import { createMediaQueue, type MediaQueue, type MediaTransport } from './media-queue';
 import type { SyncApi } from './sync-api';
 import { type ClaimRejection, createSyncEngine, type SyncEngine, type SyncTrigger } from './sync-engine';
+import type { TaskRemoved } from './task-records';
 import { createTaskStore, type TaskStore } from './task-store';
 import { type AppStatePort, type NetworkPort, startSyncTriggers, type SyncTriggers } from './sync-triggers';
 import { clearLocalData, ensureUser, type FileRemover } from './user-scope';
@@ -24,6 +25,7 @@ export interface ServiceDeps {
   /** Absent in tests: runs then happen only when a test asks. */
   triggers?: { network: NetworkPort; appState: AppStatePort };
   onClaimRejected: (r: ClaimRejection) => void;
+  onTaskRemoved: (r: TaskRemoved) => void;
 }
 
 export interface OfflineServices {
@@ -68,6 +70,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     files: transport,
     isOnline: deps.isOnline,
     onClaimRejected: deps.onClaimRejected,
+    onTaskRemoved: deps.onTaskRemoved,
     beforeRun: () => store.lockExpired(),
   });
   await store.lockExpired();

@@ -1,6 +1,6 @@
 import { type SyncTask, TASK_LIMITS, type TaskMediaRegisterInput, type TaskMediaRole } from '@taskop/contracts';
 import type { Db } from './db';
-import { iso, type LocalMedia } from './local-model';
+import { type DraftRow, iso, type LocalMedia } from './local-model';
 
 /** Commands that move a task's status. Until the server has answered them, the phone's status wins over a pull (spec §7.1). */
 export const STATUS_KINDS_SQL = `('task.accept', 'task.start', 'task.submit')`;
@@ -96,4 +96,36 @@ export function taskMediaBody(
     id: m.id, role, kind: m.kind, source: m.source, mime: m.mime, bytes: m.bytes,
     width: m.width, height: m.height, durationMs: m.durationMs, capturedAt: m.capturedAt,
   };
+}
+
+/** What the engine reports when a task left the phone because the server refused its work for good (spec §7.1). */
+export interface TaskRemoved {
+  taskId: string;
+  title: string | null;
+}
+
+/**
+ * A task medium the server refused for good, or the worker discarded after it failed: it leaves the draft and any queued
+ * submission (so the submission does not fail on an unknown medium), and with `errorKey` the task notes why. The caller
+ * has already deleted the medium's row and its registration.
+ */
+export async function dropTaskMedium(tx: Db, taskId: string, mediaId: string, now: number, errorKey: string | null): Promise<void> {
+  const draft = await tx.first<DraftRow>('SELECT * FROM task_drafts WHERE task_id = ?', [taskId]);
+  if (draft) {
+    const mediaIds = (JSON.parse(draft.media_ids) as string[]).filter((x) => x !== mediaId);
+    await tx.run('UPDATE task_drafts SET media_ids = ?, updated_at = ? WHERE task_id = ?', [JSON.stringify(mediaIds), iso(now), taskId]);
+  }
+  const queued = await tx.all<{ seq: number; payload: string }>(
+    `SELECT seq, payload FROM outbox WHERE entity_type = 'task' AND entity_id = ? AND kind = 'task.submit'`,
+    [taskId],
+  );
+  for (const q of queued) {
+    const payload = JSON.parse(q.payload) as { mediaIds?: string[] };
+    await tx.run('UPDATE outbox SET payload = ? WHERE seq = ?', [JSON.stringify({ ...payload, mediaIds: (payload.mediaIds ?? []).filter((x) => x !== mediaId) }), q.seq]);
+  }
+  if (errorKey) {
+    await tx.run(`INSERT OR REPLACE INTO media_refusals (media_id, owner_type, owner_id, item_id, error_key, created_at) VALUES (?, 'task', ?, NULL, ?, ?)`, [
+      mediaId, taskId, errorKey, iso(now),
+    ]);
+  }
 }

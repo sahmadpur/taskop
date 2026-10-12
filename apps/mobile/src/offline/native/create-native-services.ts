@@ -5,6 +5,7 @@ import { uuidv7 } from '../ids';
 import { createOfflineServices, type OfflineServices } from '../services';
 import { createSessionQueue, type Session } from '../session-queue';
 import type { ClaimRejection } from '../sync-engine';
+import type { TaskRemoved } from '../task-records';
 import { deviceInfo } from './device';
 import { nativeMediaFiles } from './media-files';
 import { openEncryptedDatabase } from './open-database';
@@ -17,7 +18,7 @@ import { expoNetwork, rnAppState } from './ports';
  */
 const sessions = createSessionQueue();
 
-export function openNativeServices(userId: string, timeZone: string, hooks: { onClaimRejected: (r: ClaimRejection) => void }): Session<OfflineServices> {
+export function openNativeServices(userId: string, timeZone: string, hooks: { onClaimRejected: (r: ClaimRejection) => void; onTaskRemoved: (r: TaskRemoved) => void }): Session<OfflineServices> {
   return sessions.open(async () => {
     const db = await openEncryptedDatabase();
     const network = expoNetwork();
@@ -34,6 +35,7 @@ export function openNativeServices(userId: string, timeZone: string, hooks: { on
           isOnline: () => network.isOnline(),
           triggers: { network, appState: rnAppState() },
           onClaimRejected: hooks.onClaimRejected,
+          onTaskRemoved: hooks.onTaskRemoved,
         },
         userId,
         timeZone,

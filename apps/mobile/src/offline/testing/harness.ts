@@ -4,6 +4,7 @@ import type { Db } from '../db';
 import { createExecutionStore, type ExecutionStore, type WriteKind } from '../execution-store';
 import { createMediaQueue, type MediaQueue } from '../media-queue';
 import { type ClaimRejection, createSyncEngine, type SyncEngine } from '../sync-engine';
+import type { TaskRemoved } from '../task-records';
 import { createTaskStore, type TaskStore } from '../task-store';
 import { applyPull } from '../sync-pull';
 import { ensureUser } from '../user-scope';
@@ -25,6 +26,7 @@ export interface Harness {
   /** The engine's isOnline() reads this. */
   net: { online: boolean };
   rejections: ClaimRejection[];
+  removedTasks: TaskRemoved[];
   /** Every onWrite call, in order. */
   writes: WriteKind[];
   c: Checklist;
@@ -45,10 +47,12 @@ export async function createHarness(o: { at?: string; db?: Db } = {}): Promise<H
   const net = { online: true };
   const mediaQueue = createMediaQueue({ db, userId: ME, api: api.api, clock, transport, feed, isOnline: () => net.online });
   const rejections: ClaimRejection[] = [];
+  const removedTasks: TaskRemoved[] = [];
   const engine = createSyncEngine({
     db, userId: ME, api: api.api, clock, feed, mediaQueue, files: transport,
     isOnline: () => net.online,
     onClaimRejected: (r) => rejections.push(r),
+    onTaskRemoved: (r) => removedTasks.push(r),
     beforeRun: () => store.lockExpired(),
   });
   const c = checklist();
@@ -57,5 +61,5 @@ export async function createHarness(o: { at?: string; db?: Db } = {}): Promise<H
     feed.emit();
   };
   await seed();
-  return { db, clock, feed, transport, store, tasks, api, mediaQueue, engine, net, rejections, writes, c, seed };
+  return { db, clock, feed, transport, store, tasks, api, mediaQueue, engine, net, rejections, removedTasks, writes, c, seed };
 }

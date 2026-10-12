@@ -2,8 +2,8 @@ import type { Answers } from '@taskop/contracts';
 import type { Db } from './db';
 import { withoutMedia } from './execution-store';
 import { type ExecutionRow, iso, toExecution } from './local-model';
-import { appendCommand, type OutboxCommand } from './outbox';
-import { revertTask } from './task-records';
+import { ackCommand, appendCommand, failCommand, type OutboxCommand } from './outbox';
+import { dropTaskMedium, forgetTask, revertTask, type TaskRemoved } from './task-records';
 
 /**
  * What happens to work the server refused for good. Such a command could only stay red forever and keep the
@@ -45,7 +45,7 @@ export async function requeueRevision(tx: Db, executionId: string, rev: number, 
  * finished one only forgets the medium locally (the server keeps its copy, nothing could change it).
  */
 export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey: string | null): Promise<string | null> {
-  await tx.run(`DELETE FROM outbox WHERE kind = 'media' AND ref_id = ?`, [mediaId]);
+  await tx.run(`DELETE FROM outbox WHERE kind IN ('media', 'task.media') AND ref_id = ?`, [mediaId]);
   // The worker may have removed the medium meanwhile: removeMedia already dropped it from the answers.
   const medium = await tx.first<{ local_uri: string; owner_type: string; owner_id: string; item_id: string | null; file_deleted_at: string | null }>(
     'SELECT local_uri, owner_type, owner_id, item_id, file_deleted_at FROM media WHERE id = ?',
@@ -54,6 +54,10 @@ export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey:
   if (!medium) return null;
   await tx.run('DELETE FROM media WHERE id = ?', [mediaId]);
   const file = medium.file_deleted_at === null ? medium.local_uri : null;
+  if (medium.owner_type === 'task') {
+    await dropTaskMedium(tx, medium.owner_id, mediaId, now, errorKey);
+    return file;
+  }
   if (medium.owner_type !== 'execution') return file;
   const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [medium.owner_id]);
   if (!row) return file;
@@ -184,4 +188,55 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
       await revertTask(tx, row.entity_id, note, now);
       return [];
   }
+}
+
+/** SP4's permanent-refusal path for an execution command: resolved when no retry can fix it, otherwise parked as failed. Returns files to delete. */
+export async function resolveExecutionRefusal(tx: Db, cmd: OutboxCommand, code: string, messageKey: string, now: number): Promise<string[]> {
+  if (cmd.kind === 'media') {
+    await ackCommand(tx, cmd.seq);
+    const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, messageKey) : null;
+    return uri ? [uri] : [];
+  }
+  if (cmd.kind === 'complete' && code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, now))) return [];
+  const resolved = await resolveTerminalRefusal(tx, cmd, code, messageKey, now);
+  if (resolved) return resolved;
+  await failCommand(tx, cmd.seq, code, messageKey);
+  return [];
+}
+
+/** Refusals of a status command that the task shows instead of a red row (decision 7). */
+const SHOWN_ON_TASK: ReadonlySet<string> = new Set(['EVIDENCE_REQUIRED', 'EVIDENCE_LIVE_ONLY', 'VALIDATION_FAILED', 'MEDIA_LIMIT_REACHED']);
+
+/**
+ * Spec §7.1 and Part 1 "Refusals": a task a teammate took, or one the worker can no longer read (404, 403, reassigned
+ * away), goes with everything the phone holds for it; a refused medium is dropped from the draft and the queued
+ * submission; a state change or an evidence refusal reverts the task to the server's copy, keeping the draft, with the
+ * note. Anything else is parked as failed. Returns the files to delete and the removed task to tell the worker about
+ * (none when the phone held no such task, e.g. a manager's instruction photo).
+ */
+export async function resolveTaskRefusal(
+  tx: Db,
+  cmd: OutboxCommand,
+  code: string,
+  messageKey: string,
+  now: number,
+): Promise<{ files: string[]; removed: TaskRemoved | null }> {
+  if (code === 'TASK_ALREADY_TAKEN' || code === 'NOT_FOUND' || code === 'FORBIDDEN') {
+    const gone = await forgetTask(tx, cmd.entityId);
+    return { files: gone.files, removed: gone.title === null ? null : { taskId: cmd.entityId, title: gone.title } };
+  }
+  if (code === 'TASK_STATE_INVALID') {
+    // The photos stay (the read-only draft still shows them) but their registrations can never succeed.
+    await tx.run(`DELETE FROM outbox WHERE entity_type = 'task' AND entity_id = ? AND kind = 'task.media'`, [cmd.entityId]);
+    await revertTask(tx, cmd.entityId, messageKey, now);
+    return { files: [], removed: null };
+  }
+  if (cmd.kind === 'task.media') {
+    await ackCommand(tx, cmd.seq);
+    const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, messageKey) : null;
+    return { files: uri ? [uri] : [], removed: null };
+  }
+  if (SHOWN_ON_TASK.has(code)) await revertTask(tx, cmd.entityId, messageKey, now);
+  else await failCommand(tx, cmd.seq, code, messageKey);
+  return { files: [], removed: null };
 }

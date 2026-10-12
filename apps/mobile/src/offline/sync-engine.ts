@@ -19,11 +19,11 @@ import { clampOffset, type Clock, measureOffset, readOffset, serverTime } from '
 import { type Db, getMeta } from './db';
 import { type ExecutionRow, iso, normIso, toExecution } from './local-model';
 import type { MediaQueue } from './media-queue';
-import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
-import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
+import { ackCommand, appendCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
+import { discardFailedCommand, requeueRevision, resolveExecutionRefusal, resolveTaskRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import { knownVersionIds, mergePull } from './sync-pull';
-import { knownTaskIds, mergeTask } from './task-records';
+import { knownTaskIds, mergeTask, type TaskRemoved } from './task-records';
 import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
@@ -78,6 +78,8 @@ export interface SyncEngineDeps {
   files: FileRemover;
   isOnline: () => boolean;
   onClaimRejected: (r: ClaimRejection) => void;
+  /** A task left the phone because a teammate took it or it was reassigned away ("Bu tapşırığı artıq başqası qəbul edib"). */
+  onTaskRemoved: (r: TaskRemoved) => void;
   /** Runs at the start of every run, online or not: the local closes_at lock. */
   beforeRun?: () => Promise<unknown>;
 }
@@ -154,7 +156,7 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
-  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, beforeRun } = deps;
+  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, onTaskRemoved, beforeRun } = deps;
   let status: SyncStatus = { pending: 0, failed: 0, running: false, online: isOnline(), lastSyncedAt: null, clockOffsetMs: 0, blockedByAuth: false };
   const listeners = new Set<() => void>();
   let running: Promise<void> | null = null;
@@ -304,21 +306,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         const f = classifyError(e);
         if (f.kind === 'permanent') {
           const now = clock.now();
-          const uris = await ownedTransaction(db, userId, async (tx): Promise<string[]> => {
-            if (cmd.kind === 'media') {
-              await ackCommand(tx, cmd.seq);
-              const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, f.messageKey) : null;
-              return uri ? [uri] : [];
-            }
-            if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, now))) return [];
-            const resolved = await resolveTerminalRefusal(tx, cmd, f.code, f.messageKey, now);
-            if (resolved) return resolved;
-            await failCommand(tx, cmd.seq, f.code, f.messageKey);
-            return [];
-          });
-          if (uris === NOT_OWNER) return 'ok';
-          uris.forEach(removeFile);
+          const outcome = await ownedTransaction(db, userId, async (tx): Promise<{ files: string[]; removed: TaskRemoved | null }> =>
+            cmd.entityType === 'task'
+              ? resolveTaskRefusal(tx, cmd, f.code, f.messageKey, now)
+              : { files: await resolveExecutionRefusal(tx, cmd, f.code, f.messageKey, now), removed: null },
+          );
+          if (outcome === NOT_OWNER) return 'ok';
+          outcome.files.forEach(removeFile);
           feed.emit();
+          if (outcome.removed) onTaskRemoved(outcome.removed);
           continue;
         }
         if (f.kind === 'retry') await ownedTransaction(db, userId, (tx) => noteAttempt(tx, cmd.seq));

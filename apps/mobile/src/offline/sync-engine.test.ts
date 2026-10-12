@@ -355,6 +355,7 @@ describe('failures', () => {
         db: h.db, userId: ME, api: h.api.api, clock: h.clock, feed: h.feed, mediaQueue: h.mediaQueue, files: h.transport,
         isOnline: () => true,
         onClaimRejected: () => undefined,
+        onTaskRemoved: () => undefined,
         beforeRun: async () => {
           if (++calls <= 2) throw new Error('database is locked');
         },
