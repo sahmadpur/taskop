@@ -183,3 +183,36 @@ describe('task translations', () => {
     expect(az.audit.entityTypes.task).toBe('Tapşırıq');
   });
 });
+
+describe('mobile task translations', () => {
+  it('labels the tasks tab, its sections, the task commands and every task screen', () => {
+    expect(az.mobile.tabs.tasks).toBe('Tapşırıqlar');
+    for (const k of ['accept', 'start', 'media', 'submit'] as const) expect(az.mobile.sync.kinds.task[k], k).toBeTypeOf('string');
+    for (const k of ['open', 'overdue', 'title'] as const) expect(az.mobile.tasks.home[k], k).toBeTypeOf('string');
+    for (const k of [
+      'instructions', 'noInstructions', 'problem', 'accept', 'start', 'response', 'responsePlaceholder', 'complete', 'submitted',
+      'readOnly', 'rejected', 'cancelled', 'mediaOffline', 'mediaFailed', 'notFound',
+    ] as const) {
+      expect(az.mobile.tasks.detail[k], k).toBeTypeOf('string');
+    }
+    for (const k of [
+      'open', 'title', 'name', 'instructions', 'priority', 'assignee', 'search', 'teams', 'people', 'teamOption', 'site', 'noSite',
+      'due', 'review', 'evidence', 'photos', 'save', 'created', 'titleRequired', 'assigneeRequired',
+    ] as const) {
+      expect(az.mobile.tasks.create[k], k).toBeTypeOf('string');
+    }
+    for (const k of ['title', 'approve', 'reject', 'comment', 'approved', 'rejected', 'submission', 'empty', 'notReviewable'] as const) {
+      expect(az.mobile.tasks.review[k], k).toBeTypeOf('string');
+    }
+  });
+
+  it('uses the spec wording', () => {
+    expect(az.mobile.tasks.sections).toEqual({ team: 'Komanda üçün', mine: 'Mənim', inReview: 'Yoxlamada', done: 'Tamamlanıb', review: 'Yoxlama' });
+    expect(az.mobile.tasks.detail.accept).toBe('Qəbul et');
+    expect(az.mobile.tasks.detail.start).toBe('Başla');
+    expect(az.mobile.tasks.detail.complete).toBe('Tamamla');
+    expect(az.mobile.tasks.online).toBe('İnternet bağlantısı tələb olunur');
+    expect(az.mobile.tasks.home.open.replace('{{count}}', '2')).toBe('Açıq: 2');
+    expect(az.mobile.tasks.create.teamOption.replace('{{name}}', 'Texniki xidmət').replace('{{count}}', '3')).toBe('Texniki xidmət (3 nəfər)');
+  });
+});
