@@ -14,7 +14,7 @@ import type { SyncApi } from '../sync-api';
 import { ME, syncResponse, VERSION } from './fixtures';
 
 export interface ApiHandlers {
-  pull(knownVersionIds: string[]): Promise<SyncResponse>;
+  pull(knownVersionIds: string[], knownTaskIds: string[]): Promise<SyncResponse>;
   claim(body: ClaimCommand): Promise<ClaimResult>;
   saveAnswers(id: string, body: SaveAnswersCommand): Promise<SaveAnswersResult>;
   complete(id: string, body: CompleteCommand): Promise<CompleteResult>;
@@ -72,9 +72,9 @@ export function createFakeApi(): FakeApi {
     },
     api: {
       sync: {
-        pull: async (known = []) => {
-          calls.push({ method: 'pull', id: null, body: known });
-          return (handlers.pull ?? fake.defaults.pull)(known);
+        pull: async (known = [], taskIds = []) => {
+          calls.push({ method: 'pull', id: null, body: { knownVersionIds: known, knownTaskIds: taskIds } });
+          return (handlers.pull ?? fake.defaults.pull)(known, taskIds);
         },
       },
       executions: {

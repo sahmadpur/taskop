@@ -1,6 +1,7 @@
 import type { MyExecution, SyncResponse } from '@taskop/contracts';
 import { type Db, setMeta } from './db';
 import { type ExecutionRow, iso, normIso } from './local-model';
+import { mergeTask, removeTasks } from './task-records';
 
 const PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -27,13 +28,16 @@ async function pruneOld(tx: Db, returnedIds: string[], now: number): Promise<voi
   await tx.run(`DELETE FROM occurrences WHERE id IN (${prunable})`, params);
 }
 
-/** Spec §6.1, applied in one transaction. Occurrences missing from the response were cancelled or reassigned (Part 1 #14). */
-export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
-  await db.transaction((tx) => mergePull(tx, res, offsetMs, now));
+/**
+ * Spec §6.1, applied in one transaction. Occurrences missing from the response were cancelled or reassigned (Part 1 #14).
+ * Returns the local files of removed tasks, to delete once it commits.
+ */
+export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now: number): Promise<string[]> {
+  return db.transaction((tx) => mergePull(tx, res, offsetMs, now));
 }
 
 /** `applyPull` inside the caller's transaction. */
-export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
+export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<string[]> {
   await setMeta(tx, 'clockOffsetMs', String(offsetMs));
   await setMeta(tx, 'lastSyncedAt', iso(now));
   for (const v of res.checklistVersions) {
@@ -68,7 +72,9 @@ export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now
     [JSON.stringify(res.occurrences.map((o) => o.id))],
   );
   for (const x of res.executions) await mergeExecution(tx, x, now);
- }
+  for (const task of res.tasks) await mergeTask(tx, task, now);
+  return removeTasks(tx, res.removedTaskIds);
+}
 
 async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void> {
   const claim = x.state === 'rejected' ? 'rejected' : 'accepted';

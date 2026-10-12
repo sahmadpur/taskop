@@ -4,7 +4,7 @@ import { ExecutionLockedError } from './execution-store';
 import { listCommands, outboxCounts } from './outbox';
 import { backoffDelay, createSyncEngine, indicatorOf, type SyncStatus } from './sync-engine';
 import { capturedPhoto } from './testing/fake-transport';
-import { ME, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, T, VERSION, versionOf } from './testing/fixtures';
+import { ME, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, syncTask, T, TASK, TASK2, VERSION, versionOf } from './testing/fixtures';
 import { createHarness, type Harness } from './testing/harness';
 
 const methods = (h: Harness) => h.api.calls.map((c) => c.method);
@@ -649,7 +649,7 @@ describe('claims and the pull', () => {
       executions: [myExecution({ occurrenceId: OCC2, answersRev: 1, answers: { [h.c.temp.id]: { number: 5 } } })],
     });
     await h.engine.run('start');
-    expect(h.api.calls[0]).toEqual({ method: 'pull', id: null, body: [VERSION] });
+    expect(h.api.calls[0]).toEqual({ method: 'pull', id: null, body: { knownVersionIds: [VERSION], knownTaskIds: [] } });
     const views = await h.store.occurrences();
     expect(views.find((o) => o.id === OCC)!.claim).toEqual(claim);
     expect(views.find((o) => o.id === OCC2)!.execution).toMatchObject({ claim: 'accepted', rev: 1, answers: { [h.c.temp.id]: { number: 5 } } });
@@ -664,5 +664,17 @@ describe('indicatorOf', () => {
     expect(indicatorOf(s({ pending: 2, online: false }))).toBe('pending');
     expect(indicatorOf(s({ online: false }))).toBe('offline');
     expect(indicatorOf(s({}))).toBe('synced');
+  });
+});
+
+describe('pulling tasks', () => {
+  it('sends the ids of the tasks the phone holds, applies the new copies and deletes the removed ones', async () => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ checklistVersions: [versionOf(h.c.content)], tasks: [syncTask(), syncTask({ id: TASK2 })] }));
+    h.api.sync = syncResponse({ tasks: [syncTask({ rev: 2, status: 'cancelled' })], removedTaskIds: [TASK2] });
+    await h.engine.run('manual');
+    const pull = h.api.calls.find((c) => c.method === 'pull')!;
+    expect((pull.body as { knownTaskIds: string[] }).knownTaskIds.sort()).toEqual([TASK, TASK2].sort());
+    expect(await h.db.all('SELECT id, local_status FROM tasks')).toEqual([{ id: TASK, local_status: 'cancelled' }]);
   });
 });

@@ -1,4 +1,4 @@
-import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus, TaskMediaRole } from '@taskop/contracts';
+import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus, SyncTask, TaskMediaRole, TaskStatus } from '@taskop/contracts';
 import type { EntityType } from './outbox';
 
 export const iso = (ms: number): string => new Date(ms).toISOString();
@@ -186,4 +186,68 @@ export const toMedia = (r: MediaRow): LocalMedia => ({
   failedCode: r.failed_code,
   attempts: r.attempts,
   fileDeletedAt: r.file_deleted_at,
+});
+
+export interface TaskRow {
+  id: string;
+  data: string;
+  local_status: string;
+  rev: number;
+  sync_note: string | null;
+  received_at: string;
+  updated_at: string;
+}
+
+export interface LocalTask {
+  id: string;
+  /** The server's copy as last received (/me/sync or a command's answer). */
+  server: SyncTask;
+  /** What the phone shows: the server's status, or the outcome of accept/start/submit commands not yet answered. */
+  status: TaskStatus;
+  /** The `rev` of `server`. */
+  rev: number;
+  /** The i18n key of why the server refused this task's work for good ("Server qəbul etmədi: …"); null when none. */
+  syncNote: string | null;
+  receivedAt: string;
+  updatedAt: string;
+}
+
+export const toTask = (r: TaskRow): LocalTask => ({
+  id: r.id,
+  server: JSON.parse(r.data) as SyncTask,
+  status: r.local_status as TaskStatus,
+  rev: r.rev,
+  syncNote: r.sync_note,
+  receivedAt: r.received_at,
+  updatedAt: r.updated_at,
+});
+
+export interface DraftRow {
+  task_id: string;
+  submission_id: string;
+  text: string;
+  media_ids: string;
+  submitted_at: string | null;
+  updated_at: string;
+}
+
+/** The response being written for a task (spec §7.1), autosaved. */
+export interface TaskDraft {
+  taskId: string;
+  /** The client UUIDv7 the submission is sent with (idempotent on the server). */
+  submissionId: string;
+  text: string;
+  mediaIds: string[];
+  /** Set by Tamamla: the draft is then read-only until the server answers. */
+  submittedAt: string | null;
+  updatedAt: string;
+}
+
+export const toDraft = (r: DraftRow): TaskDraft => ({
+  taskId: r.task_id,
+  submissionId: r.submission_id,
+  text: r.text,
+  mediaIds: JSON.parse(r.media_ids) as string[],
+  submittedAt: r.submitted_at,
+  updatedAt: r.updated_at,
 });

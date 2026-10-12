@@ -19,6 +19,7 @@ import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type 
 import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import { knownVersionIds, mergePull } from './sync-pull';
+import { knownTaskIds } from './task-records';
 import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
@@ -312,16 +313,19 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
 
   async function pull(): Promise<Outcome> {
     const known = await knownVersionIds(db);
+    const taskIds = await knownTaskIds(db);
     const sentAt = clock.now();
     let res: SyncResponse;
     try {
-      res = await api.sync.pull(known);
+      res = await api.sync.pull(known, taskIds);
     } catch (e) {
       return classifyError(e).kind === 'auth' ? 'auth' : 'retry';
     }
     const receivedAt = clock.now();
     const offsetMs = clampOffset(measureOffset(res.serverTime, sentAt, receivedAt));
-    if ((await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt))) === NOT_OWNER) return 'ok';
+    const files = await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt));
+    if (files === NOT_OWNER) return 'ok';
+    files.forEach(removeFile);
     feed.emit();
     return 'ok';
   }
