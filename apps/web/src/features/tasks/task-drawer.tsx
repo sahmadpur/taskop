@@ -226,7 +226,7 @@ function Actions({ task, onEdit, onError }: { task: TaskDetail; onEdit: () => vo
       )}
       {change && (
         <div className="grid gap-2">
-          <Button variant="outline" className="w-fit" onClick={onEdit}>
+          <Button variant="outline" className="w-fit" disabled={busy} onClick={onEdit}>
             {t('common.edit')}
           </Button>
           <Label htmlFor="task-cancel-reason">{t('tasks.drawer.cancelLabel')}</Label>

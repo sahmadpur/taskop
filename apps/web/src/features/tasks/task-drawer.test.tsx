@@ -66,6 +66,21 @@ beforeEach(() => {
 });
 
 describe('TaskDrawer', () => {
+  it('cannot open the edit dialog while a command is on its way', async () => {
+    mocks.api.tasks.get.mockResolvedValue(taskDetail({ status: 'in_progress' }));
+    let finish: (t: TaskDetail) => void = () => {};
+    mocks.api.tasks.cancel.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    renderWithRouter(<TaskDrawer id="t1" onClose={vi.fn()} />);
+    const edit = await screen.findByRole('button', { name: 'Redaktə et' });
+    expect(edit).toBeEnabled();
+    await userEvent.type(screen.getByLabelText('Ləğv səbəbi'), 'Lazım deyil');
+    await userEvent.click(screen.getByRole('button', { name: 'Tapşırığı ləğv et' }));
+    await waitFor(() => expect(mocks.api.tasks.cancel).toHaveBeenCalled());
+    expect(edit).toBeDisabled();
+    finish(taskDetail({ status: 'cancelled' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Redaktə et' })).not.toBeInTheDocument());
+  });
+
   it('asks again when it opens, also when the cached task is still fresh (the phone moves tasks on its own)', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
     client.setQueryData(taskKeys.detail('t1'), taskDetail({ status: 'new' }));
