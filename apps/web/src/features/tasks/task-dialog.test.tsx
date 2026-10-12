@@ -43,11 +43,18 @@ function renderDialog(props: Partial<ComponentProps<typeof TaskDialog>> = {}) {
 
 async function pickAssignee(name: string) {
   await userEvent.click(screen.getByRole('combobox', { name: 'İcraçı' }));
-  await userEvent.click(await screen.findByRole('option', { name }));
+  // The picker debounces its search by 250 ms; under a parallel test run the list can take a while to arrive.
+  await userEvent.click(await screen.findByRole('option', { name }, { timeout: 3000 }));
+}
+
+/** Long text goes in as one paste: typing it key by key is what made these tests slow under load. */
+async function paste(label: string, text: string) {
+  await userEvent.click(screen.getByLabelText(label));
+  await userEvent.paste(text);
 }
 
 async function fillMinimum() {
-  await userEvent.type(screen.getByLabelText('Başlıq'), 'Qapı');
+  await paste('Başlıq', 'Qapı');
   await pickAssignee('Nigar Səfərli');
 }
 
@@ -58,11 +65,11 @@ describe('TaskDialog', () => {
     mocks.tz.current = 'Europe/Berlin';
     const { onClose, onSaved } = renderDialog();
     expect(screen.getByRole('dialog', { name: 'Yeni tapşırıq' })).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Başlıq'), '  Soyuducunun qapısını təmir edin ');
-    await userEvent.type(screen.getByLabelText('Təlimat'), 'Rezini dəyişin');
+    await paste('Başlıq', '  Soyuducunun qapısını təmir edin ');
+    await paste('Təlimat', 'Rezini dəyişin');
     await userEvent.selectOptions(screen.getByLabelText('Prioritet'), 'high');
     await pickAssignee('Nigar Səfərli');
-    await within(screen.getByLabelText('Obyekt')).findByRole('option', { name: 'Anbar №1' });
+    await within(screen.getByLabelText('Obyekt')).findByRole('option', { name: 'Anbar №1' }, { timeout: 3000 });
     await userEvent.selectOptions(screen.getByLabelText('Obyekt'), 'site1');
     fireEvent.change(screen.getByLabelText('Son tarix'), { target: { value: '2026-11-02' } });
     fireEvent.change(screen.getByLabelText('Saat'), { target: { value: '09:00' } });
@@ -86,7 +93,7 @@ describe('TaskDialog', () => {
       problemId: null,
     });
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: mocks.api.tasks.create.mock.calls[0]![0].id }));
-  });
+  }, 20_000);
 
   it('checks the title, the assignee and a time without a date before sending', async () => {
     renderDialog();
@@ -102,7 +109,7 @@ describe('TaskDialog', () => {
       new ApiError(422, 'TASK_ASSIGNEE_INVALID', 'errors.TASK_ASSIGNEE_INVALID', { assignee: 'errors.TASK_ASSIGNEE_INVALID' }),
     );
     renderDialog();
-    await userEvent.type(screen.getByLabelText('Başlıq'), 'Qapı');
+    await paste('Başlıq', 'Qapı');
     await pickAssignee('Texniki xidmət');
     await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
     await waitFor(() =>
@@ -188,7 +195,7 @@ describe('TaskDialog', () => {
   it("offers the sites from GET /tasks/assignees, and keeps an edited task's current site selectable", async () => {
     renderDialog({ task: taskDetail({ site: { id: 'old', name: 'Köhnə anbar' } }) });
     const select = screen.getByLabelText('Obyekt');
-    await within(select).findByRole('option', { name: 'Anbar №1' });
+    await within(select).findByRole('option', { name: 'Anbar №1' }, { timeout: 3000 });
     expect(within(select).getByRole('option', { name: 'Köhnə anbar' })).toBeInTheDocument();
     expect(select).toHaveValue('old');
     expect(mocks.api.tasks.assignees).toHaveBeenCalledWith({});
@@ -202,7 +209,7 @@ describe('TaskDialog', () => {
     expect(screen.getByLabelText('Son tarix')).toHaveValue('2026-11-03');
     expect(screen.getByLabelText('Saat')).toHaveValue('18:00');
     await userEvent.clear(screen.getByLabelText('Başlıq'));
-    await userEvent.type(screen.getByLabelText('Başlıq'), 'Qapını təmir edin');
+    await paste('Başlıq', 'Qapını təmir edin');
     await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
     await waitFor(() => expect(first.onClose).toHaveBeenCalled());
     expect(mocks.api.tasks.update).toHaveBeenCalledWith('t1', { title: 'Qapını təmir edin' });
