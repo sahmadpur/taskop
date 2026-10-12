@@ -24,7 +24,7 @@ import { CaptureModal, pickFromGallery } from '@/features/execution/capture';
 import { toAnswerDatetime } from '@/features/execution/datetime-format';
 import { CaptureError } from '@/features/execution/media-capture';
 import { Chip, Choice } from '@/features/execution/parts';
-import { api } from '@/lib/session';
+import { api, useSession } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import type { CapturedMedia } from '@/offline/execution-store';
@@ -40,6 +40,8 @@ export function CreateTaskScreen() {
   const { t } = useTranslation();
   const services = useOffline();
   const { online } = useSyncStatus();
+  const session = useSession();
+  const canManage = session.status === 'authenticated' && session.me.permissions.includes('tasks.manage');
   // One client id per screen: a retry after a lost connection repeats the same idempotent POST (decision 10).
   const [id] = useState(() => services.newId());
   const [title, setTitle] = useState('');
@@ -57,12 +59,15 @@ export function CreateTaskScreen() {
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  // Closes the same-tick double press and the window between a successful create and the screen closing.
+  const inFlight = useRef(false);
   const created = useRef(false);
   const photosRef = useRef(photos);
   photosRef.current = photos;
 
   useEffect(() => {
-    if (!online) return;
+    if (!online || !canManage) return;
     let alive = true;
     const timer = setTimeout(() => {
       const term = q.trim();
@@ -79,7 +84,7 @@ export function CreateTaskScreen() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [online, q, t]);
+  }, [online, canManage, q, t]);
 
   const removeFile = (uri: string) => {
     try {
@@ -96,6 +101,15 @@ export function CreateTaskScreen() {
     // Runs once on unmount; `removeFile` only reads `services`.
     [services],
   );
+
+  if (!canManage) {
+    return (
+      <Screen>
+        <ScreenHeader title={t('mobile.tasks.create.title')} />
+        <Text style={styles.muted}>{t('errors.FORBIDDEN')}</Text>
+      </Screen>
+    );
+  }
 
   if (!online) {
     return (
@@ -125,6 +139,7 @@ export function CreateTaskScreen() {
   };
 
   const save = async () => {
+    if (inFlight.current) return;
     setError(null);
     const dueAt = due.trim() ? toAnswerDatetime('datetime', due) : null;
     const invalid: Record<string, string> = {};
@@ -133,14 +148,17 @@ export function CreateTaskScreen() {
     if (due.trim() && !dueAt) invalid.dueAt = 'mobile.execution.invalidDate';
     setFields(invalid);
     if (!assignee || Object.keys(invalid).length > 0) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       await api.tasks.create({ id, title: title.trim(), instructions: instructions.trim(), priority, siteId, dueAt, evidence, requiresReview, assignee: assignee.value });
       created.current = true;
       if (photos.length > 0) await services.tasks.queueInstructionMedia(id, photos);
       Alert.alert(t('mobile.tasks.create.created'));
+      setDone(true);
       router.back();
     } catch (e) {
+      inFlight.current = false;
       if (e instanceof ApiError && e.fields) setFields(e.fields);
       else setError(mobileErrorText(t, e));
     } finally {
@@ -255,7 +273,7 @@ export function CreateTaskScreen() {
       </View>
 
       <FormError message={error} />
-      <PrimaryButton title={t('mobile.tasks.create.save')} onPress={() => void save()} disabled={busy} />
+      <PrimaryButton title={t('mobile.tasks.create.save')} onPress={() => void save()} disabled={busy || done} />
       {camera ? (
         <CaptureModal
           kind="photo"

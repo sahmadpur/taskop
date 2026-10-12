@@ -10,11 +10,12 @@ import { CreateTaskScreen } from './create-task-screen';
 const mockBack = jest.fn();
 const mockCreate = jest.fn();
 const mockAssignees = jest.fn();
+let mockPermissions: string[] = ['tasks.manage'];
 jest.mock('expo-router', () => ({ router: { back: (...a: unknown[]) => mockBack(...a), push: jest.fn() } }));
 jest.mock('@/features/execution/capture', () => ({ CaptureModal: () => null, VideoPreview: () => null, pickFromGallery: jest.fn() }));
 jest.mock('@/lib/session', () => ({
   // tasks.manage without sites.view: the site choices still come, from GET /tasks/assignees (decision 17).
-  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: ['tasks.manage'] } }),
+  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: mockPermissions } }),
   api: {
     tasks: { create: (...a: unknown[]) => mockCreate(...a), assignees: (...a: unknown[]) => mockAssignees(...a) },
   },
@@ -22,6 +23,7 @@ jest.mock('@/lib/session', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPermissions = ['tasks.manage'];
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   mockAssignees.mockResolvedValue({
     users: [{ id: OTHER, fullName: 'Murad Həsənov', jobTitle: null, kind: 'worker' }],
@@ -37,6 +39,18 @@ describe('CreateTaskScreen', () => {
     await renderWithServices(t.services, <CreateTaskScreen />);
     expect(await screen.findByText('İnternet bağlantısı tələb olunur')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Yarat' })).toBeNull();
+    expect(mockAssignees).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('without tasks.manage it shows a not-allowed message, no form, and fetches nothing', async () => {
+    mockPermissions = [];
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <CreateTaskScreen />);
+    expect(await screen.findByText('Bu əməliyyat üçün icazəniz yoxdur.')).toBeTruthy();
+    expect(screen.queryByLabelText('Ad')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Yarat' })).toBeNull();
+    await new Promise((r) => setTimeout(r, 400));
     expect(mockAssignees).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -98,5 +112,23 @@ describe('CreateTaskScreen', () => {
     expect(await screen.findByText('Seçilmiş əməkdaş və ya komanda bu tapşırıq üçün uyğun deyil.')).toBeTruthy();
     expect(mockCreate.mock.calls.map((c) => (c[0] as { id: string }).id)).toEqual([expect.any(String), (mockCreate.mock.calls[0]![0] as { id: string }).id]);
     expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('a double press creates once and queues the instruction photo once', async () => {
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <CreateTaskScreen />);
+    await fireEvent.changeText(screen.getByLabelText('Ad'), 'Qapı');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Murad Həsənov' }));
+    const { pickFromGallery } = jest.requireMock('@/features/execution/capture') as { pickFromGallery: jest.Mock };
+    pickFromGallery.mockResolvedValue(capturedPhoto(t.transport, { source: 'gallery' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Foto: Qalereya' }));
+    await screen.findByTestId('instruction-0');
+    const save = screen.getByRole('button', { name: 'Yarat' });
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+    await eventually(async () => expect(mockBack).toHaveBeenCalled());
+    await fireEvent.press(screen.getByRole('button', { name: 'Yarat' }));
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(await t.db.all('SELECT id FROM media')).toHaveLength(1);
   });
 });
