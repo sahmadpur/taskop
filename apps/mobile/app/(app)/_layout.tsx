@@ -16,6 +16,7 @@ export default function AppLayout() {
     <OfflineProvider userId={s.me.user.id} timeZone={s.me.tenant.timezone}>
       <Tabs backBehavior="history" screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary }}>
         <Tabs.Screen name="index" options={{ title: t('mobile.tabs.home'), tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} /> }} />
+        <Tabs.Screen name="tasks" options={{ title: t('mobile.tabs.tasks'), tabBarIcon: ({ color, size }) => <Ionicons name="clipboard-outline" color={color} size={size} /> }} />
         <Tabs.Screen name="profile" options={{ title: t('mobile.tabs.profile'), tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" color={color} size={size} /> }} />
         <Tabs.Screen name="change-secret" options={{ href: null }} />
         <Tabs.Screen name="sync" options={HIDDEN} />

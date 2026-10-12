@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen } from '@/components/screen';
 import { GROUP_KEYS, groupOccurrences, homeStats, type HomeStats } from '@/features/checklists/group-occurrences';
 import { OccurrenceCard } from '@/features/checklists/occurrence-card';
+import { groupTasks, taskCounts } from '@/features/tasks/group-tasks';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { useSession } from '@/lib/session';
 import { localDate } from '@/lib/time';
@@ -29,6 +30,8 @@ export function HomeScreen() {
   const groups = list ? groupOccurrences(list, services.userId, now, localDate(now, services.timeZone)) : null;
   const executionIds = groups ? [...groups.inProgress, ...groups.done].flatMap((c) => (c.occurrence.execution ? [c.occurrence.execution.id] : [])) : [];
   const problems = useLiveQuery((x) => x.store.problemCount(executionIds), [executionIds.join(',')]);
+  const tasks = useLiveQuery((x) => x.tasks.tasks(), []);
+  const taskStats = tasks ? taskCounts(groupTasks(tasks, now), now) : null;
   if (s.status !== 'authenticated') return null;
   const stats = groups ? homeStats(groups, problems ?? 0) : null;
   const firstName = s.me.user.fullName.split(' ')[0];
@@ -69,6 +72,19 @@ export function HomeScreen() {
           </View>
         ))}
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('mobile.tasks.home.title')}
+        testID="home-tasks"
+        onPress={() => router.push('/tasks')}
+        style={styles.tasks}
+      >
+        <Text style={styles.section}>{t('mobile.tasks.home.title')}</Text>
+        <View style={styles.taskCounts}>
+          <Text style={styles.tileLabel}>{t('mobile.tasks.home.open', { count: taskStats?.open ?? 0 })}</Text>
+          <Text style={[styles.tileLabel, { color: colors.danger }]}>{t('mobile.tasks.home.overdue', { count: taskStats?.overdue ?? 0 })}</Text>
+        </View>
+      </Pressable>
       {groups ? (
         GROUP_KEYS.map((key) => (
           <View key={key} style={styles.group}>
@@ -106,6 +122,8 @@ const styles = StyleSheet.create({
   tile: { width: '48%', backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   value: { fontSize: 28, fontWeight: '700' },
   tileLabel: { color: colors.muted },
+  tasks: { minHeight: 44, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  taskCounts: { flexDirection: 'row', gap: spacing.md },
   group: { gap: spacing.sm },
   section: { fontSize: 16, fontWeight: '600', color: colors.text, marginTop: spacing.sm },
 });
