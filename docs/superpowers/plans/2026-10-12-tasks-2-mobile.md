@@ -36,12 +36,12 @@
   - The outbox is sent in `seq` order. A failed `claim`, `task.accept` or `task.start` holds back the later commands of its execution or task.
   - `task.accept`, `task.start` and `task.submit` are the **status commands**: while one is queued, a pull never overwrites the task's local status.
   - New `seq` numbers continue above every number used before the upgrade (`sqlite_sequence` is carried over).
-- **Task command bodies:** `task.accept`/`task.start` `{ at }`; `task.media` `TaskMediaRegisterInput`; `task.submit` `SubmissionInput`. They carry no `deviceTime`/`clientOffsetMs` (Part 1 decision 1). Their times (`at`, `capturedAt`, `submittedAt`) are stored as device times and sent as `device time − clockOffsetMs` (the offset measured at the last `/me/sync`).
+- **Task command bodies:** `task.accept`/`task.start` `{ at }`; `task.media` `TaskMediaRegisterInput`; `task.submit` `SubmissionInput`. They carry no `deviceTime`/`clientOffsetMs` (Part 1 decision 1). Their times (`at`, `capturedAt`, `submittedAt`) are stored as device times and sent as `device time − clockOffsetMs` (the offset measured at the last `/me/sync`), as Part 1's *Server behaviour Parts 2 and 3 rely on* documents ("Device times are sent on the server's clock").
 - **Atomicity:** accept, start, attach media, remove media and submit each run in **one** `db.transaction`. The draft text autosaves through `CommitInput` (500 ms after typing stops, on blur, on unmount) and writes no outbox command.
 - **Task limits:** response photos ≤ `TASK_LIMITS.responsePhotos` (10), videos ≤ `TASK_LIMITS.responseVideos` (3), text ≤ `TASK_LIMITS.submissionTextMax` (5,000); instruction photos ≤ `TASK_LIMITS.instructionMedia` (5); review comment ≤ `TASK_LIMITS.commentMax` (1,000). Photo resize, JPEG quality and the 720p/60 s video limits come from SP4's capture code (`MEDIA_LIMITS`). A live-only task offers the camera only. A kind whose evidence level is `none` offers no chip.
 - **Pull:** `sync.pull(knownVersionIds, knownTaskIds)` with ≤ `TASK_LIMITS.knownTaskIds` (200) task ids, newest received first.
 - **Local files:** a task medium's file is deleted **7 days** after its upload (`LOCAL_FILE_KEEP_DAYS`), or with its task.
-- **Manager screens** (Create, Review, the Yoxlama section) are online-only. Offline they show `az.mobile.tasks.online` ("İnternet bağlantısı tələb olunur") and send nothing. They are shown to holders of `tasks.manage` in `session.me.permissions`. The site picker needs `sites.view` as well.
+- **Manager screens** (Create, Review, the Yoxlama section) are online-only. Offline they show `az.mobile.tasks.online` ("İnternet bağlantısı tələb olunur") and send nothing. They are shown to holders of `tasks.manage` in `session.me.permissions`. The create screen's site options are `TaskAssigneeOptions.sites` from `GET /tasks/assignees` (Part 1 decision 25), so no `sites.view` is needed.
 - Commits use explicit paths (`git add <paths>`, never `-A`). Messages end with a blank line and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Spec decisions (ambiguities resolved against the real code)
@@ -51,7 +51,7 @@
 3. **`tasks` row:** `data` (the `SyncTask` JSON), `local_status`, `rev` (the server copy's), `sync_note`, `received_at`, `updated_at`. A server copy with a lower `rev` than the one held is ignored. Only the status commands keep `local_status` during a pull; a queued `task.media` does not.
 4. **Drafts:** one per task, created on first edit with a client UUIDv7 `submission_id`. Tamamla sets `submitted_at`, which makes the draft read-only, and queues `task.submit` with that id. The draft is deleted when the server accepts the submission. After a rejection the next edit starts a new draft (new id, no media: the server refuses media linked to an earlier submission).
 5. **Response media can be attached only while the task is `in_progress`** on the phone. The server also allows `accepted`, but the phone shows the response section only after "Başla".
-6. **Task times are moved onto the server's clock when sent** (`at − offset`), because task commands carry no `clientOffsetMs` (Part 1 decision 1) and the server answers a time more than 2 min ahead with `CLOCK_INVALID`. A phone whose clock runs ahead therefore never earns a permanent refusal for it.
+6. **Task times are moved onto the server's clock when sent** (`at − offset`). This is Part 1's documented contract (Interfaces → *Server behaviour*, "Device times are sent on the server's clock"; decision 1): task commands carry no `clientOffsetMs`, the server applies the time as received and answers one more than 2 min ahead with `CLOCK_INVALID`. A phone whose clock runs ahead therefore never earns a permanent refusal for it.
 7. **Refusals of task commands** (all `4xx` other than `401`, `408`, `429`):
    - `TASK_ALREADY_TAKEN` or `NOT_FOUND` on any task command → the task is forgotten (row, draft, commands, media rows, files) and the worker sees `az.tasks.alreadyTaken`, as Part 1 says for `404`.
    - `task.media` with any other code → the medium is dropped as in SP4, and also leaves the draft and any queued submission. The task shows "Server bu faylı qəbul etmədi: …".
@@ -61,11 +61,12 @@
 9. **Instruction photos go through the outbox and the media queue** (`role = 'instruction'`), queued right after `tasks.create` succeeds. A slow upload therefore survives an app kill like any other file. The phone offers photos only for instructions, as the spec says ("instruction photos").
 10. **The create screen's client id is made once per screen**, so retrying after a network error repeats the same `POST /tasks` (idempotent on the id, Part 1). Photos taken for a task that was never created are deleted when the screen closes.
 11. **The due date is typed as `İİİİ-AA-GG SS:DD` in the phone's local time**, with SP4's `toAnswerDatetime('datetime', …)` (SP4 decision 16, no picker dependency). Dates are shown with `formatDateTime` in the tenant's time zone.
-12. **Problem media kind:** `ProblemDto.mediaIds` carry no kind, so the phone decides photo or video from the presigned URL's file extension (`.mp4`/`.mov` → video).
+12. **Remote media come with kind and status:** `ProblemDto.media` (Part 1 decision 24) and `SyncTask.media` / `TaskDetail.media` give each medium's `kind` and `status`. `RemoteMediaStrip` asks for URLs of `uploaded` media only and draws `pending` ones (not uploaded yet, or purged; Part 1 lists both as `pending`) as "{kind} hələ yüklənməyib" (`executions.media.pendingLabel`), so one unsigned medium never fails the whole strip.
 13. **Review list:** `tasks.list({ awaitingMyReview: 'true' })` is fetched when the Tasks tab gains focus while online. The Review screen fetches `tasks.get(id)` and offers Approve/Reject only when `canReview` and the status is `awaiting_review`.
 14. **Home card:** "Açıq" counts the Mənim section (my non-final tasks not in review); "Gecikmiş" counts those overdue. An overdue task is one with `overdueAt` set, or a non-final one whose `dueAt` has passed on the phone's clock.
 15. **Accept and start ask for an immediate sync** (like a checklist claim): a team task's race is decided by the first accept to reach the server.
 16. **Tests are Jest, not Vitest:** `apps/mobile` runs `jest-expo` (its `package.json`); this plan keeps that.
+17. **The create screen's site choices come from `GET /tasks/assignees`** (`TaskAssigneeOptions.sites`: active sites writable in the caller's scope, not filtered by the search). `api.sites.list()` needs `sites.view`, which a `tasks.manage` role may lack, and could offer a site the create refuses with `SITE_OUT_OF_SCOPE`.
 
 ## Review Focus
 
@@ -2866,10 +2867,10 @@ git commit -m "feat(mobile): Tapşırıqlar tab with spec sections and a Home ta
 - Modify: `apps/mobile/app/(app)/_layout.tsx`
 
 **Interfaces:**
-- Consumes: `services.tasks.{task, media, refusals, accept, start, attachMedia, removeMedia, saveText, submit}`, `canEditDraft`, `isTaskOverdue`, `RESPONSE_LIMITS`, `TaskStateError` (Task 6); `services.mediaQueue.discard`, `services.engine.refresh`; SP4's `CaptureModal`, `pickFromGallery`, `VideoPreview`, `CaptureError`, `EvidenceRow`, `CommitInput`, `notAcceptedText`, `fileNotAcceptedText`, `mediaErrorKey`; `api.taskMedia.url`, `api.tasks.problemMediaUrl` (Part 1 Task 4).
+- Consumes: `services.tasks.{task, media, refusals, accept, start, attachMedia, removeMedia, saveText, submit}`, `canEditDraft`, `isTaskOverdue`, `RESPONSE_LIMITS`, `TaskStateError` (Task 6); `services.mediaQueue.discard`, `services.engine.refresh`; SP4's `CaptureModal`, `pickFromGallery`, `VideoPreview`, `CaptureError`, `EvidenceRow`, `CommitInput`, `notAcceptedText`, `fileNotAcceptedText`, `mediaErrorKey`; `api.taskMedia.url`, `api.tasks.problemMediaUrl` (Part 1 Task 4); `ProblemDto.media`, `TaskMediaDto.status`, `MediaStatus` (Part 1).
 - Produces:
   - `ScreenHeader({ title })` (back button and title).
-  - `mediaKindOfUrl(url: string): MediaKind`; `RemoteMediaStrip({ items: { id: string; kind: MediaKind | null }[]; load: (id: string) => Promise<MediaUrl> })` (thumbnails with testID `remote-<id>`; offline text `mobile.tasks.detail.mediaOffline`).
+  - `type RemoteMedia = { id: string; kind: MediaKind; status: MediaStatus }`; `RemoteMediaStrip({ items: RemoteMedia[]; load: (id: string) => Promise<MediaUrl> })` (thumbnails with testID `remote-<id>`; `pending` items are drawn with testID `pending-<id>` and never loaded; offline text `mobile.tasks.detail.mediaOffline`).
   - `TaskScreen({ taskId })`, route `/task/[id]` (hidden tab screen).
 
 - [ ] **Step 1: Write the failing tests**
@@ -2899,6 +2900,7 @@ jest.mock('@/lib/session', () => ({
 
 const PHOTO = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e90';
 const PROBLEM_PHOTO = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e91';
+const PROBLEM_VIDEO = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e95';
 
 async function opened(over: Partial<SyncTask> = {}, o: { online?: boolean } = {}): Promise<TestServices> {
   const t = await createTestServices({ online: o.online });
@@ -2947,11 +2949,15 @@ describe('TaskScreen', () => {
   });
 
   it('shows the reviewer’s comment after a rejection, and the problem the task fixes with its photo when online', async () => {
-    mockProblemUrl.mockResolvedValue({ url: `http://files.test/taskop-media/${PROBLEM_PHOTO}.jpg?X-Amz-Signature=x`, expiresAt: T.due });
+    mockProblemUrl.mockResolvedValue({ url: `http://files.test/taskop-media/${PROBLEM_PHOTO}?X-Amz-Signature=x`, expiresAt: T.due });
     const problem: ProblemDto = {
       id: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e92', executionId: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e50', occurrenceId: OCC, localDate: '2026-11-02',
       siteId: SITE, siteName: 'Bakı filialı 1', checklistId: CHECKLIST, checklistName: 'Açılış yoxlaması', itemId: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e93',
-      itemLabel: 'Soyuducuda problem varmı?', source: 'manual', severity: 'critical', note: 'Qapı bağlanmır', mediaIds: [PROBLEM_PHOTO],
+      itemLabel: 'Soyuducuda problem varmı?', source: 'manual', severity: 'critical', note: 'Qapı bağlanmır', mediaIds: [PROBLEM_PHOTO, PROBLEM_VIDEO],
+      media: [
+        { id: PROBLEM_PHOTO, kind: 'photo', status: 'uploaded' },
+        { id: PROBLEM_VIDEO, kind: 'video', status: 'pending' },
+      ],
       executorName: 'Aysel Əliyeva', createdAt: T.open, resolution: 'open', taskId: TASK, executionState: 'completed',
     };
     await opened(
@@ -2969,8 +2975,11 @@ describe('TaskScreen', () => {
     expect(screen.getByText('Geri qaytarıldı: Foto bulanıqdır')).toBeTruthy();
     expect(screen.getByText('Açılış yoxlaması · Bakı filialı 1')).toBeTruthy();
     expect(screen.getByText('Qapı bağlanmır')).toBeTruthy();
+    // The kind comes from ProblemDto.media, not from the URL; the pending video is drawn but never signed.
     expect(await screen.findByTestId(`remote-${PROBLEM_PHOTO}`)).toBeTruthy();
-    expect(mockProblemUrl).toHaveBeenCalledWith(TASK, PROBLEM_PHOTO);
+    expect(screen.getByTestId(`pending-${PROBLEM_VIDEO}`)).toBeTruthy();
+    expect(screen.getByLabelText('Video hələ yüklənməyib')).toBeTruthy();
+    expect(mockProblemUrl.mock.calls).toEqual([[TASK, PROBLEM_PHOTO]]);
   });
 
   it('shows instruction photos only when online', async () => {
@@ -3041,7 +3050,7 @@ const styles = StyleSheet.create({
 Create `apps/mobile/src/features/tasks/remote-media.tsx`:
 
 ```tsx
-import type { MediaKind, MediaUrl } from '@taskop/contracts';
+import type { MediaKind, MediaStatus, MediaUrl } from '@taskop/contracts';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -3049,24 +3058,30 @@ import { VideoPreview } from '@/features/execution/capture';
 import { colors, spacing } from '@/lib/theme';
 import { useSyncStatus } from '@/offline/hooks';
 
-/** Problem media carry no kind (decision 12): the presigned URL's file extension tells a video from a photo. */
-export const mediaKindOfUrl = (url: string): MediaKind => (/\.(mp4|mov)$/i.test(url.split('?')[0] ?? '') ? 'video' : 'photo');
+/** A medium the server holds, as `TaskMediaDto` and `ProblemDto.media` describe it (decision 12). */
+export interface RemoteMedia {
+  id: string;
+  kind: MediaKind;
+  status: MediaStatus;
+}
 
 /**
  * Media the server holds (instructions, a problem's photos, a submission's files): presigned GET URLs, fetched while
- * online. A tap plays a video.
+ * online, for uploaded media only. A pending medium (not uploaded yet, or purged) is drawn as such and never signed.
+ * A tap plays a video.
  */
-export function RemoteMediaStrip({ items, load }: { items: { id: string; kind: MediaKind | null }[]; load: (id: string) => Promise<MediaUrl> }) {
+export function RemoteMediaStrip({ items, load }: { items: RemoteMedia[]; load: (id: string) => Promise<MediaUrl> }) {
   const { t } = useTranslation();
   const { online } = useSyncStatus();
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState<string | null>(null);
-  const key = items.map((i) => i.id).join(',');
+  const uploaded = items.filter((i) => i.status === 'uploaded');
+  const key = uploaded.map((i) => i.id).join(',');
   useEffect(() => {
-    if (!online || items.length === 0) return;
+    if (!online || uploaded.length === 0) return;
     let alive = true;
-    Promise.all(items.map(async (i) => [i.id, (await load(i.id)).url] as const)).then(
+    Promise.all(uploaded.map(async (i) => [i.id, (await load(i.id)).url] as const)).then(
       (pairs) => {
         if (alive) setUrls(Object.fromEntries(pairs));
       },
@@ -3077,29 +3092,36 @@ export function RemoteMediaStrip({ items, load }: { items: { id: string; kind: M
     return () => {
       alive = false;
     };
-    // `key` stands for `items`; `load` is a new closure on every render. The repo's ESLint has no react-hooks plugin.
+    // `key` stands for the uploaded items; `load` is a new closure on every render. The repo's ESLint has no react-hooks plugin.
   }, [online, key]);
   if (items.length === 0) return null;
   if (failed) return <Text style={styles.muted}>{t('mobile.tasks.detail.mediaFailed')}</Text>;
-  if (!online && Object.keys(urls).length === 0) return <Text style={styles.muted}>{t('mobile.tasks.detail.mediaOffline')}</Text>;
+  if (!online && uploaded.length > 0 && Object.keys(urls).length === 0) return <Text style={styles.muted}>{t('mobile.tasks.detail.mediaOffline')}</Text>;
   return (
     <View style={styles.strip}>
       {items.map((item, n) => {
+        const kind = t(`executions.mediaKinds.${item.kind}`);
+        if (item.status === 'pending') {
+          return (
+            <View key={item.id} testID={`pending-${item.id}`} accessibilityLabel={t('executions.media.pendingLabel', { kind })} style={styles.thumb}>
+              <Text style={styles.pending}>{t('executions.media.pending')}</Text>
+            </View>
+          );
+        }
         const url = urls[item.id];
-        const kind = item.kind ?? (url ? mediaKindOfUrl(url) : 'photo');
         return (
           <Pressable
             key={item.id}
             accessibilityRole="button"
-            accessibilityLabel={`${t(`executions.mediaKinds.${kind}`)} ${n + 1}`}
+            accessibilityLabel={`${kind} ${n + 1}`}
             onPress={() => {
-              if (url && kind === 'video') setPlaying(url);
+              if (url && item.kind === 'video') setPlaying(url);
             }}
             style={styles.thumb}
           >
             {!url ? (
               <ActivityIndicator color={colors.primary} />
-            ) : kind === 'photo' ? (
+            ) : item.kind === 'photo' ? (
               <Image testID={`remote-${item.id}`} source={{ uri: url }} style={styles.image} />
             ) : (
               <Text testID={`remote-${item.id}`} style={styles.play}>
@@ -3119,6 +3141,7 @@ const styles = StyleSheet.create({
   thumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   image: { width: 72, height: 72 },
   play: { fontSize: 24, color: colors.text },
+  pending: { fontSize: 12, color: colors.muted, textAlign: 'center', padding: spacing.xs },
   muted: { color: colors.muted },
 });
 ```
@@ -3250,7 +3273,7 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       <Text style={styles.label}>{t('mobile.tasks.detail.instructions')}</Text>
       <Text style={styles.text}>{s.instructions || t('mobile.tasks.detail.noInstructions')}</Text>
       <RemoteMediaStrip
-        items={s.media.filter((m) => m.role === 'instruction').map((m) => ({ id: m.id, kind: m.kind }))}
+        items={s.media.filter((m) => m.role === 'instruction').map((m) => ({ id: m.id, kind: m.kind, status: m.status }))}
         load={(id) => api.taskMedia.url(id)}
       />
 
@@ -3263,7 +3286,7 @@ export function TaskScreen({ taskId }: { taskId: string }) {
             <Badge text={t(`executions.severities.${s.problem.severity}`)} tone={s.problem.severity === 'critical' ? 'danger' : 'warning'} />
           </View>
           {s.problem.note ? <Text style={styles.text}>{s.problem.note}</Text> : null}
-          <RemoteMediaStrip items={s.problem.mediaIds.map((id) => ({ id, kind: null }))} load={(id) => api.tasks.problemMediaUrl(taskId, id)} />
+          <RemoteMediaStrip items={s.problem.media} load={(id) => api.tasks.problemMediaUrl(taskId, id)} />
         </View>
       ) : null}
 
@@ -3403,7 +3426,7 @@ In `apps/mobile/app/(app)/_layout.tsx`, add after `<Tabs.Screen name="execution/
 - [ ] **Step 5: Run the tests and check they pass**
 
 Run (after building the shared packages): `pnpm --filter @taskop/mobile test -- src/features/tasks && pnpm --filter @taskop/mobile typecheck && pnpm --filter @taskop/mobile lint`
-Expected: PASS. In the rejection test the problem photo loads through `tasks.problemMediaUrl(TASK, PROBLEM_PHOTO)`; offline the instruction photo shows the waiting text and no request is made.
+Expected: PASS. In the rejection test the problem photo loads through `tasks.problemMediaUrl(TASK, PROBLEM_PHOTO)` and the pending problem video is drawn without a request; offline the instruction photo shows the waiting text and no request is made.
 
 - [ ] **Step 6: Commit**
 
@@ -3420,7 +3443,7 @@ git commit -m "feat(mobile): task screen with instructions, problem, accept/star
 - Modify: `apps/mobile/src/features/tasks/tasks-screen.tsx`, `tasks-screen.test.tsx`, `apps/mobile/app/(app)/_layout.tsx`
 
 **Interfaces:**
-- Consumes: `api.tasks.create(body: CreateTaskInput)`, `api.tasks.assignees({ q })` → `TaskAssigneeOptions`, `api.sites.list()` → `SiteDto[]` (needs `sites.view`); `DEFAULT_TASK_EVIDENCE`, `EVIDENCE_LEVELS`, `TASK_PRIORITIES`, `TASK_LIMITS`, `TaskAssignee`; `services.newId`, `services.files`, `services.tasks.queueInstructionMedia` (Task 6); `useSession().me.permissions`; `useSyncStatus().online`; SP4's `toAnswerDatetime`, `CaptureModal`, `pickFromGallery`, `Choice`, `Chip`, `Field`, `FormError`, `mobileErrorText`.
+- Consumes: `api.tasks.create(body: CreateTaskInput)`, `api.tasks.assignees({ q })` → `TaskAssigneeOptions` (`users`, `teams` and the site choices `sites`, decision 17); `DEFAULT_TASK_EVIDENCE`, `EVIDENCE_LEVELS`, `TASK_PRIORITIES`, `TASK_LIMITS`, `TaskAssignee`; `services.newId`, `services.files`, `services.tasks.queueInstructionMedia` (Task 6); `useSession().me.permissions`; `useSyncStatus().online`; SP4's `toAnswerDatetime`, `CaptureModal`, `pickFromGallery`, `Choice`, `Chip`, `Field`, `FormError`, `mobileErrorText`.
 - Produces: `CreateTaskScreen`, route `/task/new` (hidden), and the "Yeni tapşırıq" button on the Tasks tab for `tasks.manage` holders.
 
 - [ ] **Step 1: Write the failing tests**
@@ -3440,14 +3463,13 @@ import { CreateTaskScreen } from './create-task-screen';
 const mockBack = jest.fn();
 const mockCreate = jest.fn();
 const mockAssignees = jest.fn();
-const mockSites = jest.fn();
 jest.mock('expo-router', () => ({ router: { back: (...a: unknown[]) => mockBack(...a), push: jest.fn() } }));
 jest.mock('@/features/execution/capture', () => ({ CaptureModal: () => null, VideoPreview: () => null, pickFromGallery: jest.fn() }));
 jest.mock('@/lib/session', () => ({
-  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: ['tasks.manage', 'sites.view'] } }),
+  // tasks.manage without sites.view: the site choices still come, from GET /tasks/assignees (decision 17).
+  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: ['tasks.manage'] } }),
   api: {
     tasks: { create: (...a: unknown[]) => mockCreate(...a), assignees: (...a: unknown[]) => mockAssignees(...a) },
-    sites: { list: (...a: unknown[]) => mockSites(...a) },
   },
 }));
 
@@ -3457,8 +3479,8 @@ beforeEach(() => {
   mockAssignees.mockResolvedValue({
     users: [{ id: OTHER, fullName: 'Murad Həsənov', jobTitle: null, kind: 'worker' }],
     teams: [{ id: TEAM, name: 'Texniki xidmət', memberCount: 3 }],
+    sites: [{ id: SITE, name: 'Bakı filialı 1' }],
   });
-  mockSites.mockResolvedValue([{ id: SITE, parentId: null, typeId: SITE, name: 'Bakı filialı 1', address: null, active: true, path: SITE, depth: 0 }]);
   mockCreate.mockImplementation(async (body: { id: string }) => ({ ...syncTask({ id: body.id }), history: [], canManage: true, canReview: true }));
 });
 
@@ -3585,7 +3607,6 @@ import {
   type EvidenceLevel,
   MEDIA_KINDS,
   type MediaKind,
-  type SiteDto,
   TASK_LIMITS,
   TASK_PRIORITIES,
   type TaskAssignee,
@@ -3605,7 +3626,7 @@ import { CaptureModal, pickFromGallery } from '@/features/execution/capture';
 import { toAnswerDatetime } from '@/features/execution/datetime-format';
 import { CaptureError } from '@/features/execution/media-capture';
 import { Chip, Choice } from '@/features/execution/parts';
-import { api, useSession } from '@/lib/session';
+import { api } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import type { CapturedMedia } from '@/offline/execution-store';
@@ -3620,7 +3641,6 @@ const withLevel = (e: TaskEvidence, kind: MediaKind, level: EvidenceLevel): Task
 export function CreateTaskScreen() {
   const { t } = useTranslation();
   const services = useOffline();
-  const session = useSession();
   const { online } = useSyncStatus();
   // One client id per screen: a retry after a lost connection repeats the same idempotent POST (decision 10).
   const [id] = useState(() => services.newId());
@@ -3630,7 +3650,6 @@ export function CreateTaskScreen() {
   const [q, setQ] = useState('');
   const [options, setOptions] = useState<TaskAssigneeOptions | null>(null);
   const [assignee, setAssignee] = useState<{ value: TaskAssignee; key: string } | null>(null);
-  const [sites, setSites] = useState<SiteDto[]>([]);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [requiresReview, setRequiresReview] = useState(false);
@@ -3643,7 +3662,6 @@ export function CreateTaskScreen() {
   const created = useRef(false);
   const photosRef = useRef(photos);
   photosRef.current = photos;
-  const canPickSite = session.status === 'authenticated' && session.me.permissions.includes('sites.view');
 
   useEffect(() => {
     if (!online) return;
@@ -3664,22 +3682,6 @@ export function CreateTaskScreen() {
       clearTimeout(timer);
     };
   }, [online, q, t]);
-
-  useEffect(() => {
-    if (!online || !canPickSite) return;
-    let alive = true;
-    api.sites.list().then(
-      (list) => {
-        if (alive) setSites(list.filter((s) => s.active));
-      },
-      (e: unknown) => {
-        if (alive) setError(mobileErrorText(t, e));
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [online, canPickSite, t]);
 
   const removeFile = (uri: string) => {
     try {
@@ -3798,12 +3800,13 @@ export function CreateTaskScreen() {
         ))}
       </View>
 
-      {canPickSite ? (
+      {/* Active sites writable in the caller's scope, unaffected by the search (decision 17). */}
+      {options && options.sites.length > 0 ? (
         <>
           <Text style={styles.label}>{t('mobile.tasks.create.site')}</Text>
           <View style={styles.row}>
             <Choice role="radio" label={t('mobile.tasks.create.noSite')} selected={siteId === null} onPress={() => setSiteId(null)} />
-            {sites.map((site) => (
+            {options.sites.map((site) => (
               <Choice key={site.id} role="radio" label={site.name} selected={siteId === site.id} onPress={() => setSiteId(site.id)} />
             ))}
           </View>
@@ -4291,7 +4294,7 @@ export function ReviewScreen({ taskId }: { taskId: string }) {
           <Text style={styles.label}>{t('mobile.tasks.review.submission')}</Text>
           <Text style={styles.muted}>{formatDateTime(submission.submittedAt, { locale: 'az', timeZone })}</Text>
           {submission.text ? <Text style={styles.text}>{submission.text}</Text> : null}
-          <RemoteMediaStrip items={media.map((m) => ({ id: m.id, kind: m.kind }))} load={(id) => api.taskMedia.url(id)} />
+          <RemoteMediaStrip items={media.map((m) => ({ id: m.id, kind: m.kind, status: m.status }))} load={(id) => api.taskMedia.url(id)} />
         </>
       ) : null}
       {reviewable ? (
@@ -4446,4 +4449,4 @@ Add the checklist results to the PR description. For each failed item, open a fi
 
 **Placeholder scan.** No "TBD", "TODO", "add validation" or "similar to Task N". Every edit to an existing file names the exact text it replaces.
 
-**Names used from Part 1 "Interfaces for Parts 2 and 3".** `TASK_STATUSES`/`TaskStatus`, `isFinalTaskStatus`, `TASK_PRIORITIES`/`TaskPriority`, `TaskAction`, `EVIDENCE_LEVELS`/`EvidenceLevel`, `TaskEvidence`, `DEFAULT_TASK_EVIDENCE`, `TaskMediaRole`, `TASK_LIMITS` (`instructionsMax`, `submissionTextMax`, `commentMax`, `instructionMedia`, `responsePhotos`, `responseVideos`, `knownTaskIds`), `taskTransition`, `taskEvidenceMet`/`TaskEvidenceResult`, `TaskAssignee`, `CreateTaskInput`, `ReviewTaskInput`, `TaskActionCommand`, `SubmissionInput`, `TaskMediaRegisterInput`, `TaskSummary`, `TaskDetail`, `TaskMediaDto`, `SyncTask`/`syncTaskSchema`, `TaskAssigneeOptions`, `SyncResponse.tasks`/`removedTaskIds`, `ProblemDto` (+ `resolution`, `taskId`, `executionState`); `az.tasks.{statuses, priorities, evidenceLevels, flags.overdue, issues.*, alreadyTaken}`, `az.errors.TASK_*`; `TasksApi`, `tasks.{list, get, create, review, accept, start, submit, registerMedia, assignees, problemMediaUrl}`, `taskMedia.{confirmUploaded, url}`, `sync.pull(knownVersionIds, knownTaskIds)`. Existing repo names: `MediaUrl`, `MediaUploadTicket`, `SiteDto`, `api.sites.list`, `Me.permissions`.
+**Names used from Part 1 "Interfaces for Parts 2 and 3".** `TASK_STATUSES`/`TaskStatus`, `isFinalTaskStatus`, `TASK_PRIORITIES`/`TaskPriority`, `TaskAction`, `EVIDENCE_LEVELS`/`EvidenceLevel`, `TaskEvidence`, `DEFAULT_TASK_EVIDENCE`, `TaskMediaRole`, `TASK_LIMITS` (`instructionsMax`, `submissionTextMax`, `commentMax`, `instructionMedia`, `responsePhotos`, `responseVideos`, `knownTaskIds`), `taskTransition`, `taskEvidenceMet`/`TaskEvidenceResult`, `TaskAssignee`, `CreateTaskInput`, `ReviewTaskInput`, `TaskActionCommand`, `SubmissionInput`, `TaskMediaRegisterInput`, `TaskSummary`, `TaskDetail`, `TaskMediaDto`, `SyncTask`/`syncTaskSchema`, `TaskAssigneeOptions`, `SyncResponse.tasks`/`removedTaskIds`, `ProblemDto` (+ `resolution`, `taskId`, `executionState`, `media: ProblemMediaRef[]`), `TaskAssigneeOptions.sites`, `TaskMediaDto.status` (pending includes purged); `az.tasks.{statuses, priorities, evidenceLevels, flags.overdue, issues.*, alreadyTaken}`, `az.errors.TASK_*`; `TasksApi`, `tasks.{list, get, create, review, accept, start, submit, registerMedia, assignees, problemMediaUrl}`, `taskMedia.{confirmUploaded, url}`, `sync.pull(knownVersionIds, knownTaskIds)`. Existing repo names: `MediaUrl`, `MediaUploadTicket`, `MediaStatus`, `Me.permissions`. The task-time correction (`device time − clockOffsetMs`) is Part 1's documented contract (*Server behaviour* → "Device times are sent on the server's clock").
