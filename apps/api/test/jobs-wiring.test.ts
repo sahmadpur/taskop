@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MEDIA_CLEANUP_QUEUE } from '../src/executions/media-jobs';
 import { JobsService, QUEUES } from '../src/scheduling/jobs.service';
+import { TASK_SWEEP_QUEUE } from '../src/tasks/task-jobs';
 import { createTestApp } from './app';
 import { liveExecution, mediaRow, registerBytes } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
 import { createAssignment, MONDAY_0800, occurrenceRows, schedulingWorld } from './scheduling-fixtures';
 import { type Seaweed, startSeaweedfs } from './seaweedfs';
+import { createTask, newTaskBody, taskRow, taskWorld } from './task-fixtures';
 
 /**
  * Every test that starts an app with JOBS_ENABLED lives in this file. All of them share one Postgres and one
@@ -29,6 +31,20 @@ describe('pg-boss wiring', () => {
           interval: 250,
         })
         .toBe('overdue');
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('runs tasks.sweep through a real queue', async () => {
+    const clock = new FakeClock(MONDAY_0800);
+    const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' }, { clock });
+    try {
+      const w = await taskWorld(t);
+      const task = await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }, { dueAt: '2026-11-02T05:00:00.000Z' }));
+      clock.set('2026-11-02T05:30:00Z');
+      await t.app.get(JobsService).runNow(TASK_SWEEP_QUEUE, [w.s.tenantId]);
+      await expect.poll(async () => (await taskRow(task.id)).overdue_at, { timeout: 20_000, interval: 250 }).not.toBeNull();
     } finally {
       await t.close();
     }
