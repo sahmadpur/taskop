@@ -164,4 +164,26 @@ describe('TaskScreen', () => {
     expect(await screen.findByText('Yükləndi')).toBeTruthy();
     expect(screen.getByText('Cavab')).toBeTruthy();
   });
+
+  it('does not submit when the flushed text could not be saved, and retries the save on the next Tamamla', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const t = await createTestServices();
+    await t.seed(syncResponse({ checklistVersions: [versionOf(t.c.content)], tasks: [syncTask({ status: 'in_progress' })] }));
+    await t.services.tasks.attachMedia(TASK, capturedPhoto(t.transport));
+    await renderWithServices(t.services, <TaskScreen taskId={TASK} />);
+    await screen.findByText('Soyuducunun qapısını təmir et');
+    const save = jest.spyOn(t.services.tasks, 'saveText').mockRejectedValueOnce(new Error('disk'));
+    await fireEvent.changeText(screen.getByLabelText('Cavab'), 'Yeni mətn');
+    await fireEvent.press(screen.getByRole('button', { name: 'Tamamla' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    expect(await t.db.first(`SELECT 1 FROM outbox WHERE kind = 'task.submit'`)).toBeNull();
+    expect((await t.services.tasks.task(TASK))!.status).toBe('in_progress');
+    await eventually(async () => expect(screen.getByRole('button', { name: 'Tamamla' }).props.accessibilityState).toMatchObject({ disabled: false }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Tamamla' }));
+    expect(await screen.findByText('Cavab göndərildi.')).toBeTruthy();
+    expect(save).toHaveBeenCalledTimes(2);
+    const submit = await t.db.first<{ payload: string }>(`SELECT payload FROM outbox WHERE kind = 'task.submit'`);
+    expect(JSON.parse(submit!.payload)).toMatchObject({ text: 'Yeni mətn' });
+    alert.mockRestore();
+  });
 });

@@ -46,9 +46,24 @@ export function TaskScreen({ taskId }: { taskId: string }) {
   // Autosaves run one after another and apart from `busy`; Tamamla flushes the field and waits for them.
   const flushText = useRef<(() => void) | null>(null);
   const saves = useRef<Promise<void>>(Promise.resolve());
+  const failedText = useRef<string | null>(null); // the text of the last save that failed, until a later save succeeds
+  const failures = useRef(0);
   const saveText = (text: string) => {
-    // A save after the draft stopped being editable (Tamamla, a state change) has nothing left to write.
-    saves.current = saves.current.then(() => tasks.saveText(taskId, text)).catch((e: unknown) => (e instanceof TaskStateError ? undefined : report(e)));
+    saves.current = saves.current
+      .then(async () => {
+        await tasks.saveText(taskId, text);
+        failedText.current = null;
+      })
+      .catch((e: unknown) => {
+        // A save after the draft stopped being editable (Tamamla, a state change) has nothing left to write.
+        if (e instanceof TaskStateError) {
+          failedText.current = null;
+          return;
+        }
+        failedText.current = text;
+        failures.current += 1;
+        report(e);
+      });
   };
   const run = (job: () => Promise<unknown>) => {
     setBusy(true);
@@ -99,15 +114,20 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('mobile.evidence.remove'), style: 'destructive', onPress: () => run(() => tasks.removeMedia(taskId, mediaId)) },
     ]);
-  const complete = () => {
-    flushText.current?.();
-    const written = saves.current;
+  const complete = () =>
     run(async () => {
-      await written;
+      const before = failures.current;
+      flushText.current?.();
+      await saves.current;
+      // Never submit the draft with older text than the field shows. A failure just reported stops here; one from earlier gets one more try.
+      if (failedText.current !== null && failures.current === before) {
+        saveText(failedText.current);
+        await saves.current;
+      }
+      if (failedText.current !== null) return;
       const r = await tasks.submit(taskId);
       if (!r.ok) Alert.alert(r.missing.map((k) => t(`tasks.issues.${k}Required`)).join('\n'));
     });
-  };
 
   return (
     <Screen>
