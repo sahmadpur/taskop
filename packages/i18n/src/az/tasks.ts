@@ -1,0 +1,26 @@
+export default {
+  statuses: {
+    new: 'Yeni',
+    accepted: 'Qəbul edilib',
+    in_progress: 'İcradadır',
+    awaiting_review: 'Yoxlamada',
+    completed: 'Tamamlanıb',
+    cancelled: 'Ləğv edilib',
+  },
+  priorities: { normal: 'Adi', high: 'Yüksək' },
+  sources: { problem: 'Problemdən', adhoc: 'Birbaşa' },
+  resolutions: { none: 'Tapşırıq yoxdur', open: 'Açıq', resolved: 'Həll olunub', cancelled: 'Ləğv edilib' },
+  evidenceLevels: { none: 'Lazım deyil', optional: 'İstəyə bağlı', required: 'Mütləq' },
+  mediaRoles: { instruction: 'Təlimat', response: 'Cavab' },
+  reviewDecisions: { approved: 'Təsdiqlənib', rejected: 'Geri qaytarılıb' },
+  historyReasons: { assignee_deactivated: 'İcraçı deaktiv edildi; tapşırıq komandaya qaytarıldı' },
+  issues: {
+    commentRequired: 'Geri qaytarmaq üçün şərh yazın.',
+    unknownMedia: 'Fayl bu tapşırığa aid deyil və ya artıq başqa cavabda istifadə olunub.',
+    tooManyMedia: 'Çox fayl əlavə olunub (ən çox 10 foto və 3 video).',
+    photoRequired: 'Ən azı bir foto əlavə edin.',
+    videoRequired: 'Ən azı bir video əlavə edin.',
+  },
+  flags: { overdue: 'Gecikib', assigneeInactive: 'İcraçı deaktivdir' },
+  alreadyTaken: 'Bu tapşırığı artıq başqası qəbul edib',
+} as const;

@@ -53,6 +53,12 @@ export default {
   MEDIA_LIMIT_REACHED: 'Bu sual üçün fayl limiti dolub.',
   MEDIA_NOT_FOUND_IN_STORAGE: 'Fayl hələ tam yüklənməyib.',
   EVIDENCE_LIVE_ONLY: 'Bu sual üçün yalnız kamera ilə çəkilmiş foto və ya video qəbul olunur.',
+  TASK_ALREADY_TAKEN: 'Bu tapşırığı artıq başqası qəbul edib.',
+  TASK_STATE_INVALID: 'Tapşırığın vəziyyəti dəyişib; bu əməliyyat artıq mümkün deyil.',
+  TASK_ASSIGNEE_INVALID: 'Seçilmiş əməkdaş və ya komanda bu tapşırıq üçün uyğun deyil.',
+  PROBLEM_NOT_CLOSED: 'Problem üzrə tapşırıq yalnız icra bağlandıqdan sonra yaradıla bilər.',
+  PROBLEM_ALREADY_HAS_TASK: 'Bu problem üçün artıq tapşırıq yaradılıb.',
+  EVIDENCE_REQUIRED: 'Tələb olunan foto və ya videonu əlavə edin.',
   INTERNAL: 'Gözlənilməz xəta baş verdi. Sorğu ID: {{requestId}}',
   NETWORK: 'Serverlə əlaqə qurulmadı. İnternet bağlantınızı yoxlayın.',
   validation: {

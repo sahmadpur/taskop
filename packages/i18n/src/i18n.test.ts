@@ -5,6 +5,7 @@ import {
   CLAIM_REJECTION_REASONS,
   describeSchedule,
   EXECUTION_ISSUE_CODES,
+  EVIDENCE_LEVELS,
   EXECUTION_STATES,
   ErrorCode,
   ISSUE_CODES,
@@ -15,9 +16,17 @@ import {
   OCCURRENCE_STATUSES,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
+  PROBLEM_RESOLUTIONS,
   PROBLEM_SEVERITIES,
   PROBLEM_SOURCES,
   SCHEDULING_ISSUE_CODES,
+  TASK_HISTORY_REASONS,
+  TASK_ISSUE_CODES,
+  TASK_MEDIA_ROLES,
+  TASK_PRIORITIES,
+  TASK_REVIEW_DECISIONS,
+  TASK_SOURCES,
+  TASK_STATUSES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
 import { az, formatDate, formatDateTime } from './index.js';
@@ -146,5 +155,31 @@ describe('mobile execution translations', () => {
 
   it('has the discard confirmation texts', () => {
     for (const k of ['discardTitle', 'discardBody', 'discardClaimBody'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
+  });
+});
+
+describe('task translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('translates statuses, priorities, sources, resolutions, evidence, roles, decisions, reasons and issues', () => {
+    for (const s of TASK_STATUSES) expect(az.tasks.statuses[s], s).toBeTypeOf('string');
+    for (const p of TASK_PRIORITIES) expect(az.tasks.priorities[p], p).toBeTypeOf('string');
+    for (const s of TASK_SOURCES) expect(az.tasks.sources[s], s).toBeTypeOf('string');
+    for (const r of PROBLEM_RESOLUTIONS) expect(az.tasks.resolutions[r], r).toBeTypeOf('string');
+    for (const l of EVIDENCE_LEVELS) expect(az.tasks.evidenceLevels[l], l).toBeTypeOf('string');
+    for (const r of TASK_MEDIA_ROLES) expect(az.tasks.mediaRoles[r], r).toBeTypeOf('string');
+    for (const d of TASK_REVIEW_DECISIONS) expect(az.tasks.reviewDecisions[d], d).toBeTypeOf('string');
+    for (const r of TASK_HISTORY_REASONS) expect(az.tasks.historyReasons[r], r).toBeTypeOf('string');
+    for (const code of TASK_ISSUE_CODES) expect(lookup(code), code).toBeTypeOf('string');
+  });
+
+  it('uses the spec wording and registers the task nav, audit and role labels', () => {
+    expect(az.errors.TASK_ALREADY_TAKEN).toBe('Bu tapşırığı artıq başqası qəbul edib.');
+    expect(az.tasks.alreadyTaken).toBe('Bu tapşırığı artıq başqası qəbul edib');
+    expect(az.tasks.statuses.accepted).toBe('Qəbul edilib');
+    expect(az.tasks.statuses.in_progress).toBe('İcradadır');
+    expect(az.tasks.flags.overdue).toBe('Gecikib');
+    expect(az.nav.tasks).toBe('Tapşırıqlar');
+    expect(az.audit.entityTypes.task).toBe('Tapşırıq');
   });
 });
