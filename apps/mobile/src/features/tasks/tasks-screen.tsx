@@ -9,6 +9,7 @@ import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import { useLiveQuery, useNow } from '@/offline/hooks';
 import { groupTasks, TASK_GROUP_KEYS } from './group-tasks';
+import { ReviewSection } from './review-section';
 import { TaskRow } from './task-row';
 
 /** Spec §7.2: the Tapşırıqlar tab. */
@@ -30,6 +31,7 @@ export function TasksScreen() {
           <SyncIndicator />
         </View>
       </View>
+      {canManage ? <ReviewSection /> : null}
       {groups ? (
         TASK_GROUP_KEYS.map((key) => (
           <View key={key} style={styles.group}>

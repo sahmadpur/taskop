@@ -24,6 +24,7 @@ export default function AppLayout() {
         <Tabs.Screen name="execution/[id]/finish" options={HIDDEN} />
         <Tabs.Screen name="task/[id]" options={HIDDEN} />
         <Tabs.Screen name="task/new" options={HIDDEN} />
+        <Tabs.Screen name="review/[id]" options={HIDDEN} />
       </Tabs>
     </OfflineProvider>
   );
