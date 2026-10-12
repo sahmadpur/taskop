@@ -2,6 +2,7 @@ import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
 import { FakeClock } from './fake-clock';
+import { as, createUserDirect, loginStaff, uniq } from './fixtures';
 import { ownerQuery } from './owner-db';
 import { MONDAY_0800 } from './scheduling-fixtures';
 import { act, auditActions, captureTaskEvents, createTask, newTaskBody, registerTaskMedia, taskHistory, taskMediaBody, taskRow, taskWorld, videoExtra } from './task-fixtures';
@@ -189,5 +190,33 @@ describe('managing tasks', () => {
     expect(await auditActions(task.id)).toEqual(['task.created', 'task.updated']);
     const other = await w.manager.api.patch(`/api/v1/tasks/${task.id}`, { assignee: { userId: w.workers[1].id } });
     expect(other.status, JSON.stringify(other.body)).toBe(200);
+  });
+
+  it('answers a manager command that moves the task out of their own reach with the stored result, not a 404 (R19)', async () => {
+    const w = await taskWorld(t);
+    const [w1] = w.workers;
+    // A subordinates-scope manager covers a task only through an assignee in their reporting chain.
+    const role = await w.owner.post('/api/v1/roles', { name: uniq('Rəhbər'), dataScope: 'subordinates', permissions: ['tasks.manage'] });
+    expect(role.status, JSON.stringify(role.body)).toBe(201);
+    const lead = await createUserDirect(t, w.s.tenantId, { kind: 'staff', roleId: role.body.id as string, fullName: 'Rəhbər', emailVerified: true });
+    const leadApi = as(t, (await loginStaff(t, lead.email!, lead.secret)).accessToken);
+    await ownerQuery('update users set manager_id = $1 where id = $2', [lead.id, w1.id]);
+    const own = await createTask(w.owner, newTaskBody({ userId: w1.id }));
+    const toTeam = await leadApi.patch(`/api/v1/tasks/${own.id}`, { assignee: { teamId: w.teamId } });
+    expect(toTeam.status, JSON.stringify(toTeam.body)).toBe(200);
+    expect(toTeam.body).toMatchObject({ id: own.id, status: 'new', assignee: null, team: { id: w.teamId }, canManage: false, canReview: false });
+    expect(await taskRow(own.id)).toMatchObject({ assignee_user_id: null, assignee_team_id: w.teamId });
+    expect((await leadApi.get(`/api/v1/tasks/${own.id}`)).status).toBe(404);
+
+    // A site_subtree manager covers a site-less task only through its assignee, and a task only through its site.
+    const siteless = await createTask(w.owner, newTaskBody({ userId: w1.id }));
+    const moved = await w.manager.api.patch(`/api/v1/tasks/${siteless.id}`, { assignee: { teamId: w.teamId } });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect(await taskRow(siteless.id)).toMatchObject({ assignee_user_id: null, assignee_team_id: w.teamId });
+    const placed = await createTask(w.owner, newTaskBody({ userId: w.workers[2].id }, { siteId: w.siteId }));
+    const cleared = await w.manager.api.patch(`/api/v1/tasks/${placed.id}`, { siteId: null });
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    expect(cleared.body).toMatchObject({ site: null, canManage: false });
+    expect((await ownerQuery<{ site_id: string | null }>('select site_id from tasks where id = $1', [placed.id])).rows[0]!.site_id).toBeNull();
   });
 });

@@ -74,9 +74,9 @@ export class TaskScope {
     const [r] = await this.db
       .tx()
       .select({
-        canRead: sql<boolean>`(${this.readable(p)})`,
-        canManage: sql<boolean>`(${this.manageable(p)})`,
-        canReview: sql<boolean>`(${this.reviewable(p)})`,
+        canRead: sql<boolean>`coalesce((${this.readable(p)}), false)`,
+        canManage: sql<boolean>`coalesce((${this.manageable(p)}), false)`,
+        canReview: sql<boolean>`coalesce((${this.reviewable(p)}), false)`,
       })
       .from(tasks)
       .where(eq(tasks.id, id));

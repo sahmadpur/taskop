@@ -45,9 +45,14 @@ export class TaskQueries {
     return { items: page.map(toTaskSummary), nextCursor: rows.length > q.limit ? page[page.length - 1]!.t.id : null };
   }
 
-  async detail(p: Principal, id: string): Promise<TaskDetail> {
+  /**
+   * `afterManage` is for the response of a manager command that has just changed the task: the actor was authorised
+   * before the change, and may no longer read it afterwards (e.g. a reassignment out of their scope). The read gate is
+   * skipped; canManage and canReview are still computed for the row as it now is.
+   */
+  async detail(p: Principal, id: string, opts: { afterManage?: boolean } = {}): Promise<TaskDetail> {
     const access = await this.scope.access(p, id);
-    if (!access.canRead) throw new AppError('NOT_FOUND');
+    if (!access.canRead && !opts.afterManage) throw new AppError('NOT_FOUND');
     const [task] = await this.syncTasks([id]);
     return { ...task!, history: await this.history(id), canManage: access.canManage, canReview: access.canReview };
   }

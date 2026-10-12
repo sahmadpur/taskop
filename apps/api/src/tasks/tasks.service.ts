@@ -119,7 +119,7 @@ export class TasksService {
         set.startedAt = null;
       }
     }
-    if (!edited && !reassigned) return this.queries.detail(p, id);
+    if (!edited && !reassigned) return this.queries.detail(p, id, { afterManage: true });
     const [row] = await this.db
       .tx()
       .update(tasks)
@@ -136,7 +136,7 @@ export class TasksService {
       });
       await this.writer.emit('task.assigned', row!, p.userId);
     }
-    return this.queries.detail(p, id);
+    return this.queries.detail(p, id, { afterManage: true });
   }
 
   /** POST /tasks/:id/cancel: from any open status, with a reason. */
@@ -154,7 +154,7 @@ export class TasksService {
     await this.writer.history(t, [{ from: t.status, to: 'cancelled', at: now, actorUserId: p.userId, comment: dto.reason }]);
     await this.writer.record('task.cancelled', id, { before: { status: t.status }, after: { status: 'cancelled', reason: dto.reason } });
     await this.writer.emit('task.cancelled', row!, p.userId);
-    return this.queries.detail(p, id);
+    return this.queries.detail(p, id, { afterManage: true });
   }
 
   /** POST /tasks/:id/review: the creator or a manager; only from awaiting_review; the latest submission gets the review. */
@@ -188,7 +188,7 @@ export class TasksService {
     await this.writer.history(t, [{ from: t.status, to: next, at: now, actorUserId: p.userId, comment }]);
     await this.writer.record(approved ? 'task.approved' : 'task.rejected', id, { after: { submissionId: latest.id, comment } });
     await this.writer.emit(approved ? 'task.completed' : 'task.rejected', row!, p.userId);
-    return this.queries.detail(p, id);
+    return this.queries.detail(p, id, { afterManage: true });
   }
 
   /** Spec Decision 19: the site exists, is active and lies within the caller's scope. */
