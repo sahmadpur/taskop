@@ -5,7 +5,7 @@ import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
 import { MediaUploadTicketResponse } from '../executions/dto';
-import { CreateTaskDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse, TaskMediaRegisterDto } from './dto';
+import { CreateTaskDto, SubmissionDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse, TaskMediaRegisterDto } from './dto';
 import { TaskAssignees } from './task-assignees';
 import { TaskMediaService } from './task-media.service';
 import { TaskQueries } from './task-queries';
@@ -59,6 +59,14 @@ export class TasksController {
   @ApiOkResponse({ type: TaskDetailResponse })
   start(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskActionCommandDto): Promise<TaskDetail> {
     return this.work.start(p, id, body);
+  }
+
+  /** The assignee (spec §6.2). Idempotent on the submission id. */
+  @Post(':id/submissions')
+  @HttpCode(200)
+  @ApiOkResponse({ type: TaskDetailResponse })
+  submit(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: SubmissionDto): Promise<TaskDetail> {
+    return this.work.submit(p, id, body);
   }
 
   /** Instruction media: creator or manager. Response media: the assignee (spec §6.2). */
