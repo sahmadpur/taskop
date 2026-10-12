@@ -1,5 +1,5 @@
 import type { TaskDetail, TaskListQuery } from '@taskop/contracts';
-import { type QueryClient, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/session';
 
 export const taskKeys = {
@@ -26,7 +26,7 @@ export const useTask = (id: string) => useQuery({ queryKey: taskKeys.detail(id),
  * (the same for every `q`; the dialog reads them from the `''` entry). Asked only while enabled.
  */
 export const useTaskAssignees = (q: string, enabled: boolean) =>
-  useQuery({ queryKey: taskKeys.assignees(q), queryFn: () => api.tasks.assignees(q ? { q } : {}), enabled, staleTime: 60_000 });
+  useQuery({ queryKey: taskKeys.assignees(q), queryFn: () => api.tasks.assignees(q ? { q } : {}), enabled, staleTime: 60_000, placeholderData: keepPreviousData });
 
 /**
  * After a command: the drawer shows the answer at once, task lists refetch, and for a problem task the problems

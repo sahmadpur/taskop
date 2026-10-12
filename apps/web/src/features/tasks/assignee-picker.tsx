@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,10 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
   const [active, setActive] = useState(0);
   const q = useDebounced(query.trim(), 250);
   const options = useTaskAssignees(q, open);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // The list answers what is typed only once the debounce has caught up and that search has arrived; before that
+  // (kept-over rows from the previous search) Enter and the active descendant must not point at a stale row.
+  const fresh = open && query.trim() === q && options.isSuccess && !options.isPlaceholderData;
   const users = options.data?.users ?? [];
   const teams = options.data?.teams ?? [];
   const choices: AssigneeChoice[] = [
@@ -36,9 +40,29 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
   // The search may no longer list the current choice; keep it identifiable (and selectable) at the top.
   const pinned = value && !choices.some((c) => sameChoice(c, value)) ? value : null;
 
+  // Escape closes only the list: a window-capture listener runs before a parent Radix Dialog's own Escape handling.
+  useEffect(() => {
+    if (!open) return;
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.target !== inputRef.current) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setOpen(false);
+      setQuery('');
+    };
+    window.addEventListener('keydown', onEscape, true);
+    return () => window.removeEventListener('keydown', onEscape, true);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.getElementById(`${id}-option-${active}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, active, id]);
+
   const pick = (c: AssigneeChoice) => {
     onChange(c);
     setQuery('');
+    setActive(0);
     setOpen(false);
   };
 
@@ -64,13 +88,14 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
       <Label htmlFor={id}>{label}</Label>
       <div className="flex items-center gap-2">
         <Input
+          ref={inputRef}
           id={id}
           role="combobox"
           autoComplete="off"
           aria-expanded={open}
           aria-controls={`${id}-list`}
           aria-autocomplete="list"
-          aria-activedescendant={open && choices[active] ? optionId(active) : undefined}
+          aria-activedescendant={fresh && choices[active] ? optionId(active) : undefined}
           placeholder={t('tasks.picker.placeholder')}
           value={open ? query : (value?.name ?? '')}
           onFocus={() => setOpen(true)}
@@ -78,6 +103,7 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
           onBlur={() => {
             setOpen(false);
             setQuery('');
+            setActive(0);
           }}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -88,9 +114,10 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
               setOpen(true);
+              if (!fresh) return;
               const step = e.key === 'ArrowDown' ? 1 : -1;
               setActive((i) => Math.max(0, Math.min(choices.length - 1, i + step)));
-            } else if (e.key === 'Enter' && open && choices[active]) {
+            } else if (e.key === 'Enter' && fresh && choices[active]) {
               e.preventDefault();
               pick(choices[active]);
             }
@@ -104,31 +131,44 @@ export function AssigneePicker({ label, value, onChange, clearable = false }: Pr
       </div>
       {open && (
         <div
-          id={`${id}-list`}
-          role="listbox"
-          aria-label={label}
+          // Clicks on headers and padding must not blur the input (which would close and reset the list).
+          onMouseDown={(e) => e.preventDefault()}
           className="bg-popover text-popover-foreground absolute top-full z-50 mt-1 grid max-h-64 w-full gap-2 overflow-y-auto rounded-md border p-1 shadow-md"
         >
-          {options.isPending && <p className="text-muted-foreground px-2 py-1.5 text-sm">{t('common.loading')}</p>}
-          {options.isError && <p className="text-destructive px-2 py-1.5 text-sm">{errorText(t, options.error)}</p>}
-          {options.isSuccess && choices.length === 0 && <p className="text-muted-foreground px-2 py-1.5 text-sm">{t('common.noResults')}</p>}
-          {pinned && option(pinned, -1, `${id}-option-selected`)}
-          {users.length > 0 && (
-            <div role="group" aria-label={t('tasks.picker.people')}>
-              <p aria-hidden className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                {t('tasks.picker.people')}
-              </p>
-              {choices.slice(0, users.length).map((c, i) => option(c, i))}
-            </div>
+          {options.isPending && (
+            <p role="status" className="text-muted-foreground px-2 py-1.5 text-sm">
+              {t('common.loading')}
+            </p>
           )}
-          {teams.length > 0 && (
-            <div role="group" aria-label={t('tasks.picker.teams')}>
-              <p aria-hidden className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                {t('tasks.picker.teams')}
-              </p>
-              {choices.slice(users.length).map((c, i) => option(c, users.length + i))}
-            </div>
+          {options.isError && (
+            <p role="status" className="text-destructive px-2 py-1.5 text-sm">
+              {errorText(t, options.error)}
+            </p>
           )}
+          {fresh && choices.length === 0 && (
+            <p role="status" className="text-muted-foreground px-2 py-1.5 text-sm">
+              {t('common.noResults')}
+            </p>
+          )}
+          <div id={`${id}-list`} role="listbox" aria-label={label} className="grid gap-2">
+            {pinned && option(pinned, -1, `${id}-option-selected`)}
+            {users.length > 0 && (
+              <div role="group" aria-label={t('tasks.picker.people')}>
+                <p aria-hidden className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                  {t('tasks.picker.people')}
+                </p>
+                {choices.slice(0, users.length).map((c, i) => option(c, i))}
+              </div>
+            )}
+            {teams.length > 0 && (
+              <div role="group" aria-label={t('tasks.picker.teams')}>
+                <p aria-hidden className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                  {t('tasks.picker.teams')}
+                </p>
+                {choices.slice(users.length).map((c, i) => option(c, users.length + i))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
