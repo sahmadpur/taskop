@@ -10,7 +10,7 @@ export class ProblemWriter {
 
   /**
    * Rewrites a counted execution's problems from its answers (spec §5.2). Upserting on (execution, item, source)
-   * keeps a problem's id and created_at while it persists; problems that are gone are deleted.
+   * keeps a problem's id and created_at while it persists; problems that are gone are deleted, unless a task was created from them.
    */
   async rewrite(
     e: { id: string; tenantId: string },
@@ -52,6 +52,8 @@ export class ProblemWriter {
         and(
           eq(executionProblems.executionId, e.id),
           keep.length ? notInArray(sql<string>`${executionProblems.itemId}::text || ':' || ${executionProblems.source}::text`, keep) : undefined,
+          // A problem turned into a task stays (spec §5): a late answers sync on a swept run may no longer derive it.
+          sql`not exists (select 1 from tasks k where k.problem_id = ${executionProblems.id})`,
         ),
       );
   }
