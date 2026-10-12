@@ -76,7 +76,12 @@ describe('Tapşırıqlar', () => {
     mockPermissions = ['tasks.manage'];
     await renderWithServices(t.services, <TasksScreen />);
     await fireEvent.press(await screen.findByRole('button', { name: 'Yeni tapşırıq' }));
-    expect(mockPush).toHaveBeenCalledWith('/task/new');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/task/new', params: { n: expect.any(String) } });
+    // Every press is a new visit with its own nonce.
+    await fireEvent.press(screen.getByRole('button', { name: 'Yeni tapşırıq' }));
+    const nonces = mockPush.mock.calls.map((c) => (c[0] as { params: { n: string } }).params.n);
+    expect(nonces).toHaveLength(2);
+    expect(nonces[0]).not.toBe(nonces[1]);
   });
 
   it('lists the tasks awaiting my review for tasks.manage holders, online, and opens one', async () => {
@@ -98,7 +103,9 @@ describe('Tapşırıqlar', () => {
     expect(within(row).getByText('Murad Həsənov')).toBeTruthy();
     expect(mockList).toHaveBeenCalledWith({ awaitingMyReview: 'true' });
     await fireEvent.press(row);
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/review/[id]', params: { id: TASK4 } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/review/[id]', params: { id: TASK4, n: expect.any(String) } });
+    await fireEvent.press(row);
+    expect((mockPush.mock.calls[0]![0] as { params: { n: string } }).params.n).not.toBe((mockPush.mock.calls[1]![0] as { params: { n: string } }).params.n);
   });
 
   it('shows no Yoxlama to workers, and asks managers for a connection while offline', async () => {

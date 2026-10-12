@@ -142,4 +142,29 @@ describe('CreateTaskScreen', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Yarat' }));
     expect(await screen.findByText('Daxil edilən məlumatları yoxlayın.')).toBeTruthy();
   });
+
+  it('deletes the photos of a task that was never created when the screen goes away, and keeps those of a created one', async () => {
+    const { pickFromGallery } = jest.requireMock('@/features/execution/capture') as { pickFromGallery: jest.Mock };
+    const t = await createTestServices({ online: true });
+    const first = capturedPhoto(t.transport, { source: 'gallery' });
+    pickFromGallery.mockResolvedValue(first);
+    const view = await renderWithServices(t.services, <CreateTaskScreen />);
+    await screen.findByRole('radio', { name: 'Murad Həsənov' });
+    await fireEvent.press(screen.getByRole('button', { name: 'Foto: Qalereya' }));
+    await screen.findByTestId('instruction-0');
+    await view.unmount();
+    expect(t.transport.removed).toEqual([first.localUri]);
+
+    const second = capturedPhoto(t.transport, { source: 'gallery' });
+    pickFromGallery.mockResolvedValue(second);
+    const again = await renderWithServices(t.services, <CreateTaskScreen />);
+    await fireEvent.changeText(screen.getByLabelText('Ad'), 'Qapı');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Murad Həsənov' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Foto: Qalereya' }));
+    await screen.findByTestId('instruction-0');
+    await fireEvent.press(screen.getByRole('button', { name: 'Yarat' }));
+    await eventually(async () => expect(mockBack).toHaveBeenCalled());
+    await again.unmount();
+    expect(t.transport.removed).toEqual([first.localUri]);
+  });
 });

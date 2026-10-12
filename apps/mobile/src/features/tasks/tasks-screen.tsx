@@ -27,7 +27,7 @@ export function TasksScreen() {
       <View style={styles.top}>
         <Text style={styles.heading}>{t('mobile.tasks.title')}</Text>
         <View style={styles.tools}>
-          {canManage ? <PrimaryButton title={`+ ${t('mobile.tasks.create.open')}`} accessibilityLabel={t('mobile.tasks.create.open')} onPress={() => router.push('/task/new')} /> : null}
+          {canManage ? <PrimaryButton title={`+ ${t('mobile.tasks.create.open')}`} accessibilityLabel={t('mobile.tasks.create.open')} onPress={() => router.push({ pathname: '/task/new', params: { n: services.newId() } })} /> : null}
           <SyncIndicator />
         </View>
       </View>

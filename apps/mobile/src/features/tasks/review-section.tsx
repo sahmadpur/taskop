@@ -6,11 +6,13 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { FormError, mobileErrorText } from '@/components/form-error';
 import { api } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
+import { useOffline } from '@/offline/context';
 import { useSyncStatus } from '@/offline/hooks';
 
 /** Spec §7.2 "Yoxlama": tasks awaiting the caller's review, fetched whenever the tab gains focus while online (decision 13). */
 export function ReviewSection() {
   const { t } = useTranslation();
+  const services = useOffline();
   const { online } = useSyncStatus();
   const [items, setItems] = useState<TaskSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function ReviewSection() {
             testID={`review-${item.id}`}
             accessibilityRole="button"
             accessibilityLabel={item.title}
-            onPress={() => router.push({ pathname: '/review/[id]', params: { id: item.id } })}
+            onPress={() => router.push({ pathname: '/review/[id]', params: { id: item.id, n: services.newId() } })}
             style={styles.card}
           >
             <Text style={styles.title}>{item.title}</Text>
