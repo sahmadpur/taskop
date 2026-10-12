@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import type { SyncTask, TaskDetail, TaskEvidence, TaskHistoryEntry } from '@taskop/contracts';
-import { asc, eq, getTableColumns, inArray } from 'drizzle-orm';
+import type { Page, SyncTask, TaskDetail, TaskEvidence, TaskHistoryEntry, TaskSummary } from '@taskop/contracts';
+import { and, asc, desc, eq, getTableColumns, gte, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
 import { taskMedia, taskStatusHistory, taskSubmissions, tasks, users } from '../db/schema';
+import type { TaskListQueryDto } from './dto';
 import { TaskProblems } from './task-problems';
 import { iso, selectTasks, toHistoryEntry, toSubmissionDto, toTaskMediaDto, toTaskSummary } from './task-rows';
 import { TaskScope } from './task-scope';
@@ -21,6 +22,28 @@ export class TaskQueries {
     private readonly scope: TaskScope,
     private readonly problems: TaskProblems,
   ) {}
+
+  /** GET /tasks (spec §6.2): readable tasks only, newest first, keyset on (created_at, id). */
+  async list(p: Principal, q: TaskListQueryDto): Promise<Page<TaskSummary>> {
+    const conds: (SQL | undefined)[] = [this.scope.readable(p)];
+    if (q.status) conds.push(inArray(tasks.status, q.status));
+    if (q.overdue !== undefined) conds.push(q.overdue ? isNotNull(tasks.overdueAt) : isNull(tasks.overdueAt));
+    if (q.siteId) conds.push(eq(tasks.siteId, q.siteId));
+    if (q.assigneeUserId) conds.push(eq(tasks.assigneeUserId, q.assigneeUserId));
+    if (q.teamId) conds.push(eq(tasks.assigneeTeamId, q.teamId));
+    if (q.createdBy) conds.push(eq(tasks.createdByUserId, q.createdBy));
+    if (q.source) conds.push(q.source === 'problem' ? isNotNull(tasks.problemId) : isNull(tasks.problemId));
+    if (q.awaitingMyReview) conds.push(eq(tasks.status, 'awaiting_review'), this.scope.reviewable(p));
+    if (q.dueFrom) conds.push(gte(tasks.dueAt, new Date(q.dueFrom)));
+    if (q.dueTo) conds.push(lte(tasks.dueAt, new Date(q.dueTo)));
+    if (q.cursor) conds.push(sql`(${tasks.createdAt}, ${tasks.id}) < (select c.created_at, c.id from tasks c where c.id = ${q.cursor})`);
+    const rows = await selectTasks(this.db.tx())
+      .where(and(...conds))
+      .orderBy(desc(tasks.createdAt), desc(tasks.id))
+      .limit(q.limit + 1);
+    const page = rows.slice(0, q.limit);
+    return { items: page.map(toTaskSummary), nextCursor: rows.length > q.limit ? page[page.length - 1]!.t.id : null };
+  }
 
   async detail(p: Principal, id: string): Promise<TaskDetail> {
     const access = await this.scope.access(p, id);

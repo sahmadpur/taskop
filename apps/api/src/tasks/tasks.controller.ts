@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { MediaUploadTicket, TaskAssigneeOptions, TaskDetail } from '@taskop/contracts';
+import type { MediaUploadTicket, Page, TaskAssigneeOptions, TaskDetail, TaskSummary } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
@@ -14,7 +14,9 @@ import {
   TaskAssigneeOptionsResponse,
   TaskAssigneeQueryDto,
   TaskDetailResponse,
+  TaskListQueryDto,
   TaskMediaRegisterDto,
+  TaskPageResponse,
   UpdateTaskDto,
 } from './dto';
 import { TaskAssignees } from './task-assignees';
@@ -42,6 +44,13 @@ export class TasksController {
   @ApiOkResponse({ type: TaskAssigneeOptionsResponse })
   options(@CurrentPrincipal() p: Principal, @Query() q: TaskAssigneeQueryDto): Promise<TaskAssigneeOptions> {
     return this.assignees.options(p, q.q);
+  }
+
+  /** Readable tasks only: tasks.view widens it to the data scope (spec §6.1). */
+  @Get()
+  @ApiOkResponse({ type: TaskPageResponse })
+  list(@CurrentPrincipal() p: Principal, @Query() q: TaskListQueryDto): Promise<Page<TaskSummary>> {
+    return this.queries.list(p, q);
   }
 
   @Get(':id')
