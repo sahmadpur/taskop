@@ -1,17 +1,21 @@
-import type {
-  ClaimCommand,
-  ClaimRejectionReason,
-  ClaimResult,
-  CompleteCommand,
-  CompleteResult,
-  MediaUploadTicket,
-  RegisterMediaCommand,
-  SaveAnswersCommand,
-  SaveAnswersResult,
-  SyncResponse,
+import {
+  type ClaimCommand,
+  type ClaimRejectionReason,
+  type ClaimResult,
+  type CompleteCommand,
+  type CompleteResult,
+  type MediaUploadTicket,
+  type RegisterMediaCommand,
+  type SaveAnswersCommand,
+  type SaveAnswersResult,
+  type SubmissionInput,
+  type SyncResponse,
+  syncTaskSchema,
+  type TaskActionCommand,
+  type TaskMediaRegisterInput,
 } from '@taskop/contracts';
 import type { ChangeFeed } from './change-feed';
-import { clampOffset, type Clock, measureOffset, readOffset } from './clock';
+import { clampOffset, type Clock, measureOffset, readOffset, serverTime } from './clock';
 import { type Db, getMeta } from './db';
 import { type ExecutionRow, iso, normIso, toExecution } from './local-model';
 import type { MediaQueue } from './media-queue';
@@ -19,7 +23,7 @@ import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type 
 import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import { knownVersionIds, mergePull } from './sync-pull';
-import { knownTaskIds } from './task-records';
+import { knownTaskIds, mergeTask } from './task-records';
 import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
@@ -199,9 +203,13 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     }, backoffDelay(failures));
   }
 
-  /** `deviceTime` is the worker's action time (the API refuses answers stamped at or after closes_at); the offset is the latest measured. */
+  /**
+   * Execution commands carry the worker's action time as `deviceTime` plus the latest offset (the API refuses answers stamped
+   * at or after closes_at). Task commands carry no offset (Part 1 decision 1): their times move onto the server's clock here.
+   */
   async function send(cmd: OutboxCommand): Promise<unknown> {
-    const body = { ...cmd.payload, deviceTime: cmd.createdAt, clientOffsetMs: clampOffset(await readOffset(db)) };
+    const offset = clampOffset(await readOffset(db));
+    const body = { ...cmd.payload, deviceTime: cmd.createdAt, clientOffsetMs: offset };
     switch (cmd.kind) {
       case 'claim':
         return api.executions.claim(body as ClaimCommand);
@@ -211,6 +219,18 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         return api.executions.saveAnswers(cmd.entityId, body as SaveAnswersCommand);
       case 'complete':
         return api.executions.complete(cmd.entityId, body as CompleteCommand);
+      case 'task.accept':
+        return api.tasks.accept(cmd.entityId, { at: serverTime((cmd.payload as TaskActionCommand).at, offset) });
+      case 'task.start':
+        return api.tasks.start(cmd.entityId, { at: serverTime((cmd.payload as TaskActionCommand).at, offset) });
+      case 'task.media': {
+        const b = cmd.payload as TaskMediaRegisterInput;
+        return api.tasks.registerMedia(cmd.entityId, { ...b, capturedAt: serverTime(b.capturedAt, offset) });
+      }
+      case 'task.submit': {
+        const b = cmd.payload as SubmissionInput;
+        return api.tasks.submit(cmd.entityId, { ...b, submittedAt: serverTime(b.submittedAt, offset) });
+      }
     }
   }
 
@@ -240,7 +260,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         await tx.run(`UPDATE occurrences SET status = 'started' WHERE id = ? AND status IN ('pending', 'overdue', 'missed')`, [e.occurrence_id]);
         return null;
       }
-      case 'media': {
+      case 'media':
+      case 'task.media': {
         const ticket = result as MediaUploadTicket;
         await tx.run('UPDATE media SET registered_at = ? WHERE id = ?', [iso(now), cmd.refId]);
         // The server already holds the file (uploadUrl is null then): nothing is left for the media queue.
@@ -257,6 +278,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
           'UPDATE executions SET state = ?, completed_at = coalesce(?, completed_at), synced_rev = max(synced_rev, ?), updated_at = ? WHERE id = ?',
           [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.entityId],
         );
+        return null;
+      }
+      case 'task.accept':
+      case 'task.start':
+      case 'task.submit': {
+        // The task may have left the phone while the command was in flight.
+        if (!(await tx.first('SELECT 1 AS one FROM tasks WHERE id = ?', [cmd.entityId]))) return null;
+        if (cmd.kind === 'task.submit') await tx.run('DELETE FROM task_drafts WHERE task_id = ? AND submission_id = ?', [cmd.entityId, cmd.refId]);
+        await mergeTask(tx, syncTaskSchema.parse(result), now, cmd.seq);
         return null;
       }
     }

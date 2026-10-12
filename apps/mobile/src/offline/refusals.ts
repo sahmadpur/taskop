@@ -3,6 +3,7 @@ import type { Db } from './db';
 import { withoutMedia } from './execution-store';
 import { type ExecutionRow, iso, toExecution } from './local-model';
 import { appendCommand, type OutboxCommand } from './outbox';
+import { revertTask } from './task-records';
 
 /**
  * What happens to work the server refused for good. Such a command could only stay red forever and keep the
@@ -159,7 +160,8 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
   switch (row.kind) {
     case 'claim':
       return abandonExecution(tx, row.entity_id, now, note);
-    case 'media': {
+    case 'media':
+    case 'task.media': {
       await tx.run('DELETE FROM outbox WHERE seq = ?', [seq]);
       const file = row.ref_id ? await dropMedium(tx, row.ref_id, now, note) : null;
       return file ? [file] : [];
@@ -175,5 +177,11 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
       await tx.run('UPDATE executions SET synced_rev = rev WHERE id = ?', [row.entity_id]);
       return [];
     }
+    case 'task.accept':
+    case 'task.start':
+    case 'task.submit':
+      // The failed command goes with every queued status change of its task; the draft stays, unsubmitted.
+      await revertTask(tx, row.entity_id, note, now);
+      return [];
   }
 }

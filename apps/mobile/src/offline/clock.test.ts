@@ -1,5 +1,5 @@
 import { EXECUTION_LIMITS } from '@taskop/contracts';
-import { clampOffset, isClockSkewed, isClockTooFarAhead, measureOffset, readOffset } from './clock';
+import { clampOffset, isClockSkewed, isClockTooFarAhead, measureOffset, readOffset, serverTime } from './clock';
 import { setMeta } from './db';
 import { openTestDb } from './testing/node-db';
 
@@ -29,5 +29,13 @@ describe('clock offset', () => {
     expect(isClockTooFarAhead(tolerance)).toBe(false);
     expect(isClockTooFarAhead(tolerance + 1)).toBe(true);
     expect(isClockTooFarAhead(-10 * tolerance)).toBe(false);
+  });
+});
+
+describe('serverTime', () => {
+  it('moves a device instant onto the server clock (offset = device − server)', () => {
+    expect(serverTime('2026-11-02T04:10:00.000Z', 120_000)).toBe('2026-11-02T04:08:00.000Z');
+    expect(serverTime('2026-11-02T04:10:00.000Z', -60_000)).toBe('2026-11-02T04:11:00.000Z');
+    expect(serverTime('2026-11-02T04:10:00.000Z', 0)).toBe('2026-11-02T04:10:00.000Z');
   });
 });

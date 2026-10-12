@@ -76,3 +76,13 @@ export async function knownTaskIds(db: Db): Promise<string[]> {
     await db.all<{ id: string }>(`SELECT id FROM tasks ORDER BY json_extract(data, '$.updatedAt') DESC, id LIMIT ?`, [TASK_LIMITS.knownTaskIds])
   ).map((r) => r.id);
 }
+
+/**
+ * The phone's view of a task goes back to the server's copy: queued accept, start and submission commands go, a submitted
+ * draft becomes unsubmitted (kept; editable only while the task is in progress), and the note says why.
+ */
+export async function revertTask(tx: Db, taskId: string, note: string, now: number): Promise<void> {
+  await tx.run(`DELETE FROM outbox WHERE entity_type = 'task' AND entity_id = ? AND kind IN ${STATUS_KINDS_SQL}`, [taskId]);
+  await tx.run('UPDATE task_drafts SET submitted_at = NULL, updated_at = ? WHERE task_id = ?', [iso(now), taskId]);
+  await tx.run(`UPDATE tasks SET local_status = json_extract(data, '$.status'), sync_note = ?, updated_at = ? WHERE id = ?`, [note, iso(now), taskId]);
+}
