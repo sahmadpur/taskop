@@ -114,6 +114,16 @@ describe('task store', () => {
     expect(h.writes).toEqual(['claim']);
   });
 
+  it('queues instruction photos only: anything else is refused before it touches the queue, and an empty list triggers no sync', async () => {
+    const h = await createHarness();
+    await expect(h.tasks.queueInstructionMedia(TASK2, [capturedPhoto(h.transport), capturedVideo(h.transport)])).rejects.toBeInstanceOf(RangeError);
+    expect(await commands(h)).toEqual([]);
+    expect(await h.db.all('SELECT id FROM media')).toEqual([]);
+    await h.tasks.queueInstructionMedia(TASK2, []);
+    expect(await commands(h)).toEqual([]);
+    expect(h.writes).toEqual([]);
+  });
+
   it('offline start, photo and Tamamla reach the server in order once online', async () => {
     const h = await withTask();
     h.net.online = false;

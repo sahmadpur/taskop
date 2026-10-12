@@ -198,6 +198,9 @@ export function createTaskStore(deps: Pick<StoreDeps, 'db' | 'clock' | 'newId' |
 
   /** After an online create (decision 9): the instruction photos register and upload through the outbox and the media queue. */
   async function queueInstructionMedia(taskId: string, photos: readonly CapturedMedia[]): Promise<void> {
+    if (photos.length === 0) return;
+    // Instruction media are photos (plan decision 9); refuse anything else before it touches the queue.
+    if (photos.some((m) => m.kind !== 'photo')) throw new RangeError('Instruction media are photos');
     if (photos.length > TASK_LIMITS.instructionMedia) throw new MediaLimitError();
     const now = clock.now();
     await db.transaction(async (tx) => {

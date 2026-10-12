@@ -23,6 +23,7 @@ export default function AppLayout() {
         <Tabs.Screen name="execution/[id]/index" options={HIDDEN} />
         <Tabs.Screen name="execution/[id]/finish" options={HIDDEN} />
         <Tabs.Screen name="task/[id]" options={HIDDEN} />
+        <Tabs.Screen name="task/new" options={HIDDEN} />
       </Tabs>
     </OfflineProvider>
   );

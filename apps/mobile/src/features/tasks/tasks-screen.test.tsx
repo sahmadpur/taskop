@@ -7,8 +7,15 @@ import { TasksScreen } from './tasks-screen';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) } }));
+let mockPermissions: string[] = [];
+jest.mock('@/lib/session', () => ({
+  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: mockPermissions } }),
+}));
 
-beforeEach(() => mockPush.mockClear());
+beforeEach(() => {
+  mockPush.mockClear();
+  mockPermissions = [];
+});
 
 async function world() {
   const t = await createTestServices();
@@ -49,5 +56,17 @@ describe('Tapşırıqlar', () => {
     await renderWithServices(t.services, <TasksScreen />);
     await fireEvent.press(await screen.findByRole('button', { name: 'Rəfi bərkit' }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/task/[id]', params: { id: TASK2 } });
+  });
+
+  it('offers "Yeni tapşırıq" to tasks.manage holders only', async () => {
+    const t = await world();
+    const view = await renderWithServices(t.services, <TasksScreen />);
+    await screen.findByTestId('section-mine');
+    expect(screen.queryByRole('button', { name: 'Yeni tapşırıq' })).toBeNull();
+    await view.unmount();
+    mockPermissions = ['tasks.manage'];
+    await renderWithServices(t.services, <TasksScreen />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Yeni tapşırıq' }));
+    expect(mockPush).toHaveBeenCalledWith('/task/new');
   });
 });
