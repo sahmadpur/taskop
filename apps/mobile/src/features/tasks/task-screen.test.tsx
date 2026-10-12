@@ -1,5 +1,5 @@
 import type { ProblemDto, SyncTask } from '@taskop/contracts';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '@/lib/i18n';
 import { capturedPhoto } from '@/offline/testing/fake-transport';
@@ -10,6 +10,18 @@ import { TaskScreen } from './task-screen';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/features/execution/capture', () => ({ CaptureModal: () => null, VideoPreview: () => null, pickFromGallery: jest.fn() }));
+// Records each button's latest onPress, so a test can fire it twice before React renders the first press's `busy`.
+const mockPress: Record<string, () => void> = {};
+jest.mock('@/components/primary-button', () => {
+  const actual = jest.requireActual('@/components/primary-button');
+  const { createElement } = jest.requireActual('react');
+  return {
+    PrimaryButton: (p: { title: string; onPress: () => void }) => {
+      mockPress[p.title] = p.onPress;
+      return createElement(actual.PrimaryButton, p);
+    },
+  };
+});
 const mockUrl = jest.fn();
 const mockProblemUrl = jest.fn();
 jest.mock('@/lib/session', () => ({
@@ -32,7 +44,17 @@ async function opened(over: Partial<SyncTask> = {}, o: { online?: boolean } = {}
 }
 const gallery = () => (jest.requireMock('@/features/execution/capture') as { pickFromGallery: jest.Mock }).pickFromGallery;
 
+/** Calls the button's handler twice before React renders the first press's `busy`, the way a fast double tap does. */
+async function pressTwiceInOneTick(name: string) {
+  const press = mockPress[name]!;
+  await act(async () => {
+    press();
+    press();
+  });
+}
+
 beforeEach(() => jest.clearAllMocks());
+afterEach(() => jest.restoreAllMocks());
 
 describe('TaskScreen', () => {
   it('offers Qəbul et and Başla on a new task; Başla accepts and starts it', async () => {
@@ -185,5 +207,35 @@ describe('TaskScreen', () => {
     const submit = await t.db.first<{ payload: string }>(`SELECT payload FROM outbox WHERE kind = 'task.submit'`);
     expect(JSON.parse(submit!.payload)).toMatchObject({ text: 'Yeni mətn' });
     alert.mockRestore();
+  });
+
+  it.each([
+    ['Qəbul et', 'accept', { status: 'new' }],
+    ['Başla', 'start', { status: 'new' }],
+  ] as const)('a same-tick double press on %s changes the status once and raises no alert', async (name, method, over) => {
+    const t = await opened(over);
+    const alert = jest.spyOn(Alert, 'alert');
+    let release: () => void = () => undefined;
+    const spy = jest.spyOn(t.services.tasks, method).mockImplementation(() => new Promise<void>((r) => (release = r)));
+    await pressTwiceInOneTick(name);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await act(async () => release());
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('a same-tick double press on Tamamla submits once and raises no alert', async () => {
+    const t = await createTestServices();
+    await t.seed(syncResponse({ checklistVersions: [versionOf(t.c.content)], tasks: [syncTask({ status: 'in_progress' })] }));
+    await t.services.tasks.attachMedia(TASK, capturedPhoto(t.transport));
+    await renderWithServices(t.services, <TaskScreen taskId={TASK} />);
+    await screen.findByText('Soyuducunun qapısını təmir et');
+    const alert = jest.spyOn(Alert, 'alert');
+    let release: () => void = () => undefined;
+    const spy = jest.spyOn(t.services.tasks, 'submit').mockImplementation(() => new Promise((r) => (release = () => r({ ok: true }))));
+    await pressTwiceInOneTick('Tamamla');
+    await eventually(async () => expect(spy).toHaveBeenCalledTimes(1));
+    await act(async () => release());
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(alert).not.toHaveBeenCalled();
   });
 });

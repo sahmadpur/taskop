@@ -71,6 +71,13 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       .catch(report)
       .finally(() => setBusy(false));
   };
+  // Qəbul et, Başla and Tamamla: a second press in the same tick (before `busy` has rendered) must not repeat the status change.
+  const statusInFlight = useRef(false);
+  const runStatus = (job: () => Promise<unknown>) => {
+    if (statusInFlight.current) return;
+    statusInFlight.current = true;
+    run(() => job().finally(() => (statusInFlight.current = false)));
+  };
 
   if (data === undefined) {
     return (
@@ -115,7 +122,7 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       { text: t('mobile.evidence.remove'), style: 'destructive', onPress: () => run(() => tasks.removeMedia(taskId, mediaId)) },
     ]);
   const complete = () =>
-    run(async () => {
+    runStatus(async () => {
       const before = failures.current;
       flushText.current?.();
       await saves.current;
@@ -137,8 +144,8 @@ export function TaskScreen({ taskId }: { taskId: string }) {
         {isTaskOverdue(task, now) ? <Badge text={t('tasks.flags.overdue')} tone="danger" /> : null}
         {s.priority === 'high' ? <Badge text={t('tasks.priorities.high')} tone="warning" /> : null}
       </View>
-      {notes.map((n) => (
-        <Text key={n} style={styles.warning}>
+      {notes.map((n, i) => (
+        <Text key={i} style={styles.warning}>
           {n}
         </Text>
       ))}
@@ -171,9 +178,9 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       {task.status === 'new' || task.status === 'accepted' ? (
         <View style={styles.actions}>
           {task.status === 'new' ? (
-            <PrimaryButton variant="outline" title={t('mobile.tasks.detail.accept')} onPress={() => run(() => tasks.accept(taskId))} disabled={busy} />
+            <PrimaryButton variant="outline" title={t('mobile.tasks.detail.accept')} onPress={() => runStatus(() => tasks.accept(taskId))} disabled={busy} />
           ) : null}
-          <PrimaryButton title={t('mobile.tasks.detail.start')} onPress={() => run(() => tasks.start(taskId))} disabled={busy} />
+          <PrimaryButton title={t('mobile.tasks.detail.start')} onPress={() => runStatus(() => tasks.start(taskId))} disabled={busy} />
         </View>
       ) : null}
 

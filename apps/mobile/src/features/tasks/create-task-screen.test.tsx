@@ -131,4 +131,15 @@ describe('CreateTaskScreen', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(await t.db.all('SELECT id FROM media')).toHaveLength(1);
   });
+
+  it('shows the top-level error when the server rejects a field the form does not draw', async () => {
+    const { ApiError } = jest.requireActual<typeof import('@taskop/api-client')>('@taskop/api-client');
+    mockCreate.mockRejectedValueOnce(new ApiError(422, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { instructions: 'errors.VALIDATION_FAILED' }));
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <CreateTaskScreen />);
+    await fireEvent.changeText(screen.getByLabelText('Ad'), 'Qapı');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Murad Həsənov' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Yarat' }));
+    expect(await screen.findByText('Daxil edilən məlumatları yoxlayın.')).toBeTruthy();
+  });
 });

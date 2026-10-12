@@ -147,4 +147,13 @@ describe('ReviewScreen', () => {
     await eventually(async () => expect(mockBack).toHaveBeenCalledTimes(1));
     expect(mockReview).toHaveBeenCalledTimes(2);
   });
+
+  it('shows the top-level error when the server rejects a field the form does not draw', async () => {
+    const { ApiError } = jest.requireActual<typeof import('@taskop/api-client')>('@taskop/api-client');
+    mockGet.mockResolvedValue(awaiting());
+    mockReview.mockRejectedValueOnce(new ApiError(422, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { decision: 'errors.VALIDATION_FAILED' }));
+    await opened();
+    await fireEvent.press(await screen.findByRole('button', { name: 'Təsdiqlə' }));
+    expect(await screen.findByText('Daxil edilən məlumatları yoxlayın.')).toBeTruthy();
+  });
 });

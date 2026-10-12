@@ -64,8 +64,10 @@ export function ReviewScreen({ taskId }: { taskId: string }) {
       router.back();
     } catch (e) {
       inFlight.current = false;
-      if (e instanceof ApiError && e.fields) setFields(e.fields);
-      else setError(mobileErrorText(t, e));
+      if (e instanceof ApiError && e.fields) {
+        setFields(e.fields);
+        if (!e.fields.comment) setError(mobileErrorText(t, e));
+      } else setError(mobileErrorText(t, e));
     } finally {
       setBusy(false);
     }

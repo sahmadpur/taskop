@@ -32,6 +32,8 @@ import { useSyncStatus } from '@/offline/hooks';
 import { ScreenHeader } from './screen-header';
 
 const ASSIGNEE_SEARCH_DELAY_MS = 300;
+/** The field errors the form draws; any other key is reported as the form's own error. */
+const SHOWN_FIELDS: ReadonlySet<string> = new Set(['title', 'assignee', 'siteId', 'dueAt']);
 
 const withLevel = (e: TaskEvidence, kind: MediaKind, level: EvidenceLevel): TaskEvidence => (kind === 'photo' ? { ...e, photo: level } : { ...e, video: level });
 
@@ -159,8 +161,10 @@ export function CreateTaskScreen() {
       router.back();
     } catch (e) {
       inFlight.current = false;
-      if (e instanceof ApiError && e.fields) setFields(e.fields);
-      else setError(mobileErrorText(t, e));
+      if (e instanceof ApiError && e.fields) {
+        setFields(e.fields);
+        if (!Object.keys(e.fields).some((k) => SHOWN_FIELDS.has(k))) setError(mobileErrorText(t, e));
+      } else setError(mobileErrorText(t, e));
     } finally {
       setBusy(false);
     }
