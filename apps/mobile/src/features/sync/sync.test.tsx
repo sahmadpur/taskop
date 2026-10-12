@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 import '@/lib/i18n';
 import { capturedPhoto } from '@/offline/testing/fake-transport';
-import { ME, OCC, T } from '@/offline/testing/fixtures';
+import { ME, OCC, syncResponse, syncTask, T, TASK, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
 import { SyncIndicator } from './sync-indicator';
@@ -111,5 +111,15 @@ describe('sync screen', () => {
     await eventually(async () => expect(t.services.engine.status().failed).toBe(0));
     expect(await t.services.store.mediaRefusals(id)).toHaveLength(1);
     alert.mockRestore();
+  });
+});
+
+describe('sync queue with tasks', () => {
+  it('names a task command after its kind and its task', async () => {
+    const t = await createTestServices();
+    await t.seed(syncResponse({ checklistVersions: [versionOf(t.c.content)], tasks: [syncTask()] }));
+    await t.services.tasks.start(TASK);
+    await renderWithServices(t.services, <SyncScreen />);
+    expect(await screen.findByText('Tapşırığa başlama · Soyuducunun qapısını təmir et')).toBeTruthy();
   });
 });
