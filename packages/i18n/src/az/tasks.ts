@@ -79,7 +79,7 @@ export default {
     videoTooLarge: 'Video MP4 və ya MOV olmalı: ən çox 60 saniyə, 720p və 60 MB.',
     uploadError: 'Fayl yüklənmədi.',
     uploadClock: 'Kompüterin saatını yoxlayın.',
-    uploadLimit: 'Təlimat faylları limiti dolub (5).',
+    uploadLimit: 'Təlimat faylları limiti dolub ({{count}}).',
     remove: 'Sil',
     fileStates: { waiting: 'Gözləyir', uploading: 'Yüklənir…', done: 'Yükləndi', failed: 'Yüklənmədi', refused: 'Qəbul edilmədi' },
     retryUpload: 'Faylları yenidən yüklə',

@@ -230,7 +230,7 @@ describe('task web translations', () => {
     expect(az.tasks.dialog.mediaLimit).toContain('{{count}}');
     for (const s of ['waiting', 'uploading', 'done', 'failed', 'refused'] as const) expect(az.tasks.dialog.fileStates[s], s).toBeTypeOf('string');
     expect(az.tasks.dialog.uploadClock).toBe('Kompüterin saatını yoxlayın.');
-    expect(az.tasks.dialog.uploadLimit).toBe('Təlimat faylları limiti dolub (5).');
+    expect(az.tasks.dialog.uploadLimit).toBe('Təlimat faylları limiti dolub ({{count}}).');
     expect(az.tasks.drawer.submission).toContain('{{n}}');
     expect(az.tasks.drawer.evidenceValue).toContain('{{photo}}');
     expect(az.tasks.problems.create).toBe('Tapşırıq yarat');
