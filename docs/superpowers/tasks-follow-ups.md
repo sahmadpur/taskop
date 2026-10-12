@@ -8,7 +8,10 @@ Items found while building sub-project 5 that are out of its scope. ⚑ marks th
 - **Permission backfill.** `0010_tasks_security.sql` gave the task keys to the existing Admin, Manager and Auditor roles (SP2–SP4 backfilled Admin only). Nothing was deployed then; revisit the rule before the first production migration of a later sub-project.
 - **Overdue in the timeline.** `overdue_at` is a flag with a timestamp, not a `task_status_history` row. If reports (SP7, FR-18.12) need it in the status timeline, add an event-type column to the history table.
 - **Sync size.** `/me/sync` returns the open tasks assigned to the user, the unaccepted open tasks of the user's active teams, and the user's tasks closed in the last 7 days, and `knownTaskIds` is capped at 100 (to keep the sync URL short). If a user ever holds more tasks, move tasks to a change cursor on `(updated_at, id)` (the `tasks_sync_idx` index is already there).
-- **Concurrent duplicate creates** (the same task id sent twice in parallel) can produce one `500` from `tasks_pkey`; the retry returns the stored task. Map `tasks_pkey` to a replay if it shows up in logs.
+- **Client-id primary-key collisions answer `500`.** A concurrent create with the same task id (two requests in parallel) and a cross-tenant collision on a client-chosen id both reach `tasks_pkey` and fail with `500` instead of a replay or a `409`. The retry of the first returns the stored task. Map `tasks_pkey` (a replay within the tenant, `409` across tenants) if it shows up in logs.
+- **Confirm and register replays answer differently for a non-uploader.** Confirming a medium someone else uploaded answers `403`, while registering the same medium id again answers `404`. An ex-manager replaying an instruction-medium registration still gets a `PUT` URL for a medium that is still pending (harmless). Align the codes if clients ever branch on them.
+- **Rare create-from-problem race.** A late answers sync on a partial run and a create-from-problem for the same problem can collide on the `RESTRICT` foreign key and answer `500`; the retry succeeds. Serialise the two paths on the problem if it shows up in logs.
+- **Evidence rules edited after media registration are not re-applied at submit.** If a manager changes a task's evidence rules after media was registered, the new rules are not applied to that media when the submission is made. Re-check at submit if that matters.
 - **Instruction media** can be added but not removed after creation (no `DELETE` on `task_media`). Add an `archived_at` column if managers ask to remove a wrong photo.
 - **Media retention per subscription plan** (NFR-10.03) → sub-project 9. `task-media.cleanup` only removes never-uploaded objects.
 
@@ -18,15 +21,13 @@ Small items noticed while reviewing each piece of the tasks API and left for lat
 
 ### Tests
 
-- Request-schema tests could cover more combinations of evidence, review and list-query settings, and the limits test pins only the cap on `knownTaskIds`.
-- The sync test checks the task ids but there is no API-level assertion on a task's execution state yet.
+- Request-schema tests could cover more combinations of evidence, review and list-query settings.
 - The database test for the tasks migration could also assert: the backfill start index is found, replaying it is harmless and bumps `roles.version`, the `taskop_platform` grants, and `WITH CHECK` on the other tables.
 - Missing coverage on reading and listing:
   - media attached to another execution
   - paging a resolved list with a cursor
   - paging when two rows share the same cursor value
   - widening a filter beyond the caller's scope
-  - the sub-site read rule for a reader who is not the creator
 - Missing coverage on creating and assigning:
   - a partial-run create
   - a user without `assignments.view`
@@ -58,7 +59,6 @@ Small items noticed while reviewing each piece of the tasks API and left for lat
 - When one edit request both changes other fields and reassigns the task, the `task.updated` audit entry's after-view also shows the assignee and status change that `task.reassigned` already records.
 - Pending media counts as evidence on submit (by design); the evidence message key is built from a template instead of the typed issue codes that already exist in contracts.
 - `knownTaskIds` in `/me/sync` can echo a duplicated id twice in `removedTaskIds`.
-- Some plan documents still say 200 for the `knownTaskIds` cap; the real cap is 100, which the phone work (Part 2) should use.
 - Possible refactors: a shared upload-ticket helper for the small media-service mirrors (ticket, uploaded replay literal, MIME check), one helper for the revision-bump update that is repeated six times, and reusing the team-member predicate in `isActiveTeamMember`.
 
 ### Infra and housekeeping

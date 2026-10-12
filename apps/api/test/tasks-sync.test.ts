@@ -70,10 +70,12 @@ describe('tasks in the download sync', () => {
     expect([taskIds(week.body), week.body.removedTaskIds]).toEqual([[], known]);
   });
 
-  it('accepts 100 known task ids and refuses 101', async () => {
+  it('reads the first 100 known task ids and drops the rest instead of failing the pull', async () => {
     const w = await taskWorld(t);
     const ids = (n: number) => Array.from({ length: n }, () => uuidv7());
     expect((await pull(w.workers[0].api, ids(100))).status).toBe(200);
-    expect((await pull(w.workers[0].api, ids(101))).status).toBe(400);
+    const over = ids(101);
+    const res = await pull(w.workers[0].api, over);
+    expect([res.status, res.body.removedTaskIds]).toEqual([200, over.slice(0, 100)]);
   });
 });

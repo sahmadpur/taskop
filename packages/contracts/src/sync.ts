@@ -4,19 +4,24 @@ import { myExecutionSchema, syncChecklistVersionSchema, syncOccurrenceSchema } f
 import { syncTaskSchema } from './task-views.js';
 import { TASK_LIMITS } from './tasks.js';
 
-/** `a,b` in the query string. */
-const idList = (max: number) =>
+const splitIds = (s: string | undefined) => (s ? s.split(',').filter(Boolean) : []);
+
+/** `a,b` in the query string; more than `max` ids fail the request. */
+const idList = (max: number) => z.string().optional().transform(splitIds).pipe(z.array(idSchema).max(max));
+
+/** `a,b` in the query string; ids beyond the first `max` are dropped (spec R20), so an old client never loses its whole sync. */
+const idListTruncated = (max: number) =>
   z
     .string()
     .optional()
-    .transform((s) => (s ? s.split(',').filter(Boolean) : []))
-    .pipe(z.array(idSchema).max(max));
+    .transform((s) => splitIds(s).slice(0, max))
+    .pipe(z.array(idSchema));
 
 export const syncQuerySchema = z.object({
   /** Checklist versions the phone already holds. */
   knownVersionIds: idList(200),
-  /** Tasks the phone holds; those no longer in `tasks` come back in `removedTaskIds` (spec §6.4). */
-  knownTaskIds: idList(TASK_LIMITS.knownTaskIds),
+  /** Tasks the phone holds; those no longer in `tasks` come back in `removedTaskIds` (spec §6.4). Only the first TASK_LIMITS.knownTaskIds are read. */
+  knownTaskIds: idListTruncated(TASK_LIMITS.knownTaskIds),
 });
 export type SyncQuery = z.input<typeof syncQuerySchema>;
 

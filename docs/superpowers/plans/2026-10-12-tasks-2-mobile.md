@@ -39,7 +39,7 @@
 - **Task command bodies:** `task.accept`/`task.start` `{ at }`; `task.media` `TaskMediaRegisterInput`; `task.submit` `SubmissionInput`. They carry no `deviceTime`/`clientOffsetMs` (Part 1 decision 1). Their times (`at`, `capturedAt`, `submittedAt`) are stored as device times and sent as `device time − clockOffsetMs` (the offset measured at the last `/me/sync`), as Part 1's *Server behaviour Parts 2 and 3 rely on* documents ("Device times are sent on the server's clock").
 - **Atomicity:** accept, start, attach media, remove media and submit each run in **one** `db.transaction`. The draft text autosaves through `CommitInput` (500 ms after typing stops, on blur, on unmount) and writes no outbox command.
 - **Task limits:** response photos ≤ `TASK_LIMITS.responsePhotos` (10), videos ≤ `TASK_LIMITS.responseVideos` (3), text ≤ `TASK_LIMITS.submissionTextMax` (5,000); instruction photos ≤ `TASK_LIMITS.instructionMedia` (5); review comment ≤ `TASK_LIMITS.commentMax` (1,000). Photo resize, JPEG quality and the 720p/60 s video limits come from SP4's capture code (`MEDIA_LIMITS`). A live-only task offers the camera only. A kind whose evidence level is `none` offers no chip.
-- **Pull:** `sync.pull(knownVersionIds, knownTaskIds)` with ≤ `TASK_LIMITS.knownTaskIds` (200) task ids, newest received first.
+- **Pull:** `sync.pull(knownVersionIds, knownTaskIds)` sends at most the `TASK_LIMITS.knownTaskIds` (100) most recently updated local task ids, newest `updated_at` first. The server reads only the first 100 of the list and truncates any excess (Part 1 R11, R20), so a longer list would silently lose its tail; the phone never sends more.
 - **Local files:** a task medium's file is deleted **7 days** after its upload (`LOCAL_FILE_KEEP_DAYS`), or with its task.
 - **Manager screens** (Create, Review, the Yoxlama section) are online-only. Offline they show `az.mobile.tasks.online` ("İnternet bağlantısı tələb olunur") and send nothing. They are shown to holders of `tasks.manage` in `session.me.permissions`. The create screen's site options are `TaskAssigneeOptions.sites` from `GET /tasks/assignees` (Part 1 decision 25), so no `sites.view` is needed.
 - Commits use explicit paths (`git add <paths>`, never `-A`). Messages end with a blank line and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -867,7 +867,7 @@ export const syncTask = (over: Partial<SyncTask> = {}): SyncTask => ({
 
 - [ ] **Step 2: Write the failing tests**
 
-Append to `apps/mobile/src/offline/sync-pull.test.ts` (extend the fixtures import with `syncTask`, `TASK`, `TASK2`, `TEAM`, and import `knownTaskIds` from `./task-records`):
+Append to `apps/mobile/src/offline/sync-pull.test.ts` (extend the fixtures import with `syncTask`, `TASK`, `TASK2`, `TEAM`, and import `knownTaskIds` from `./task-records` and `TASK_LIMITS` from `@taskop/contracts`):
 
 ```ts
 describe('tasks in /me/sync', () => {
@@ -887,6 +887,19 @@ describe('tasks in /me/sync', () => {
     ]);
     expect(JSON.parse((await db.first<{ data: string }>('SELECT data FROM tasks WHERE id = ?', [TASK]))!.data)).toEqual(syncTask());
     expect((await knownTaskIds(db)).sort()).toEqual([TASK, TASK2]);
+  });
+
+  it('reports at most the 100 most recently updated tasks as known', async () => {
+    const db = await openTestDb();
+    for (let i = 0; i < 101; i++) {
+      const id = `task-${String(i).padStart(3, '0')}`;
+      const updatedAt = new Date(Date.parse(T.open) + i * 60_000).toISOString();
+      await db.run(`INSERT INTO tasks (id, data, local_status, rev, received_at, updated_at) VALUES (?, '{}', 'new', 1, ?, ?)`, [id, T.open, updatedAt]);
+    }
+    const known = await knownTaskIds(db);
+    expect(known).toHaveLength(TASK_LIMITS.knownTaskIds);
+    expect(known).not.toContain('task-000');
+    expect(known[0]).toBe('task-100');
   });
 
   it('a pull never overrides the status of a queued accept, start or submission, nor touches the draft', async () => {
@@ -1107,9 +1120,13 @@ export async function removeTasks(tx: Db, ids: readonly string[]): Promise<strin
   return files;
 }
 
-/** The tasks the phone holds, newest first (≤ TASK_LIMITS.knownTaskIds): /me/sync answers which of them left the set. */
+/**
+ * The ids of the TASK_LIMITS.knownTaskIds (100) most recently updated tasks the phone holds, newest first: /me/sync answers
+ * which of them left the set. The server truncates a longer list, so the cap is applied here; tasks beyond the 100 newest are not
+ * reported until they are among them.
+ */
 export async function knownTaskIds(db: Db): Promise<string[]> {
-  return (await db.all<{ id: string }>('SELECT id FROM tasks ORDER BY received_at DESC, id LIMIT ?', [TASK_LIMITS.knownTaskIds])).map((r) => r.id);
+  return (await db.all<{ id: string }>('SELECT id FROM tasks ORDER BY updated_at DESC, id LIMIT ?', [TASK_LIMITS.knownTaskIds])).map((r) => r.id);
 }
 ```
 

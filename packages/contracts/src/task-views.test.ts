@@ -76,7 +76,10 @@ describe('task read models', () => {
     expect(r.tasks[0]!.status).toBe('awaiting_review');
     expect(syncQuerySchema.parse({ knownTaskIds: `${ID},${ID}` })).toEqual({ knownVersionIds: [], knownTaskIds: [ID, ID] });
     expect(syncQuerySchema.safeParse({ knownTaskIds: Array(100).fill(ID).join(',') }).success).toBe(true);
-    expect(syncQuerySchema.safeParse({ knownTaskIds: Array(101).fill(ID).join(',') }).success).toBe(false);
+    // Over the cap the ids are truncated, not refused (R20); knownVersionIds keeps failing the request.
+    const over = syncQuerySchema.parse({ knownTaskIds: Array(101).fill(ID).join(',') });
+    expect(over.knownTaskIds).toHaveLength(100);
+    expect(syncQuerySchema.safeParse({ knownVersionIds: Array(201).fill(ID).join(',') }).success).toBe(false);
   });
 
   it('gives problems a resolution, a task link, the run state and each medium’s kind and status, with a resolution filter', () => {
