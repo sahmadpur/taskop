@@ -1,3 +1,4 @@
+import { ApiError } from '@taskop/api-client';
 import type { TaskDetail, TaskListQuery } from '@taskop/contracts';
 import { keepPreviousData, type QueryClient, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/session';
@@ -19,7 +20,13 @@ export const useTasks = (query: TaskListQuery, enabled = true) =>
     enabled,
   });
 
-export const useTask = (id: string) => useQuery({ queryKey: taskKeys.detail(id), queryFn: () => api.tasks.get(id) });
+/** A 404 (gone, or no longer readable for the caller after a command) is final: no retry, the drawer shows it. */
+export const useTask = (id: string) =>
+  useQuery({
+    queryKey: taskKeys.detail(id),
+    queryFn: () => api.tasks.get(id),
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
+  });
 
 /**
  * GET /tasks/assignees (tasks.manage only): the picker's people and teams for `q`, and the sites a task may name
