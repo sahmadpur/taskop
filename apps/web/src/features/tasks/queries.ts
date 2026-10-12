@@ -20,11 +20,15 @@ export const useTasks = (query: TaskListQuery, enabled = true) =>
     enabled,
   });
 
-/** A 404 (gone, or no longer readable for the caller after a command) is final: no retry, the drawer shows it. */
+/**
+ * A 404 (gone, or no longer readable for the caller after a command) is final: no retry, the drawer shows it. The phone
+ * moves a task on its own, so opening the drawer always asks again (the cached copy is shown meanwhile, never trusted).
+ */
 export const useTask = (id: string) =>
   useQuery({
     queryKey: taskKeys.detail(id),
     queryFn: () => api.tasks.get(id),
+    refetchOnMount: 'always',
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
   });
 
@@ -40,6 +44,8 @@ export const useTaskAssignees = (q: string, enabled: boolean) =>
  * page and the execution tab refetch too (the problem's resolution may have changed).
  */
 export async function storeTask(qc: QueryClient, task: TaskDetail): Promise<void> {
+  // A refetch started before the command would answer with the older task and overwrite this one.
+  await qc.cancelQueries({ queryKey: taskKeys.detail(task.id) });
   qc.setQueryData(taskKeys.detail(task.id), task);
   await Promise.all([
     qc.invalidateQueries({ queryKey: taskKeys.lists }),

@@ -147,9 +147,8 @@ test('a closed run’s problem becomes a task on the web; the worker answers thr
   });
   expect(first.status).toBe('awaiting_review');
 
-  // The manager sends it back from the drawer. The task created a moment ago is cached (staleTime 30 s) as "Yeni",
-  // so reload to see the phone's answer, as a manager opening the page later would.
-  await page.reload();
+  // The manager sends it back from the drawer. The task created a moment ago is cached as "Yeni"; the drawer asks
+  // again when it opens, so it shows the phone's answer without a reload.
   await glassRow.getByRole('link', { name: 'Açıq' }).click();
   await expect(page).toHaveURL(new RegExp(`/tasks\\?task=${task.id}`));
   const drawer = page.getByRole('dialog', { name: 'Giriş qapısının şüşələri təmizdir?' });
@@ -160,6 +159,7 @@ test('a closed run’s problem becomes a task on the web; the worker answers thr
   await drawer.getByRole('button', { name: 'Geri qaytar' }).click();
   await expect(drawer.getByText('İcradadır', { exact: true })).toBeVisible();
   await expect(drawer.getByRole('listitem', { name: 'Cavab 1' })).toContainText('Geri qaytarılıb');
+  await expect(drawer.getByRole('listitem', { name: 'Cavab 1' })).toContainText('Qırıq şüşənin qalıqlarını da yığın');
 
   // The phone answers again.
   const second = await phone<TaskDetail>('POST', `/tasks/${task.id}/submissions`, {

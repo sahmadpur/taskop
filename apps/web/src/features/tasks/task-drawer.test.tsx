@@ -1,10 +1,12 @@
 import { ApiError } from '@taskop/api-client';
 import type { TaskDetail } from '@taskop/contracts';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
 import { assigneeOptions, AT, MANAGER, problemDto, submissionDto, taskDetail, taskMediaDto } from './fixtures';
+import { taskKeys } from './queries';
 import { TaskDrawer } from './task-drawer';
 
 const mocks = vi.hoisted(() => ({
@@ -64,6 +66,16 @@ beforeEach(() => {
 });
 
 describe('TaskDrawer', () => {
+  it('asks again when it opens, also when the cached task is still fresh (the phone moves tasks on its own)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(taskKeys.detail('t1'), taskDetail({ status: 'new' }));
+    mocks.api.tasks.get.mockResolvedValue(taskDetail({ status: 'awaiting_review' }));
+    renderWithRouter(<TaskDrawer id="t1" onClose={vi.fn()} />, '/', client);
+    const drawer = await screen.findByRole('dialog');
+    await waitFor(() => expect(mocks.api.tasks.get).toHaveBeenCalledWith('t1'));
+    await waitFor(() => expect(drawer).toHaveTextContent('Yoxlamada'));
+  });
+
   it('shows details, instructions with media, submissions in order with their reviews, history and the problem', async () => {
     mocks.api.tasks.get.mockResolvedValue(inReview());
     const router = renderWithRouter(<TaskDrawer id="t1" onClose={vi.fn()} />, '/tasks?task=t1');
