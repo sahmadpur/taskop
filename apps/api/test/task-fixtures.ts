@@ -144,3 +144,26 @@ export interface TaskDbRow {
 export const taskRow = async (id: string): Promise<TaskDbRow> => (await ownerQuery<TaskDbRow>('select * from tasks where id = $1', [id])).rows[0]!;
 
 export const act = (api: Api, taskId: string, action: 'accept' | 'start', at: string) => api.post(`/api/v1/tasks/${taskId}/${action}`, { at });
+
+/** A 1000-byte camera JPEG captured at Monday 08:00 Baku (04:00Z). */
+export const taskMediaBody = (role: 'instruction' | 'response', extra: Record<string, unknown> = {}) => ({
+  id: uuidv7(),
+  role,
+  kind: 'photo',
+  source: 'camera',
+  mime: 'image/jpeg',
+  bytes: 1000,
+  width: 1600,
+  height: 1200,
+  capturedAt: '2026-11-02T04:00:00.000Z',
+  ...extra,
+});
+
+export const videoExtra = { kind: 'video', mime: 'video/mp4', width: 1280, height: 720, durationMs: 10_000 };
+
+export async function registerTaskMedia(api: Api, taskId: string, role: 'instruction' | 'response', extra: Record<string, unknown> = {}): Promise<string> {
+  const body = taskMediaBody(role, extra);
+  const res = await api.post(`/api/v1/tasks/${taskId}/media`, body);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return body.id;
+}

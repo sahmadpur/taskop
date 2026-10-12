@@ -15,7 +15,7 @@ import type { ExecutionRow } from './executions.service';
 
 export type MediaRow = typeof executionMedia.$inferSelect;
 
-const tooLarge = (cmd: RegisterMediaCommandDto): boolean =>
+export const tooLarge = (cmd: Pick<RegisterMediaCommandDto, 'kind' | 'bytes' | 'durationMs' | 'width' | 'height'>): boolean =>
   cmd.kind === 'photo'
     ? cmd.bytes > MEDIA_LIMITS.photoMaxBytes
     : cmd.bytes > MEDIA_LIMITS.videoMaxBytes ||
@@ -23,7 +23,7 @@ const tooLarge = (cmd: RegisterMediaCommandDto): boolean =>
       Math.min(cmd.width ?? 0, cmd.height ?? 0) > MEDIA_LIMITS.videoMaxShortEdge;
 
 /** Registrations kept per item and kind: room for retakes of media the worker removed on the phone. */
-const storageCap = (limit: number): number => Math.max(limit * 3, 10);
+export const storageCap = (limit: number): number => Math.max(limit * 3, 10);
 
 /**
  * Photos and videos (spec §6.7). The file goes straight from the phone to storage; the API only signs and checks.

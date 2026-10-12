@@ -1,11 +1,13 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { TaskAssigneeOptions, TaskDetail } from '@taskop/contracts';
+import type { MediaUploadTicket, TaskAssigneeOptions, TaskDetail } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { CreateTaskDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse } from './dto';
+import { MediaUploadTicketResponse } from '../executions/dto';
+import { CreateTaskDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse, TaskMediaRegisterDto } from './dto';
 import { TaskAssignees } from './task-assignees';
+import { TaskMediaService } from './task-media.service';
 import { TaskQueries } from './task-queries';
 import { TaskWorkService } from './task-work.service';
 import { TasksService } from './tasks.service';
@@ -20,6 +22,7 @@ export class TasksController {
     @Inject(TaskQueries) private readonly queries: TaskQueries,
     @Inject(TaskAssignees) private readonly assignees: TaskAssignees,
     @Inject(TaskWorkService) private readonly work: TaskWorkService,
+    @Inject(TaskMediaService) private readonly media: TaskMediaService,
   ) {}
 
   /** Declared before `:id`, so "assignees" is never parsed as an id. */
@@ -56,5 +59,13 @@ export class TasksController {
   @ApiOkResponse({ type: TaskDetailResponse })
   start(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskActionCommandDto): Promise<TaskDetail> {
     return this.work.start(p, id, body);
+  }
+
+  /** Instruction media: creator or manager. Response media: the assignee (spec §6.2). */
+  @Post(':id/media')
+  @HttpCode(200)
+  @ApiOkResponse({ type: MediaUploadTicketResponse })
+  registerMedia(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskMediaRegisterDto): Promise<MediaUploadTicket> {
+    return this.media.register(p, id, body);
   }
 }

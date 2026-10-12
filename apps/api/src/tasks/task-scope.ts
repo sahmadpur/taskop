@@ -91,6 +91,17 @@ export class TaskScope {
   }
 
   /**
+   * Who may manage a locked task: its creator, or a reader with tasks.manage over it. A reader who cannot manage gets
+   * 403, anyone else 404.
+   */
+  async assertManage(p: Principal, t: TaskRow): Promise<void> {
+    if (t.createdByUserId === p.userId) return;
+    const a = await this.access(p, t.id);
+    if (!a.canRead) throw new AppError('NOT_FOUND');
+    if (!a.canManage) throw new AppError('FORBIDDEN');
+  }
+
+  /**
    * Who may run a worker command on a locked task (spec Decision 8): the assignee, or a team member while nobody
    * has accepted. A member who lost the race gets TASK_ALREADY_TAKEN, other readers 403, everyone else 404.
    */
