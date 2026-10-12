@@ -97,4 +97,27 @@ describe('listing tasks and the read scope', () => {
     expect(await list(w1.api)).toEqual([]);
     expect((await w1.api.get(`/api/v1/tasks/${task.id}`)).status).toBe(404);
   });
+
+  it('lets a site_subtree manager read a task of their site that is not theirs and not assigned within their scope', async () => {
+    const w = await taskWorld(t);
+    const outsider = w.workers[2];
+    const inSite = await createTask(w.owner, newTaskBody({ userId: outsider.id }, { siteId: w.siteId }));
+    const elsewhere = await createTask(w.owner, newTaskBody({ userId: outsider.id }, { siteId: w.otherSiteId }));
+    const unplaced = await createTask(w.owner, newTaskBody({ userId: outsider.id }));
+    expect(await list(w.manager.api, '?limit=200')).toEqual([inSite.id]);
+    expect((await w.manager.api.get(`/api/v1/tasks/${inSite.id}`)).status).toBe(200);
+    for (const hidden of [elsewhere.id, unplaced.id]) expect((await w.manager.api.get(`/api/v1/tasks/${hidden}`)).status, hidden).toBe(404);
+  });
+
+  it('ignores ?teamId for a worker without tasks.view once a teammate has accepted the team task', async () => {
+    const w = await taskWorld(t);
+    const [w1, w2] = w.workers;
+    const task = await createTask(w.owner, newTaskBody({ teamId: w.teamId }));
+    expect(await list(w2.api, `?teamId=${w.teamId}`)).toEqual([task.id]);
+    clock.set(T('04:20'));
+    expect((await act(w1.api, task.id, 'accept', T('04:10'))).status).toBe(200);
+    expect(await list(w2.api, `?teamId=${w.teamId}`)).toEqual([]);
+    expect(await list(w2.api, '?limit=200')).toEqual([]);
+    expect(await list(w1.api, `?teamId=${w.teamId}`)).toEqual([task.id]);
+  });
 });
