@@ -6,14 +6,14 @@ import { DbService } from '../db/db.service';
 import { assignments, occurrences, shiftRoster, sites, users } from '../db/schema';
 import type { Actor } from './actor';
 
-const chain = (userId: string) => sql`(with recursive chain as (
+export const chain = (userId: string) => sql`(with recursive chain as (
     select u.id from users u where u.id = ${userId}
     union
     select u.id from users u join chain c on u.manager_id = c.id
   ) select id from chain)`;
 
 /** The site in `siteCol` lies under one of the user's own sites (Foundation §4.4). */
-const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`exists (
+export const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`exists (
     select 1 from user_sites mine
     join sites ms on ms.id = mine.site_id
     join sites target on target.id = ${siteCol}
@@ -71,6 +71,12 @@ export class SchedulingScope {
   /** Reading a site's roster: site_subtree managers only for their sites; narrower scopes see their own rows. */
   async assertSiteReadable(a: Actor, siteId: string): Promise<void> {
     if (a?.dataScope === 'site_subtree') await this.assertSiteWritable(a, siteId);
+  }
+
+  /** The sites a write may name, as SQL over `sites`: the filter form of assertSiteWritable (all, or site_subtree containing it). */
+  writableSites(a: Actor): SQL {
+    if (!a || a.dataScope === 'all') return sql`true`;
+    return a.dataScope === 'site_subtree' ? inSubtree(a.userId, sites.id) : sql`false`;
   }
 
   /** Writes need the site inside the actor's scope: all, or site_subtree containing it (spec §6). */
