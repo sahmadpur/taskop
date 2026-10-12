@@ -1,11 +1,22 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { MediaUploadTicket, TaskAssigneeOptions, TaskDetail } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
 import { MediaUploadTicketResponse } from '../executions/dto';
-import { CreateTaskDto, SubmissionDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse, TaskMediaRegisterDto } from './dto';
+import {
+  CancelTaskDto,
+  CreateTaskDto,
+  ReviewTaskDto,
+  SubmissionDto,
+  TaskActionCommandDto,
+  TaskAssigneeOptionsResponse,
+  TaskAssigneeQueryDto,
+  TaskDetailResponse,
+  TaskMediaRegisterDto,
+  UpdateTaskDto,
+} from './dto';
 import { TaskAssignees } from './task-assignees';
 import { TaskMediaService } from './task-media.service';
 import { TaskQueries } from './task-queries';
@@ -44,6 +55,29 @@ export class TasksController {
   @ApiCreatedResponse({ type: TaskDetailResponse })
   create(@CurrentPrincipal() p: Principal, @Body() body: CreateTaskDto): Promise<TaskDetail> {
     return this.tasks.create(p, body);
+  }
+
+  @Patch(':id')
+  @RequirePermission('tasks.manage')
+  @ApiOkResponse({ type: TaskDetailResponse })
+  update(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: UpdateTaskDto): Promise<TaskDetail> {
+    return this.tasks.update(p, id, body);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  @RequirePermission('tasks.manage')
+  @ApiOkResponse({ type: TaskDetailResponse })
+  cancel(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: CancelTaskDto): Promise<TaskDetail> {
+    return this.tasks.cancel(p, id, body);
+  }
+
+  /** The creator, or anyone who can manage the task (spec §6.1). */
+  @Post(':id/review')
+  @HttpCode(200)
+  @ApiOkResponse({ type: TaskDetailResponse })
+  review(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: ReviewTaskDto): Promise<TaskDetail> {
+    return this.tasks.review(p, id, body);
   }
 
   /** The assignee, or a team member while nobody has accepted (spec Decision 8). */

@@ -46,7 +46,7 @@ export class TaskMediaService {
     assertNotFuture(new Date(cmd.capturedAt), receivedAt);
     if (!(MEDIA_LIMITS.mimeTypes[cmd.kind] as readonly string[]).includes(cmd.mime)) throw new AppError('MEDIA_TYPE_INVALID');
     if (tooLarge(cmd)) throw new AppError('MEDIA_TOO_LARGE');
-    await this.assertRoom(t, cmd);
+    await this.assertRoom(p, t, cmd);
     const ext = MEDIA_LIMITS.extensions[cmd.mime as keyof typeof MEDIA_LIMITS.extensions];
     const [row] = await tx
       .insert(taskMedia)
@@ -82,8 +82,11 @@ export class TaskMediaService {
     if (t.assigneeUserId !== p.userId || (t.status !== 'accepted' && t.status !== 'in_progress')) throw new AppError('TASK_STATE_INVALID');
   }
 
-  /** Live-only and evidence levels (FR-12.05–06) and the registration caps (spec Decision 20). */
-  private async assertRoom(t: TaskRow, cmd: TaskMediaRegisterDto): Promise<void> {
+  /**
+   * Live-only and evidence levels (FR-12.05–06) and the registration caps (spec Decision 20). The response cap counts
+   * the caller's own unsubmitted registrations, so a previous assignee's leftovers never block the new one (ruling R15).
+   */
+  private async assertRoom(p: Principal, t: TaskRow, cmd: TaskMediaRegisterDto): Promise<void> {
     const tx = this.db.tx();
     if (cmd.role === 'instruction') {
       const [r] = await tx.select({ n: count() }).from(taskMedia).where(and(eq(taskMedia.taskId, t.id), eq(taskMedia.role, 'instruction')));
@@ -97,7 +100,7 @@ export class TaskMediaService {
     const [r] = await tx
       .select({ n: count() })
       .from(taskMedia)
-      .where(and(eq(taskMedia.taskId, t.id), eq(taskMedia.role, 'response'), eq(taskMedia.kind, cmd.kind), isNull(taskMedia.submissionId)));
+      .where(and(eq(taskMedia.taskId, t.id), eq(taskMedia.role, 'response'), eq(taskMedia.kind, cmd.kind), eq(taskMedia.capturedByUserId, p.userId), isNull(taskMedia.submissionId)));
     if ((r?.n ?? 0) >= storageCap(limit)) throw new AppError('MEDIA_LIMIT_REACHED');
   }
 
