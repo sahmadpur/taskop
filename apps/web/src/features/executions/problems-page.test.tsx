@@ -1,14 +1,23 @@
 import type { ProblemDto } from '@taskop/contracts';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
 import { ProblemsPage } from './problems-page';
+import { assigneeOptions, taskDetail } from '@/features/tasks/fixtures';
 
-const mocks = vi.hoisted(() => ({ api: { problems: { list: vi.fn() }, sites: { list: vi.fn() }, checklists: { list: vi.fn() } } }));
+const mocks = vi.hoisted(() => ({
+  canManageTasks: { current: true },
+  api: {
+    problems: { list: vi.fn() },
+    sites: { list: vi.fn() },
+    checklists: { list: vi.fn() },
+    tasks: { create: vi.fn(), assignees: vi.fn() },
+  },
+}));
 vi.mock('@/lib/session', () => ({
   api: mocks.api,
-  useCan: () => true,
+  useCan: (...keys: string[]) => keys.every((k) => k !== 'tasks.manage' || mocks.canManageTasks.current),
   useMe: () => ({ tenant: { timezone: 'Asia/Baku', locale: 'az' } }),
 }));
 
@@ -27,6 +36,8 @@ beforeEach(() => {
     items: [problem(), problem({ id: 'p2', itemId: 'i2', itemLabel: null, source: 'rule', severity: 'normal', note: null, mediaIds: [], media: [] })],
     nextCursor: null,
   });
+  mocks.canManageTasks.current = true;
+  mocks.api.tasks.assignees.mockResolvedValue(assigneeOptions());
 });
 afterEach(() => vi.useRealTimers());
 
@@ -88,5 +99,71 @@ describe('ProblemsPage', () => {
     renderWithRouter(<ProblemsPage />);
     await waitFor(() => expect(mocks.api.problems.list).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-28', to: '2026-11-03' })));
     expect(screen.getByLabelText('Son tarix')).toHaveValue('2026-11-03');
+  });
+});
+
+describe('ProblemsPage resolution', () => {
+  it('shows the resolution, links a problem with a task to its drawer, and filters by resolution', async () => {
+    mocks.api.problems.list.mockResolvedValue({
+      items: [problem({ resolution: 'open', taskId: 't1' }), problem({ id: 'p2', resolution: 'resolved', taskId: 't2' })],
+      nextCursor: null,
+    });
+    const router = renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    await screen.findByRole('link', { name: 'Açıq' });
+    expect(screen.getByRole('columnheader', { name: 'Nəticə' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Həll olunub' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tapşırıq yarat' })).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Nəticə'), 'resolved');
+    await waitFor(() => expect(mocks.api.problems.list).toHaveBeenLastCalledWith(expect.objectContaining({ resolution: 'resolved' })));
+    await userEvent.click(await screen.findByRole('link', { name: 'Açıq' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/tasks'));
+    expect(router.state.location.search).toEqual({ task: 't1' });
+  });
+
+  it("creates a task from a closed run's problem, pre-filled, and reloads the list", async () => {
+    mocks.api.tasks.create.mockResolvedValue(taskDetail({ id: 'tnew', source: 'problem', problemId: 'p1' }));
+    renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    const [create] = await screen.findAllByRole('button', { name: 'Tapşırıq yarat' });
+    await userEvent.click(create!);
+    const dialog = await screen.findByRole('dialog', { name: 'Problemdən tapşırıq' });
+    expect(within(dialog).getByLabelText('Başlıq')).toHaveValue('Temperatur');
+    expect(within(dialog).getByLabelText('Prioritet')).toHaveValue('high');
+    expect(within(dialog).getByText('Obyekt problemdən götürülür: Anbar')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'İcraçı' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Nigar Səfərli' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Yarat' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.api.tasks.create).toHaveBeenCalledWith(expect.objectContaining({ problemId: 'p1', siteId: null, requiresReview: true }));
+    await waitFor(() => expect(mocks.api.problems.list).toHaveBeenCalledTimes(2));
+  });
+
+  it('disables "Tapşırıq yarat" while the run is not closed (active or rejected), and offers it only to tasks.manage', async () => {
+    const runOpenTitle = 'İcra hələ bağlanmayıb: tapşırıq yalnız bağlanmış icranın problemindən yaradıla bilər.';
+    mocks.api.problems.list.mockResolvedValue({
+      items: [
+        problem({ executionState: 'active' }),
+        problem({ id: 'p2', itemId: 'i2', itemLabel: 'Qapı', executionState: 'rejected' }),
+        problem({ id: 'p3', itemId: 'i3', itemLabel: 'Pəncərə', executionState: 'partial' }),
+      ],
+      nextCursor: null,
+    });
+    renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    await screen.findByRole('link', { name: 'Temperatur' });
+    const [, active, rejected, partial] = screen.getAllByRole('row');
+    for (const row of [active!, rejected!]) {
+      const create = within(row).getByRole('button', { name: 'Tapşırıq yarat' });
+      expect(create).toBeDisabled();
+      expect(within(row).getByTitle(runOpenTitle)).toContainElement(create);
+    }
+    expect(within(partial!).getByRole('button', { name: 'Tapşırıq yarat' })).toBeEnabled();
+    cleanup();
+    mocks.canManageTasks.current = false;
+    mocks.api.problems.list.mockResolvedValue({ items: [problem()], nextCursor: null });
+    renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    await screen.findByRole('link', { name: 'Temperatur' });
+    const [, row] = screen.getAllByRole('row');
+    expect(within(row!).getByText('Tapşırıq yoxdur')).toBeInTheDocument();
+    expect(within(row!).queryByRole('button', { name: 'Tapşırıq yarat' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tapşırıq yarat' })).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { renderWithRouter } from '@/test/router';
 import { AnswersView } from './answers-view';
 import { executionFixture } from './fixtures';
 
@@ -87,5 +88,18 @@ describe('AnswersView', () => {
     renderWithProviders(<AnswersView content={f.content} answers={{}} media={[]} problems={[]} />);
     expect(screen.getByText('Bu icrada cavab yoxdur.')).toBeInTheDocument();
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it("shows each problem's resolution and links a problem with a task to its drawer", async () => {
+    mocks.api.media.url.mockResolvedValue({ url: 'http://files.test/m.jpg?sig=1', expiresAt: '2026-11-02T04:25:00.000Z' });
+    const f = executionFixture();
+    const problems = f.problems.map((p) => (p.id === 'pr3' ? { ...p, resolution: 'open' as const, taskId: 't1' } : p));
+    const router = renderWithRouter(<AnswersView content={f.content} answers={f.answers} media={f.media} problems={problems} />);
+    const temp = await screen.findByRole('listitem', { name: 'Temperatur' });
+    // pr2 has no task; pr3 has an open one.
+    expect(within(temp).getByText('Tapşırıq yoxdur')).toBeInTheDocument();
+    await userEvent.click(within(temp).getByRole('link', { name: 'Açıq' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/tasks'));
+    expect(router.state.location.search).toEqual({ task: 't1' });
   });
 });
