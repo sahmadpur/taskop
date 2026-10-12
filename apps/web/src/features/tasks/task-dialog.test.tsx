@@ -1,5 +1,6 @@
 import { ApiError } from '@taskop/api-client';
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +11,7 @@ import { TaskDialog } from './task-dialog';
 const mocks = vi.hoisted(() => ({
   tz: { current: 'Asia/Baku' },
   api: {
-    tasks: { assignees: vi.fn(), create: vi.fn(), update: vi.fn(), registerMedia: vi.fn() },
+    tasks: { assignees: vi.fn(), create: vi.fn(), update: vi.fn(), registerMedia: vi.fn(), get: vi.fn() },
     taskMedia: { confirmUploaded: vi.fn() },
   },
 }));
@@ -280,5 +281,96 @@ describe('TaskDialog', () => {
     expect(within(files).getAllByText('Qəbul edilmədi')).toHaveLength(1);
     expect(files).toHaveTextContent('Ən çox 5 təlimat faylı əlavə etmək olar.');
     expect(screen.getByLabelText('Təlimat faylları')).toBeDisabled();
+  });
+
+  it('measures the form against the task as it was when opened: a refetched copy does not revert the others\' change, nor double count uploads', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const media = [1, 2, 3].map((n) => taskMediaDto({ id: `m${n}`, role: 'instruction' }));
+    const opened = taskDetail({ title: 'Qapı', priority: 'normal', media });
+    const dialog = (task: ReturnType<typeof taskDetail>) => (
+      <QueryClientProvider client={client}>
+        <TaskDialog task={task} onClose={vi.fn()} readMeta={readMeta} />
+      </QueryClientProvider>
+    );
+    const view = render(dialog(opened));
+    await userEvent.upload(screen.getByLabelText('Təlimat faylları'), photo());
+    await paste('Başlıq', ' 2');
+    // Meanwhile someone else raised the priority, and the file's registration reached the task (a refetch).
+    view.rerender(dialog({ ...opened, priority: 'high', media: [...media, taskMediaDto({ id: 'm4', role: 'instruction' })] }));
+    // Three stored + one queued = four of five: one more fits (a double count would say five).
+    expect(screen.getByLabelText('Təlimat faylları')).toBeEnabled();
+    expect(screen.getByLabelText('Prioritet')).toHaveValue('normal');
+    await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(mocks.api.tasks.update).toHaveBeenCalled());
+    expect(mocks.api.tasks.update).toHaveBeenCalledWith('t1', { title: 'Qapı 2' });
+  });
+
+  it('ignores Escape and Cancel while the save is on its way', async () => {
+    let finish: (t: ReturnType<typeof taskDetail>) => void = () => {};
+    mocks.api.tasks.create.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    const { onClose } = renderDialog();
+    await fillMinimum();
+    await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
+    await waitFor(() => expect(mocks.api.tasks.create).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Ləğv et' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    fireEvent.click(screen.getByRole('button', { name: 'Ləğv et' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    finish(taskDetail({ id: mocks.api.tasks.create.mock.calls[0]![0].id }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the form read-only once the task is stored and only files are left to retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    renderDialog();
+    await fillMinimum();
+    await userEvent.upload(screen.getByLabelText('Təlimat faylları'), photo());
+    await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
+    await screen.findByRole('button', { name: 'Faylları yenidən yüklə' });
+    for (const label of ['Başlıq', 'Təlimat', 'Prioritet', 'Son tarix', 'Saat']) expect(screen.getByLabelText(label)).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'İcraçı' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Tamamlandıqdan sonra yoxlama tələb olunur' })).toBeDisabled();
+    expect(screen.getByLabelText('Təlimat faylları')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Faylları yenidən yüklə' })).toBeEnabled();
+  });
+
+  it('shows the API refusal of a site on the site select', async () => {
+    mocks.api.tasks.create.mockRejectedValue(new ApiError(422, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { siteId: 'errors.SITE_INACTIVE' }));
+    renderDialog();
+    await fillMinimum();
+    await within(screen.getByLabelText('Obyekt')).findByRole('option', { name: 'Anbar №1' }, { timeout: 3000 });
+    await userEvent.selectOptions(screen.getByLabelText('Obyekt'), 'site1');
+    await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
+    await waitFor(() => expect(screen.getByLabelText('Obyekt')).toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.getAllByText('Obyekt aktiv deyil.').length).toBeGreaterThan(0);
+  });
+
+  it('after an edit that changes nothing, sends the picked time, and on CLOCK_INVALID once the task\'s own updatedAt', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+    mocks.api.tasks.registerMedia
+      .mockRejectedValueOnce(new ApiError(422, 'CLOCK_INVALID', 'errors.CLOCK_INVALID'))
+      .mockImplementation(async (_task: string, body: { id: string }) => ticket(body.id));
+    mocks.api.tasks.get.mockResolvedValue(taskDetail({ updatedAt: '2020-03-03T00:00:00.000Z' }));
+    const { onClose } = renderDialog({ task: taskDetail({ updatedAt: '2020-02-02T00:00:00.000Z' }) });
+    await userEvent.upload(screen.getByLabelText('Təlimat faylları'), photo());
+    await userEvent.click(screen.getByRole('button', { name: 'Yadda saxla' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.api.tasks.update).not.toHaveBeenCalled();
+    const [first, second] = mocks.api.tasks.registerMedia.mock.calls.map((c) => c[1].capturedAt as string);
+    // The picked time (now), not the old updatedAt; then the fresh GET's updatedAt.
+    expect(Date.parse(first!)).toBeGreaterThan(Date.parse('2026-01-01'));
+    expect(second).toBe('2020-03-03T00:00:00.000Z');
+    expect(mocks.api.tasks.get).toHaveBeenCalledWith('t1');
+  });
+
+  it('names the instruction file limit with the real number', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+    mocks.api.tasks.registerMedia.mockRejectedValue(new ApiError(409, 'MEDIA_LIMIT_REACHED', 'errors.MEDIA_LIMIT_REACHED'));
+    renderDialog();
+    await fillMinimum();
+    await userEvent.upload(screen.getByLabelText('Təlimat faylları'), photo());
+    await userEvent.click(screen.getByRole('button', { name: 'Yarat' }));
+    expect(await screen.findByText('Təlimat faylları limiti dolub (5).')).toBeInTheDocument();
   });
 });

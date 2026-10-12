@@ -25,7 +25,7 @@ export interface TaskFormValues {
 }
 
 /** i18n keys per field. */
-export type TaskFormErrors = Partial<Record<'title' | 'assignee' | 'dueDate', string>>;
+export type TaskFormErrors = Partial<Record<'title' | 'assignee' | 'dueDate' | 'siteId', string>>;
 
 const EVIDENCE_KEYS = ['photo', 'video', 'liveOnly'] as const;
 
@@ -80,6 +80,7 @@ export const fieldErrors = (fields: Record<string, string>): TaskFormErrors => (
   ...(fields.title ? { title: fields.title } : {}),
   ...(fields.assignee ? { assignee: fields.assignee } : {}),
   ...(fields.dueAt ? { dueDate: fields.dueAt } : {}),
+  ...(fields.siteId ? { siteId: fields.siteId } : {}),
 });
 
 /** POST /tasks. A problem's site is the API's to take (Part 1 decision 19), so none is sent with one. */

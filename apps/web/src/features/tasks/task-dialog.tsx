@@ -45,8 +45,11 @@ interface Props {
   readMeta?: ReadMediaMeta;
 }
 
-export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMediaMeta }: Props) {
+export function TaskDialog({ task: latest, problem, onClose, onSaved, readMeta = readMediaMeta }: Props) {
   const { t } = useTranslation();
+  // The task as it was when the dialog opened: the prop follows refetches (and the uploads' own invalidation), but the
+  // form is measured against what the user saw, so a later refetch never makes someone else's change look like theirs.
+  const [task] = useState(latest);
   const qc = useQueryClient();
   const { tenant } = useMe();
   // A problem task's site comes from the problem (Part 1 decision 19): shown, never edited.
@@ -57,6 +60,8 @@ export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMed
   const [errors, setErrors] = useState<TaskFormErrors>({});
   const [files, setFiles] = useState<PendingMedia[]>([]);
   const [saved, setSaved] = useState<TaskDetail | null>(null);
+  // Once the task is stored, the form no longer sends anything: only the files can still be retried.
+  const locked = saved !== null;
   const [newId] = useState(() => uuidv7());
   const [busy, setBusy] = useState(false);
   // True once everything is stored: Save stays off, so a late second press can neither create nor upload again.
@@ -74,7 +79,9 @@ export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMed
   // Editing keeps the task's current site selectable even if it is no longer offered (inactive, or out of scope).
   const visibleSites = task?.site && !siteOptions.some((s) => s.id === task.site?.id) ? [...siteOptions, task.site] : siteOptions;
 
+  // Not while a save is on its way: the dialog would vanish before the user sees how it ended.
   const close = () => {
+    if (busy) return;
     if (saved) onSaved?.(saved);
     onClose();
   };
@@ -93,28 +100,37 @@ export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMed
     setBusy(true);
     setError(null);
     try {
-      let current = saved;
-      if (!current) {
+      let stored = saved;
+      // The server's own time for the task, from a request sent in THIS save (createdAt after a create, updatedAt after a
+      // PATCH); the files are stamped no later than it. Null when no request was sent: then the picked time goes as it is.
+      let serverTime: string | null = null;
+      if (!stored) {
         if (task) {
           const body = changedFields(task, values, tenant.timezone);
-          current = Object.keys(body).length ? await api.tasks.update(task.id, body) : task;
+          if (Object.keys(body).length) {
+            stored = await api.tasks.update(task.id, body);
+            serverTime = stored.updatedAt;
+          } else {
+            stored = task;
+          }
         } else {
-          current = await api.tasks.create(createBody(newId, values, tenant.timezone, problem));
+          stored = await api.tasks.create(createBody(newId, values, tenant.timezone, problem));
+          serverTime = stored.createdAt;
         }
-        setSaved(current);
+        setSaved(stored);
       }
-      // The task exists now: a failed file is retried with the same id, never with a second task. The files are
-      // stamped no later than the server's own time for the task (createdAt after a create, updatedAt after an edit).
-      const failed = await uploadInstructionMedia(current.id, files, task ? current.updatedAt : current.createdAt, patchFile);
-      await storeTask(qc, current);
-      if (files.some((f) => f.state !== 'refused')) await qc.invalidateQueries({ queryKey: taskKeys.detail(current.id) });
+      // The task exists now: a failed file is retried with the same id, never with a second task.
+      const failed = await uploadInstructionMedia(stored.id, files, serverTime, patchFile);
+      // Only an answer of this save is worth caching: the opening copy of an unchanged task may be older than the cache.
+      if (serverTime !== null) await storeTask(qc, stored);
+      if (files.some((f) => f.state !== 'refused')) await qc.invalidateQueries({ queryKey: taskKeys.detail(stored.id) });
       if (failed > 0) {
         setError(t('tasks.dialog.uploadFailed', { count: failed }));
         return;
       }
       setDone(true);
       toast.success(t(task ? 'tasks.dialog.saved' : 'tasks.dialog.created'));
-      onSaved?.(current);
+      onSaved?.(stored);
       onClose();
     } catch (e) {
       setError(errorText(t, e));
@@ -142,112 +158,115 @@ export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMed
           <DialogDescription>{problem ? `${problem.checklistName} · ${formatLocalDate(problem.localDate)}` : t('tasks.dialog.description')}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="task-title">{t('tasks.dialog.title')}</Label>
-            <Input
-              id="task-title"
-              value={values.title}
-              maxLength={TASK_LIMITS.titleMax}
-              aria-invalid={Boolean(errors.title)}
-              onChange={(e) => set('title', e.target.value)}
-            />
-            {fieldError('title')}
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="task-instructions">{t('tasks.dialog.instructions')}</Label>
-            <Textarea
-              id="task-instructions"
-              value={values.instructions}
-              maxLength={TASK_LIMITS.instructionsMax}
-              onChange={(e) => set('instructions', e.target.value)}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset disabled={locked} className="m-0 grid min-w-0 gap-4 border-0 p-0">
             <div className="grid gap-1.5">
-              <Label htmlFor="task-priority">{t('tasks.dialog.priority')}</Label>
-              <NativeSelect id="task-priority" value={values.priority} onChange={(e) => set('priority', e.target.value as TaskPriority)}>
-                {TASK_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {t(`tasks.priorities.${p}`)}
-                  </option>
-                ))}
-              </NativeSelect>
+              <Label htmlFor="task-title">{t('tasks.dialog.title')}</Label>
+              <Input
+                id="task-title"
+                value={values.title}
+                maxLength={TASK_LIMITS.titleMax}
+                aria-invalid={Boolean(errors.title)}
+                onChange={(e) => set('title', e.target.value)}
+              />
+              {fieldError('title')}
             </div>
             <div className="grid gap-1.5">
-              {fixedSite !== null ? (
-                <>
-                  <span className="text-sm font-medium">{t('tasks.dialog.site')}</span>
-                  <p className="text-sm">{t('tasks.dialog.siteFromProblem', { site: fixedSite })}</p>
-                </>
-              ) : (
-                <>
-                  <Label htmlFor="task-site">{t('tasks.dialog.site')}</Label>
-                  <NativeSelect id="task-site" value={values.siteId} onChange={(e) => set('siteId', e.target.value)}>
-                    <option value="">{t('tasks.dialog.noSite')}</option>
-                    {visibleSites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </>
-              )}
+              <Label htmlFor="task-instructions">{t('tasks.dialog.instructions')}</Label>
+              <Textarea
+                id="task-instructions"
+                value={values.instructions}
+                maxLength={TASK_LIMITS.instructionsMax}
+                onChange={(e) => set('instructions', e.target.value)}
+              />
             </div>
-          </div>
-          <div className="grid gap-1.5">
-            <AssigneePicker label={t('tasks.dialog.assignee')} value={values.assignee} onChange={(c) => set('assignee', c)} />
-            {fieldError('assignee')}
-            {reassigning && <p className="text-muted-foreground text-sm">{t('tasks.dialog.reassignNote')}</p>}
-          </div>
-          <div className="grid gap-1.5">
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="task-due-date">{t('tasks.dialog.dueDate')}</Label>
-                <Input id="task-due-date" type="date" value={values.dueDate} onChange={(e) => set('dueDate', e.target.value)} className="w-44" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="task-due-time">{t('tasks.dialog.dueTime')}</Label>
-                <Input id="task-due-time" type="time" value={values.dueTime} onChange={(e) => set('dueTime', e.target.value)} className="w-32" />
-              </div>
-            </div>
-            <p className="text-muted-foreground text-xs">{t('tasks.dialog.dueHint', { timeZone: tenant.timezone })}</p>
-            {fieldError('dueDate')}
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox id="task-review" checked={values.requiresReview} onCheckedChange={(c) => set('requiresReview', c === true)} />
-            <Label htmlFor="task-review" className="font-normal">
-              {t('tasks.dialog.requiresReview')}
-            </Label>
-          </div>
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-medium">{t('tasks.dialog.evidence')}</legend>
-            <div className="flex flex-wrap items-center gap-3">
-              {(['photo', 'video'] as const).map((kind) => (
-                <NativeSelect
-                  key={kind}
-                  aria-label={t(kind === 'photo' ? 'tasks.dialog.evidencePhoto' : 'tasks.dialog.evidenceVideo')}
-                  value={values.evidence[kind]}
-                  onChange={(e) => set('evidence', { ...values.evidence, [kind]: e.target.value as EvidenceLevel })}
-                  className="w-44"
-                >
-                  {EVIDENCE_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {t(`tasks.evidenceLevels.${level}`)}
+                <Label htmlFor="task-priority">{t('tasks.dialog.priority')}</Label>
+                <NativeSelect id="task-priority" value={values.priority} onChange={(e) => set('priority', e.target.value as TaskPriority)}>
+                  {TASK_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {t(`tasks.priorities.${p}`)}
                     </option>
                   ))}
                 </NativeSelect>
-              ))}
+              </div>
+              <div className="grid gap-1.5">
+                {fixedSite !== null ? (
+                  <>
+                    <span className="text-sm font-medium">{t('tasks.dialog.site')}</span>
+                    <p className="text-sm">{t('tasks.dialog.siteFromProblem', { site: fixedSite })}</p>
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor="task-site">{t('tasks.dialog.site')}</Label>
+                    <NativeSelect id="task-site" value={values.siteId} aria-invalid={Boolean(errors.siteId)} onChange={(e) => set('siteId', e.target.value)}>
+                      <option value="">{t('tasks.dialog.noSite')}</option>
+                      {visibleSites.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    {fieldError('siteId')}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <AssigneePicker label={t('tasks.dialog.assignee')} value={values.assignee} onChange={(c) => set('assignee', c)} />
+              {fieldError('assignee')}
+              {reassigning && <p className="text-muted-foreground text-sm">{t('tasks.dialog.reassignNote')}</p>}
+            </div>
+            <div className="grid gap-1.5">
+              <div className="flex flex-wrap gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="task-due-date">{t('tasks.dialog.dueDate')}</Label>
+                  <Input id="task-due-date" type="date" value={values.dueDate} onChange={(e) => set('dueDate', e.target.value)} className="w-44" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="task-due-time">{t('tasks.dialog.dueTime')}</Label>
+                  <Input id="task-due-time" type="time" value={values.dueTime} onChange={(e) => set('dueTime', e.target.value)} className="w-32" />
+                </div>
+              </div>
+              <p className="text-muted-foreground text-xs">{t('tasks.dialog.dueHint', { timeZone: tenant.timezone })}</p>
+              {fieldError('dueDate')}
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox
-                id="task-live-only"
-                checked={values.evidence.liveOnly}
-                onCheckedChange={(c) => set('evidence', { ...values.evidence, liveOnly: c === true })}
-              />
-              <Label htmlFor="task-live-only" className="font-normal">
-                {t('tasks.dialog.liveOnly')}
+              <Checkbox id="task-review" checked={values.requiresReview} onCheckedChange={(c) => set('requiresReview', c === true)} />
+              <Label htmlFor="task-review" className="font-normal">
+                {t('tasks.dialog.requiresReview')}
               </Label>
             </div>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-medium">{t('tasks.dialog.evidence')}</legend>
+              <div className="flex flex-wrap items-center gap-3">
+                {(['photo', 'video'] as const).map((kind) => (
+                  <NativeSelect
+                    key={kind}
+                    aria-label={t(kind === 'photo' ? 'tasks.dialog.evidencePhoto' : 'tasks.dialog.evidenceVideo')}
+                    value={values.evidence[kind]}
+                    onChange={(e) => set('evidence', { ...values.evidence, [kind]: e.target.value as EvidenceLevel })}
+                    className="w-44"
+                  >
+                    {EVIDENCE_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {t(`tasks.evidenceLevels.${level}`)}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="task-live-only"
+                  checked={values.evidence.liveOnly}
+                  onCheckedChange={(c) => set('evidence', { ...values.evidence, liveOnly: c === true })}
+                />
+                <Label htmlFor="task-live-only" className="font-normal">
+                  {t('tasks.dialog.liveOnly')}
+                </Label>
+              </div>
+            </fieldset>
           </fieldset>
           <div className="grid gap-1.5">
             <Label htmlFor="task-media">{t('tasks.dialog.media')}</Label>
@@ -286,7 +305,7 @@ export function TaskDialog({ task, problem, onClose, onSaved, readMeta = readMed
           <FormError message={error} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={close}>
+          <Button variant="outline" disabled={busy} onClick={close}>
             {t('common.cancel')}
           </Button>
           <Button disabled={busy || done} onClick={() => void submit()}>
