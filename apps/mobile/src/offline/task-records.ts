@@ -1,6 +1,6 @@
-import { type SyncTask, TASK_LIMITS } from '@taskop/contracts';
+import { type SyncTask, TASK_LIMITS, type TaskMediaRegisterInput, type TaskMediaRole } from '@taskop/contracts';
 import type { Db } from './db';
-import { iso } from './local-model';
+import { iso, type LocalMedia } from './local-model';
 
 /** Commands that move a task's status. Until the server has answered them, the phone's status wins over a pull (spec §7.1). */
 export const STATUS_KINDS_SQL = `('task.accept', 'task.start', 'task.submit')`;
@@ -85,4 +85,15 @@ export async function revertTask(tx: Db, taskId: string, note: string, now: numb
   await tx.run(`DELETE FROM outbox WHERE entity_type = 'task' AND entity_id = ? AND kind IN ${STATUS_KINDS_SQL}`, [taskId]);
   await tx.run('UPDATE task_drafts SET submitted_at = NULL, updated_at = ? WHERE task_id = ?', [iso(now), taskId]);
   await tx.run(`UPDATE tasks SET local_status = json_extract(data, '$.status'), sync_note = ?, updated_at = ? WHERE id = ?`, [note, iso(now), taskId]);
+}
+
+/** The registration body of a task medium (POST /tasks/:id/media) with the device's capture time; the sender moves it onto the server's clock. */
+export function taskMediaBody(
+  m: Pick<LocalMedia, 'id' | 'kind' | 'source' | 'mime' | 'bytes' | 'width' | 'height' | 'durationMs' | 'capturedAt'>,
+  role: TaskMediaRole,
+): TaskMediaRegisterInput {
+  return {
+    id: m.id, role, kind: m.kind, source: m.source, mime: m.mime, bytes: m.bytes,
+    width: m.width, height: m.height, durationMs: m.durationMs, capturedAt: m.capturedAt,
+  };
 }
