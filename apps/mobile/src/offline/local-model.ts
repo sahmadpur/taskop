@@ -1,4 +1,5 @@
-import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus } from '@taskop/contracts';
+import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus, TaskMediaRole } from '@taskop/contracts';
+import type { EntityType } from './outbox';
 
 export const iso = (ms: number): string => new Date(ms).toISOString();
 /** Server instants in the same 24-character form as `iso`, so SQLite text comparison orders them correctly. */
@@ -121,8 +122,10 @@ export const toExecution = (r: ExecutionRow): LocalExecution => ({
 
 export interface MediaRow {
   id: string;
-  execution_id: string;
+  owner_type: string;
+  owner_id: string;
   item_id: string | null;
+  role: string | null;
   kind: string;
   source: string;
   mime: string;
@@ -141,8 +144,12 @@ export interface MediaRow {
 
 export interface LocalMedia {
   id: string;
-  executionId: string;
+  ownerType: EntityType;
+  /** The execution or task the medium belongs to. */
+  ownerId: string;
   itemId: string | null;
+  /** A task medium's role (`instruction` | `response`); null for execution media. */
+  role: TaskMediaRole | null;
   kind: MediaKind;
   source: MediaSource;
   mime: string;
@@ -161,8 +168,10 @@ export interface LocalMedia {
 
 export const toMedia = (r: MediaRow): LocalMedia => ({
   id: r.id,
-  executionId: r.execution_id,
+  ownerType: r.owner_type as EntityType,
+  ownerId: r.owner_id,
   itemId: r.item_id,
+  role: r.role as TaskMediaRole | null,
   kind: r.kind as MediaKind,
   source: r.source as MediaSource,
   mime: r.mime,

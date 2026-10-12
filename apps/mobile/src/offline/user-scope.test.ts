@@ -15,8 +15,8 @@ async function fill(db: Awaited<ReturnType<typeof openTestDb>>) {
   await db.run(`INSERT INTO occurrences (id, checklist_id, checklist_name, site_id, site_name, local_date, starts_at, due_at, closes_at, status, checklist_version_id) VALUES ('o', 'c', 'n', 's', 'sn', '2026-11-02', ?, ?, ?, 'pending', 'v')`, [T.starts, T.due, T.closes]);
   await db.run(`INSERT INTO checklist_versions (id, checklist_id, number, schema_version, content, received_at) VALUES ('v', 'c', 1, 1, '{}', ?)`, [T.open]);
   await db.run(`INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, started_at, updated_at) VALUES ('e', 'o', 'v', 'active', 'pending', ?, ?)`, [T.open, T.open]);
-  await db.run(`INSERT INTO media (id, execution_id, kind, source, mime, bytes, captured_at, local_uri) VALUES ('m', 'e', 'photo', 'camera', 'image/jpeg', 10, ?, 'file:///doc/media/m.jpg')`, [T.open]);
-  await db.run(`INSERT INTO outbox (execution_id, kind, payload, created_at) VALUES ('e', 'claim', '{}', ?)`, [T.open]);
+  await db.run(`INSERT INTO media (id, owner_type, owner_id, kind, source, mime, bytes, captured_at, local_uri) VALUES ('m', 'execution', 'e', 'photo', 'camera', 'image/jpeg', 10, ?, 'file:///doc/media/m.jpg')`, [T.open]);
+  await db.run(`INSERT INTO outbox (entity_type, entity_id, kind, payload, created_at) VALUES ('execution', 'e', 'claim', '{}', ?)`, [T.open]);
 }
 
 describe('user scope', () => {

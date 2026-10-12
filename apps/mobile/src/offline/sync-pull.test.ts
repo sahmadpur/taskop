@@ -51,7 +51,7 @@ describe('applying /me/sync', () => {
     const x = myExecution({ answersRev: 2, answers: { a: { number: 1 } } });
     await applyPull(db, syncResponse({ executions: [x] }), 0, NOW);
     await db.run(`UPDATE executions SET answers = '{"a":{"number":3}}', rev = 3`);
-    await appendCommand(db, { executionId: x.id, kind: 'answers', rev: 3, payload: {}, createdAt: T.open });
+    await appendCommand(db, { entityType: 'execution', entityId: x.id, kind: 'answers', rev: 3, payload: {}, createdAt: T.open });
     await applyPull(db, syncResponse({ executions: [{ ...x, answersRev: 5, answers: { a: { number: 9 } } }] }), 0, NOW);
     expect(await db.first('SELECT rev, answers FROM executions')).toEqual({ rev: 3, answers: '{"a":{"number":3}}' });
 
@@ -67,8 +67,8 @@ describe('pruning old occurrences', () => {
   const seed = async (db: Awaited<ReturnType<typeof openTestDb>>) => {
     await applyPull(db, syncResponse({ occurrences: [occurrence()] }), 0, NOW);
     await db.run(`INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, started_at, updated_at) VALUES ('x', ?, ?, 'completed', 'accepted', ?, ?)`, [OCC, VERSION, T.open, T.open]);
-    await db.run(`INSERT INTO media (id, execution_id, kind, source, mime, bytes, captured_at, local_uri, uploaded_at, file_deleted_at) VALUES ('m', 'x', 'photo', 'camera', 'image/jpeg', 1, ?, 'u', ?, ?)`, [T.open, T.open, T.open]);
-    await db.run(`INSERT INTO media_refusals (media_id, execution_id, item_id, error_key, created_at) VALUES ('r', 'x', 'i', 'errors.MEDIA_TOO_LARGE', ?)`, [T.open]);
+    await db.run(`INSERT INTO media (id, owner_type, owner_id, kind, source, mime, bytes, captured_at, local_uri, uploaded_at, file_deleted_at) VALUES ('m', 'execution', 'x', 'photo', 'camera', 'image/jpeg', 1, ?, 'u', ?, ?)`, [T.open, T.open, T.open]);
+    await db.run(`INSERT INTO media_refusals (media_id, owner_type, owner_id, item_id, error_key, created_at) VALUES ('r', 'execution', 'x', 'i', 'errors.MEDIA_TOO_LARGE', ?)`, [T.open]);
   };
   const counts = async (db: Awaited<ReturnType<typeof openTestDb>>) => ({
     occ: (await db.first<{ n: number }>('SELECT count(*) AS n FROM occurrences'))!.n,
@@ -89,7 +89,7 @@ describe('pruning old occurrences', () => {
   it('keeps an old occurrence that still has an unsynced command, media or answers', async () => {
     const db = await openTestDb();
     await seed(db);
-    await appendCommand(db, { executionId: 'x', kind: 'complete', rev: 1, payload: {}, createdAt: T.open });
+    await appendCommand(db, { entityType: 'execution', entityId: 'x', kind: 'complete', rev: 1, payload: {}, createdAt: T.open });
     await applyPull(db, syncResponse({ occurrences: [] }), 0, OLD_NOW);
     expect(await counts(db)).toEqual({ occ: 1, exe: 1, med: 1, ref: 1 });
     await db.run('DELETE FROM outbox');

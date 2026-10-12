@@ -241,7 +241,7 @@ export function createExecutionStore(deps: StoreDeps) {
         const answers = compact(next);
         const rev = g.e.rev + 1;
         await tx.run('UPDATE executions SET answers = ?, rev = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), rev, iso(now), executionId]);
-        await appendCommand(tx, { executionId, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
+        await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
       }
       return g;
     });
@@ -269,7 +269,7 @@ export function createExecutionStore(deps: StoreDeps) {
         `INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, started_at, updated_at) VALUES (?, ?, ?, 'active', 'pending', ?, ?)`,
         [executionId, occurrenceId, occ.checklistVersionId, startedAt, startedAt],
       );
-      await appendCommand(tx, { executionId, kind: 'claim', createdAt: startedAt, payload: { id: executionId, occurrenceId, startedAt, device } });
+      await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'claim', createdAt: startedAt, payload: { id: executionId, occurrenceId, startedAt, device } });
       return executionId;
     });
     changed('claim');
@@ -294,7 +294,7 @@ export function createExecutionStore(deps: StoreDeps) {
       // A medium the sync engine dropped meanwhile (refused by the server) must not be sent: the API refuses unknown media.
       let problem = value;
       if (problem && problem.mediaIds.length > 0) {
-        const known = await tx.all<{ id: string }>('SELECT id FROM media WHERE execution_id = ? AND id IN (SELECT value FROM json_each(?))', [
+        const known = await tx.all<{ id: string }>(`SELECT id FROM media WHERE owner_type = 'execution' AND owner_id = ? AND id IN (SELECT value FROM json_each(?))`, [
           executionId, JSON.stringify(problem.mediaIds),
         ]);
         const ids = new Set(known.map((r) => r.id));
@@ -314,15 +314,15 @@ export function createExecutionStore(deps: StoreDeps) {
       if (target.field === 'evidence' && current.length >= mediaLimitFor(item, m.kind)) throw new MediaLimitError();
       const itemId = target.field === 'evidence' ? target.itemId : null;
       // A new medium on the item replaces the note about one the server refused there.
-      await tx.run('DELETE FROM media_refusals WHERE execution_id = ? AND item_id = ?', [executionId, target.itemId]);
+      await tx.run(`DELETE FROM media_refusals WHERE owner_type = 'execution' AND owner_id = ? AND item_id = ?`, [executionId, target.itemId]);
       await tx.run(
-        `INSERT INTO media (id, execution_id, item_id, kind, source, mime, bytes, width, height, duration_ms, captured_at, local_uri)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO media (id, owner_type, owner_id, item_id, kind, source, mime, bytes, width, height, duration_ms, captured_at, local_uri)
+         VALUES (?, 'execution', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [mediaId, executionId, itemId, m.kind, m.source, m.mime, m.bytes, m.width, m.height, m.durationMs, m.capturedAt, m.localUri],
       );
       // Registration is queued before any answers that reference the medium (Part 1 decision 1).
       const body = mediaRegisterBody({ ...m, id: mediaId, itemId });
-      await appendCommand(tx, { executionId, kind: 'media', refId: mediaId, createdAt: iso(now), payload: body });
+      await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'media', refId: mediaId, createdAt: iso(now), payload: body });
       if (target.field === 'problem') return null;
       const next: Answer = { ...e.answers[target.itemId] };
       if (m.kind === 'photo') next.photos = [...current, mediaId];
@@ -335,7 +335,7 @@ export function createExecutionStore(deps: StoreDeps) {
   async function removeMedia(executionId: string, mediaId: string): Promise<void> {
     const discarded: string[] = [];
     await change(executionId, async (tx, e) => {
-      const row = await tx.first<MediaRow>('SELECT * FROM media WHERE id = ? AND execution_id = ?', [mediaId, executionId]);
+      const row = await tx.first<MediaRow>(`SELECT * FROM media WHERE id = ? AND owner_type = 'execution' AND owner_id = ?`, [mediaId, executionId]);
       if (row && row.registered_at === null) {
         // Never registered on the server: forget it entirely.
         await tx.run(`DELETE FROM outbox WHERE kind = 'media' AND ref_id = ?`, [mediaId]);
@@ -360,7 +360,7 @@ export function createExecutionStore(deps: StoreDeps) {
       // completeCommandSchema needs rev ≥ 1; the server ignores a revision it already has (Part 1 decision 2).
       const rev = Math.max(g.e.rev, 1);
       await tx.run(`UPDATE executions SET state = 'completed', completed_at = ?, rev = ?, updated_at = ? WHERE id = ?`, [completedAt, rev, iso(now), executionId]);
-      await appendCommand(tx, { executionId, kind: 'complete', rev, payload: { rev, answers: g.e.answers, completedAt }, createdAt: iso(now) });
+      await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'complete', rev, payload: { rev, answers: g.e.answers, completedAt }, createdAt: iso(now) });
       return { kind: 'done' };
     });
     changed('change');
@@ -386,7 +386,7 @@ export function createExecutionStore(deps: StoreDeps) {
       const rows = await db.all<OccurrenceRow>('SELECT * FROM occurrences ORDER BY starts_at, checklist_name');
       const executions = await db.all<ExecutionRow>('SELECT * FROM executions ORDER BY started_at');
       const byOccurrence = new Map(executions.map((r) => [r.occurrence_id, toExecution(r)])); // the newest wins
-      const queued = new Set((await db.all<{ execution_id: string }>('SELECT DISTINCT execution_id FROM outbox')).map((r) => r.execution_id));
+      const queued = new Set((await db.all<{ entity_id: string }>(`SELECT DISTINCT entity_id FROM outbox WHERE entity_type = 'execution'`)).map((r) => r.entity_id));
       return rows.map((r) => {
         const execution = byOccurrence.get(r.id) ?? null;
         return { ...toOccurrence(r), execution, unsynced: execution !== null && queued.has(execution.id) };
@@ -401,11 +401,11 @@ export function createExecutionStore(deps: StoreDeps) {
       return row ? toExecution(row) : null;
     },
     async media(executionId: string): Promise<LocalMedia[]> {
-      return (await db.all<MediaRow>('SELECT * FROM media WHERE execution_id = ? ORDER BY captured_at, id', [executionId])).map(toMedia);
+      return (await db.all<MediaRow>(`SELECT * FROM media WHERE owner_type = 'execution' AND owner_id = ? ORDER BY captured_at, id`, [executionId])).map(toMedia);
     },
     async mediaRefusals(executionId: string): Promise<MediaRefusal[]> {
       const rows = await db.all<{ media_id: string; item_id: string | null; error_key: string }>(
-        'SELECT media_id, item_id, error_key FROM media_refusals WHERE execution_id = ? ORDER BY created_at, media_id',
+        `SELECT media_id, item_id, error_key FROM media_refusals WHERE owner_type = 'execution' AND owner_id = ? ORDER BY created_at, media_id`,
         [executionId],
       );
       return rows.map((r) => ({ mediaId: r.media_id, itemId: r.item_id, errorKey: r.error_key }));

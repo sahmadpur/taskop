@@ -335,8 +335,8 @@ describe('failures', () => {
     await h.engine.run('manual');
     expect(methods(h)).toEqual(['claim', 'claim', 'pull']);
     expect(await listCommands(h.db)).toMatchObject([
-      { executionId: first, kind: 'claim', status: 'failed', errorCode: 'CLOCK_INVALID', errorKey: 'errors.CLOCK_INVALID' },
-      { executionId: first, kind: 'answers', status: 'pending' },
+      { entityId: first, kind: 'claim', status: 'failed', errorCode: 'CLOCK_INVALID', errorKey: 'errors.CLOCK_INVALID' },
+      { entityId: first, kind: 'answers', status: 'pending' },
     ]);
     expect(await h.store.execution(second)).toMatchObject({ claim: 'accepted' });
     expect(indicatorOf(h.engine.status())).toBe('failed');
@@ -598,7 +598,7 @@ describe('claims and the pull', () => {
     expect(await h.store.media(OTHER_EXECUTION)).toMatchObject([{ id: mediaId, uploadedAt: T.open }]);
     expect((await h.store.occurrence(OCC))!.claim).toEqual(mine);
     await h.store.patchAnswer(OTHER_EXECUTION, h.c.temp.id, { number: 6 });
-    expect(await listCommands(h.db)).toMatchObject([{ executionId: OTHER_EXECUTION, kind: 'answers', rev: 3 }]);
+    expect(await listCommands(h.db)).toMatchObject([{ entityId: OTHER_EXECUTION, kind: 'answers', rev: 3 }]);
   });
 
   it('after adopting, answers the server ignores as stale are sent again above its revision and survive the pull', async () => {

@@ -20,7 +20,7 @@ const itemReferring = (answers: Answers, mediaId: string): string | null =>
   Object.entries(answers).find(([, a]) => a && refersTo({ x: a }, mediaId))?.[0] ?? null;
 
 const queuedRevisions = (tx: Db, executionId: string) =>
-  tx.all<{ seq: number; payload: string }>(`SELECT seq, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`, [executionId]);
+  tx.all<{ seq: number; payload: string }>(`SELECT seq, payload FROM outbox WHERE entity_type = 'execution' AND entity_id = ? AND kind IN ('answers', 'complete')`, [executionId]);
 
 /** Gives every queued answers/complete command of an execution a new revision (payload and column alike). Returns how many. */
 export async function requeueRevision(tx: Db, executionId: string, rev: number, answers: Answers | null): Promise<number> {
@@ -46,18 +46,19 @@ export async function requeueRevision(tx: Db, executionId: string, rev: number, 
 export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey: string | null): Promise<string | null> {
   await tx.run(`DELETE FROM outbox WHERE kind = 'media' AND ref_id = ?`, [mediaId]);
   // The worker may have removed the medium meanwhile: removeMedia already dropped it from the answers.
-  const medium = await tx.first<{ local_uri: string; execution_id: string; item_id: string | null; file_deleted_at: string | null }>(
-    'SELECT local_uri, execution_id, item_id, file_deleted_at FROM media WHERE id = ?',
+  const medium = await tx.first<{ local_uri: string; owner_type: string; owner_id: string; item_id: string | null; file_deleted_at: string | null }>(
+    'SELECT local_uri, owner_type, owner_id, item_id, file_deleted_at FROM media WHERE id = ?',
     [mediaId],
   );
   if (!medium) return null;
   await tx.run('DELETE FROM media WHERE id = ?', [mediaId]);
   const file = medium.file_deleted_at === null ? medium.local_uri : null;
-  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [medium.execution_id]);
+  if (medium.owner_type !== 'execution') return file;
+  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [medium.owner_id]);
   if (!row) return file;
   const e = toExecution(row);
   if (errorKey) {
-    await tx.run('INSERT OR REPLACE INTO media_refusals (media_id, execution_id, item_id, error_key, created_at) VALUES (?, ?, ?, ?, ?)', [
+    await tx.run(`INSERT OR REPLACE INTO media_refusals (media_id, owner_type, owner_id, item_id, error_key, created_at) VALUES (?, 'execution', ?, ?, ?, ?)`, [
       mediaId, e.id, medium.item_id ?? itemReferring(e.answers, mediaId), errorKey, iso(now),
     ]);
   }
@@ -70,7 +71,7 @@ export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey:
   const rev = e.rev + 1;
   await tx.run('UPDATE executions SET answers = ?, rev = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), rev, iso(now), e.id]);
   if ((await requeueRevision(tx, e.id, rev, answers)) === 0) {
-    await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
+    await appendCommand(tx, { entityType: 'execution', entityId: e.id, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
   }
   return file;
 }
@@ -80,9 +81,9 @@ export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey:
  * queued command and every medium of it goes, and it stays on the phone read-only with the note.
  */
 async function abandonExecution(tx: Db, executionId: string, now: number, note: string): Promise<string[]> {
-  await tx.run('DELETE FROM outbox WHERE execution_id = ?', [executionId]);
-  const media = await tx.all<{ local_uri: string; file_deleted_at: string | null }>('SELECT local_uri, file_deleted_at FROM media WHERE execution_id = ?', [executionId]);
-  await tx.run('DELETE FROM media WHERE execution_id = ?', [executionId]);
+  await tx.run(`DELETE FROM outbox WHERE entity_type = 'execution' AND entity_id = ?`, [executionId]);
+  const media = await tx.all<{ local_uri: string; file_deleted_at: string | null }>(`SELECT local_uri, file_deleted_at FROM media WHERE owner_type = 'execution' AND owner_id = ?`, [executionId]);
+  await tx.run(`DELETE FROM media WHERE owner_type = 'execution' AND owner_id = ?`, [executionId]);
   await tx.run(
     `UPDATE executions SET state = 'rejected', claim = 'rejected', synced_rev = rev, sync_note = ?, updated_at = ? WHERE id = ?`,
     [note, iso(now), executionId],
@@ -96,7 +97,7 @@ async function abandonExecution(tx: Db, executionId: string, now: number, note: 
  * brings the server's state and answers.
  */
 async function closeExecution(tx: Db, executionId: string, now: number, note: string): Promise<void> {
-  await tx.run(`DELETE FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`, [executionId]);
+  await tx.run(`DELETE FROM outbox WHERE entity_type = 'execution' AND entity_id = ? AND kind IN ('answers', 'complete')`, [executionId]);
   await tx.run(
     `UPDATE executions SET
        state = CASE WHEN state IN ('active', 'completed') THEN 'partial' ELSE state END,
@@ -117,7 +118,7 @@ export async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: n
     `UPDATE executions SET state = 'active', completed_at = NULL, finished_synced_at = NULL, sync_note = coalesce(?, sync_note), updated_at = ?
      WHERE id = ? AND state = 'completed'
        AND EXISTS (SELECT 1 FROM occurrences o WHERE o.id = executions.occurrence_id AND o.closes_at > ?)`,
-    [note, iso(now), cmd.executionId, iso(now)],
+    [note, iso(now), cmd.entityId, iso(now)],
   );
   if (reopened > 0) await tx.run('DELETE FROM outbox WHERE seq = ?', [cmd.seq]);
   return reopened > 0;
@@ -130,13 +131,13 @@ export async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: n
  * Returns the files to delete, or null when the refusal is not terminal and the command is parked as failed.
  */
 export async function resolveTerminalRefusal(tx: Db, cmd: OutboxCommand, code: string, messageKey: string, now: number): Promise<string[] | null> {
-  if (cmd.kind === 'claim' && (code === 'NOT_FOUND' || code === 'NOT_EXECUTOR')) return abandonExecution(tx, cmd.executionId, now, messageKey);
+  if (cmd.kind === 'claim' && (code === 'NOT_FOUND' || code === 'NOT_EXECUTOR')) return abandonExecution(tx, cmd.entityId, now, messageKey);
   if ((cmd.kind === 'answers' || cmd.kind === 'complete') && code === 'EXECUTION_NOT_ACTIVE') {
-    await closeExecution(tx, cmd.executionId, now, messageKey);
+    await closeExecution(tx, cmd.entityId, now, messageKey);
     return [];
   }
   if (cmd.kind === 'complete' && code === 'REQUIREMENTS_UNMET') {
-    await closeExecution(tx, cmd.executionId, now, messageKey);
+    await closeExecution(tx, cmd.entityId, now, messageKey);
     return [];
   }
   return null;
@@ -149,15 +150,15 @@ export async function resolveTerminalRefusal(tx: Db, cmd: OutboxCommand, code: s
  * brings the server's answers. Only failed commands can be discarded (never one about to be sent).
  */
 export async function discardFailedCommand(tx: Db, seq: number, now: number): Promise<string[]> {
-  const row = await tx.first<{ execution_id: string; kind: OutboxCommand['kind']; ref_id: string | null; error_key: string | null }>(
-    `SELECT execution_id, kind, ref_id, error_key FROM outbox WHERE seq = ? AND status = 'failed'`,
+  const row = await tx.first<{ entity_id: string; kind: OutboxCommand['kind']; ref_id: string | null; error_key: string | null }>(
+    `SELECT entity_id, kind, ref_id, error_key FROM outbox WHERE seq = ? AND status = 'failed'`,
     [seq],
   );
   if (!row) return [];
   const note = row.error_key ?? 'errors.INTERNAL';
   switch (row.kind) {
     case 'claim':
-      return abandonExecution(tx, row.execution_id, now, note);
+      return abandonExecution(tx, row.entity_id, now, note);
     case 'media': {
       await tx.run('DELETE FROM outbox WHERE seq = ?', [seq]);
       const file = row.ref_id ? await dropMedium(tx, row.ref_id, now, note) : null;
@@ -165,13 +166,13 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
     }
     case 'answers':
       await tx.run('DELETE FROM outbox WHERE seq = ?', [seq]);
-      await tx.run('UPDATE executions SET synced_rev = rev, sync_note = ?, updated_at = ? WHERE id = ?', [note, iso(now), row.execution_id]);
+      await tx.run('UPDATE executions SET synced_rev = rev, sync_note = ?, updated_at = ? WHERE id = ?', [note, iso(now), row.entity_id]);
       return [];
     case 'complete': {
-      const cmd = { seq, executionId: row.execution_id } as OutboxCommand;
-      if (!(await reopenRefusedCompletion(tx, cmd, now, note))) await closeExecution(tx, row.execution_id, now, note);
+      const cmd = { seq, entityType: 'execution', entityId: row.entity_id } as OutboxCommand;
+      if (!(await reopenRefusedCompletion(tx, cmd, now, note))) await closeExecution(tx, row.entity_id, now, note);
       await tx.run('DELETE FROM outbox WHERE seq = ?', [seq]);
-      await tx.run('UPDATE executions SET synced_rev = rev WHERE id = ?', [row.execution_id]);
+      await tx.run('UPDATE executions SET synced_rev = rev WHERE id = ?', [row.entity_id]);
       return [];
     }
   }

@@ -99,7 +99,7 @@ export async function markFinishedSynced(db: Db, now: number): Promise<void> {
   await db.run(
     `UPDATE executions SET finished_synced_at = ?
      WHERE state <> 'active' AND finished_synced_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM outbox WHERE outbox.execution_id = executions.id)`,
+       AND NOT EXISTS (SELECT 1 FROM outbox WHERE outbox.entity_type = 'execution' AND outbox.entity_id = executions.id)`,
     [iso(now)],
   );
 }
@@ -114,14 +114,14 @@ async function adoptExecution(tx: Db, from: string, to: string, now: number): Pr
   const pulled = await tx.first<{ rev: number }>('SELECT rev FROM executions WHERE id = ?', [to]);
   await tx.run('DELETE FROM executions WHERE id = ?', [to]);
   await tx.run(`UPDATE executions SET id = ?, claim = 'accepted', updated_at = ? WHERE id = ?`, [to, iso(now), from]);
-  await tx.run('UPDATE media SET execution_id = ? WHERE execution_id = ?', [to, from]);
-  await tx.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [to, from]);
-  await tx.run('UPDATE media_refusals SET execution_id = ? WHERE execution_id = ?', [to, from]);
+  await tx.run(`UPDATE media SET owner_id = ? WHERE owner_type = 'execution' AND owner_id = ?`, [to, from]);
+  await tx.run(`UPDATE outbox SET entity_id = ? WHERE entity_type = 'execution' AND entity_id = ?`, [to, from]);
+  await tx.run(`UPDATE media_refusals SET owner_id = ? WHERE owner_type = 'execution' AND owner_id = ?`, [to, from]);
   const shift = pulled?.rev ?? 0;
   if (shift === 0) return;
   await tx.run('UPDATE executions SET rev = rev + ?, synced_rev = ? WHERE id = ?', [shift, shift, to]);
   const queued = await tx.all<{ seq: number; rev: number; payload: string }>(
-    `SELECT seq, rev, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
+    `SELECT seq, rev, payload FROM outbox WHERE entity_type = 'execution' AND entity_id = ? AND kind IN ('answers', 'complete')`,
     [to],
   );
   for (const q of queued) {
@@ -135,7 +135,7 @@ async function adoptExecution(tx: Db, from: string, to: string, now: number): Pr
  * answers are sent again above the server's revision instead of being marked synced, so the next pull cannot overwrite them.
  */
 async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number): Promise<void> {
-  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.executionId]);
+  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.entityId]);
   if (!row) return void (await ackCommand(tx, cmd.seq));
   const e = toExecution(row);
   // A newer local revision above the server's is already queued: it carries these answers.
@@ -144,7 +144,7 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
   await tx.run('UPDATE executions SET rev = ? WHERE id = ?', [rev, e.id]);
   // The command stays where it is (its action time and its place before a completion), now with the new revision.
   if ((await requeueRevision(tx, e.id, rev, e.answers)) === 0) {
-    await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
+    await appendCommand(tx, { entityType: 'execution', entityId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
   }
 }
 
@@ -205,11 +205,11 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       case 'claim':
         return api.executions.claim(body as ClaimCommand);
       case 'media':
-        return api.executions.registerMedia(cmd.executionId, body as RegisterMediaCommand);
+        return api.executions.registerMedia(cmd.entityId, body as RegisterMediaCommand);
       case 'answers':
-        return api.executions.saveAnswers(cmd.executionId, body as SaveAnswersCommand);
+        return api.executions.saveAnswers(cmd.entityId, body as SaveAnswersCommand);
       case 'complete':
-        return api.executions.complete(cmd.executionId, body as CompleteCommand);
+        return api.executions.complete(cmd.entityId, body as CompleteCommand);
     }
   }
 
@@ -218,7 +218,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     switch (cmd.kind) {
       case 'claim': {
         const r = result as ClaimResult;
-        const e = await tx.first<{ occurrence_id: string }>('SELECT occurrence_id FROM executions WHERE id = ?', [cmd.executionId]);
+        const e = await tx.first<{ occurrence_id: string }>('SELECT occurrence_id FROM executions WHERE id = ?', [cmd.entityId]);
         if (!e) return null;
         if (r.claim) {
           await tx.run('UPDATE occurrences SET claim_execution_id = ?, claim_user_id = ?, claim_name = ? WHERE id = ?', [
@@ -226,15 +226,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
           ]);
         }
         const heldByMe = r.claim !== null && r.claim.executorUserId === (await getMeta(tx, 'userId'));
-        if (r.state === 'rejected' && r.reason === 'ALREADY_CLAIMED' && heldByMe && r.claim!.executionId !== cmd.executionId) {
-          await adoptExecution(tx, cmd.executionId, r.claim!.executionId, now);
+        if (r.state === 'rejected' && r.reason === 'ALREADY_CLAIMED' && heldByMe && r.claim!.executionId !== cmd.entityId) {
+          await adoptExecution(tx, cmd.entityId, r.claim!.executionId, now);
         } else if (r.state === 'rejected') {
           await tx.run(`UPDATE executions SET state = 'rejected', claim = 'rejected', rejected_reason = ?, rejected_by = ?, updated_at = ? WHERE id = ?`, [
-            r.reason, r.claim?.executorName ?? null, iso(now), cmd.executionId,
+            r.reason, r.claim?.executorName ?? null, iso(now), cmd.entityId,
           ]);
-          return { executionId: cmd.executionId, occurrenceId: e.occurrence_id, reason: r.reason ?? 'ALREADY_CLAIMED', byName: r.claim?.executorName ?? null };
+          return { executionId: cmd.entityId, occurrenceId: e.occurrence_id, reason: r.reason ?? 'ALREADY_CLAIMED', byName: r.claim?.executorName ?? null };
         } else {
-          await tx.run(`UPDATE executions SET claim = 'accepted', started_at = ?, updated_at = ? WHERE id = ?`, [normIso(r.startedAt), iso(now), cmd.executionId]);
+          await tx.run(`UPDATE executions SET claim = 'accepted', started_at = ?, updated_at = ? WHERE id = ?`, [normIso(r.startedAt), iso(now), cmd.entityId]);
         }
         await tx.run(`UPDATE occurrences SET status = 'started' WHERE id = ? AND status IN ('pending', 'overdue', 'missed')`, [e.occurrence_id]);
         return null;
@@ -248,13 +248,13 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       }
       case 'answers':
         // max(): a late success for an older revision must never lower what is known to be synced.
-        await tx.run('UPDATE executions SET synced_rev = max(synced_rev, ?) WHERE id = ?', [cmd.rev, cmd.executionId]);
+        await tx.run('UPDATE executions SET synced_rev = max(synced_rev, ?) WHERE id = ?', [cmd.rev, cmd.entityId]);
         return null;
       case 'complete': {
         const r = result as CompleteResult;
         await tx.run(
           'UPDATE executions SET state = ?, completed_at = coalesce(?, completed_at), synced_rev = max(synced_rev, ?), updated_at = ? WHERE id = ?',
-          [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.executionId],
+          [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.entityId],
         );
         return null;
       }

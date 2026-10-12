@@ -42,7 +42,8 @@ export function withUploadTimeout<T>(upload: Promise<T>, ms: number = UPLOAD_TIM
 export interface MediaQueueEntry {
   id: string;
   kind: LocalMedia['kind'];
-  checklistName: string | null;
+  /** The checklist or task the file belongs to. */
+  title: string | null;
   failedCode: string | null;
   attempts: number;
 }
@@ -138,7 +139,7 @@ export function createMediaQueue(deps: {
     let ticket: MediaUploadTicket;
     try {
       // Registering a known ID again only returns a fresh presigned URL (Part 1 Task 10, decision 1).
-      ticket = await api.executions.registerMedia(m.executionId, {
+      ticket = await api.executions.registerMedia(m.ownerId, {
         ...mediaRegisterBody(m),
         deviceTime: iso(clock.now()),
         clientOffsetMs: clampOffset(await readOffset(db)),
@@ -182,7 +183,7 @@ export function createMediaQueue(deps: {
       const now = clock.now();
       const removed = await owned(async (tx) => {
         const due = await tx.all<{ id: string; local_uri: string }>(
-          `SELECT m.id, m.local_uri FROM media m JOIN executions e ON e.id = m.execution_id
+          `SELECT m.id, m.local_uri FROM media m JOIN executions e ON m.owner_type = 'execution' AND e.id = m.owner_id
            WHERE m.uploaded_at IS NOT NULL AND m.file_deleted_at IS NULL
              AND e.finished_synced_at IS NOT NULL AND e.finished_synced_at <= ?`,
           [iso(now - LOCAL_FILE_KEEP_DAYS * DAY_MS)],
@@ -204,14 +205,15 @@ export function createMediaQueue(deps: {
       return { pending: r?.pending ?? 0, failed: r?.failed ?? 0 };
     },
     async list() {
-      const found = await db.all<{ id: string; kind: LocalMedia['kind']; checklist_name: string | null; failed_code: string | null; attempts: number }>(
-        `SELECT m.id, m.kind, oc.checklist_name, m.failed_code, m.attempts FROM media m
-         JOIN executions e ON e.id = m.execution_id
+      const found = await db.all<{ id: string; kind: LocalMedia['kind']; title: string | null; failed_code: string | null; attempts: number }>(
+        `SELECT m.id, m.kind, coalesce(oc.checklist_name, json_extract(t.data, '$.title')) AS title, m.failed_code, m.attempts FROM media m
+         LEFT JOIN executions e ON m.owner_type = 'execution' AND e.id = m.owner_id
          LEFT JOIN occurrences oc ON oc.id = e.occurrence_id
+         LEFT JOIN tasks t ON m.owner_type = 'task' AND t.id = m.owner_id
          WHERE m.registered_at IS NOT NULL AND m.uploaded_at IS NULL AND m.file_deleted_at IS NULL
          ORDER BY CASE m.kind WHEN 'photo' THEN 0 ELSE 1 END, m.captured_at, m.id`,
       );
-      return found.map((r) => ({ id: r.id, kind: r.kind, checklistName: r.checklist_name, failedCode: r.failed_code, attempts: r.attempts }));
+      return found.map((r) => ({ id: r.id, kind: r.kind, title: r.title, failedCode: r.failed_code, attempts: r.attempts }));
     },
     async retryFailed() {
       const reset = await owned((tx) => tx.run('UPDATE media SET failed_code = NULL, attempts = 0 WHERE failed_code IS NOT NULL AND uploaded_at IS NULL'));

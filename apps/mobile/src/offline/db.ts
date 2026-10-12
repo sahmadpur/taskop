@@ -154,6 +154,92 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX media_refusals_execution ON media_refusals (execution_id, item_id);
   `,
+  // v3 (sub-project 5): commands and media belong to an execution or a task. SQLite cannot repurpose a NOT NULL column,
+  // so outbox, media and media_refusals are rebuilt; every row keeps its id, and the outbox its order and numbering.
+  `
+  CREATE TABLE outbox_v3 (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('execution', 'task')),
+    entity_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref_id TEXT,
+    rev INTEGER,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT,
+    error_key TEXT,
+    created_at TEXT NOT NULL
+  );
+  INSERT INTO outbox_v3 (seq, entity_type, entity_id, kind, ref_id, rev, payload, status, attempts, error_code, error_key, created_at)
+    SELECT seq, 'execution', execution_id, kind, ref_id, rev, payload, status, attempts, error_code, error_key, created_at FROM outbox ORDER BY seq;
+  DELETE FROM sqlite_sequence WHERE name = 'outbox_v3';
+  INSERT INTO sqlite_sequence (name, seq) SELECT 'outbox_v3', seq FROM sqlite_sequence WHERE name = 'outbox';
+  DROP TABLE outbox;
+  ALTER TABLE outbox_v3 RENAME TO outbox;
+  CREATE INDEX outbox_entity ON outbox (entity_type, entity_id, kind);
+
+  CREATE TABLE media_v3 (
+    id TEXT PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('execution', 'task')),
+    owner_id TEXT NOT NULL,
+    item_id TEXT,
+    role TEXT,
+    kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    duration_ms INTEGER,
+    captured_at TEXT NOT NULL,
+    local_uri TEXT NOT NULL,
+    registered_at TEXT,
+    uploaded_at TEXT,
+    failed_code TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    file_deleted_at TEXT
+  );
+  INSERT INTO media_v3 (id, owner_type, owner_id, item_id, role, kind, source, mime, bytes, width, height, duration_ms, captured_at, local_uri,
+      registered_at, uploaded_at, failed_code, attempts, file_deleted_at)
+    SELECT id, 'execution', execution_id, item_id, NULL, kind, source, mime, bytes, width, height, duration_ms, captured_at, local_uri,
+      registered_at, uploaded_at, failed_code, attempts, file_deleted_at FROM media;
+  DROP TABLE media;
+  ALTER TABLE media_v3 RENAME TO media;
+  CREATE INDEX media_owner ON media (owner_type, owner_id);
+
+  CREATE TABLE media_refusals_v3 (
+    media_id TEXT PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('execution', 'task')),
+    owner_id TEXT NOT NULL,
+    item_id TEXT,
+    error_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  INSERT INTO media_refusals_v3 (media_id, owner_type, owner_id, item_id, error_key, created_at)
+    SELECT media_id, 'execution', execution_id, item_id, error_key, created_at FROM media_refusals;
+  DROP TABLE media_refusals;
+  ALTER TABLE media_refusals_v3 RENAME TO media_refusals;
+  CREATE INDEX media_refusals_owner ON media_refusals (owner_type, owner_id, item_id);
+
+  CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    local_status TEXT NOT NULL,
+    rev INTEGER NOT NULL,
+    sync_note TEXT,
+    received_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE task_drafts (
+    task_id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    media_ids TEXT NOT NULL DEFAULT '[]',
+    submitted_at TEXT,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export async function migrate(db: Db, migrations: readonly string[] = MIGRATIONS): Promise<number> {

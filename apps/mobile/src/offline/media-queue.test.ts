@@ -76,7 +76,7 @@ describe('media queue', () => {
     expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 0 });
     expect(await h.mediaQueue.drain()).toBe('retry');
     expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 1 });
-    expect((await h.mediaQueue.list())[0]).toMatchObject({ kind: 'photo', failedCode: 'UPLOAD_FAILED', checklistName: 'Açılış yoxlaması' });
+    expect((await h.mediaQueue.list())[0]).toMatchObject({ kind: 'photo', failedCode: 'UPLOAD_FAILED', title: 'Açılış yoxlaması' });
     expect(await h.mediaQueue.drain()).toBe('ok');
     h.api.reset('confirmUploaded');
     await h.mediaQueue.retryFailed();

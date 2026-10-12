@@ -31,7 +31,7 @@ describe('ExecutionScreen', () => {
     const t = await opened();
     await act(async () => {
       await t.db.run(`UPDATE executions SET state = 'rejected', claim = 'rejected', sync_note = 'errors.NOT_EXECUTOR' WHERE id = ?`, [t.id]);
-      await t.db.run(`INSERT INTO media_refusals (media_id, execution_id, item_id, error_key, created_at) VALUES ('m', ?, ?, 'errors.MEDIA_TOO_LARGE', ?)`, [t.id, t.c.problem.id, T.open]);
+      await t.db.run(`INSERT INTO media_refusals (media_id, owner_type, owner_id, item_id, error_key, created_at) VALUES ('m', 'execution', ?, ?, 'errors.MEDIA_TOO_LARGE', ?)`, [t.id, t.c.problem.id, T.open]);
       t.services.feed.emit();
     });
     expect(await screen.findByText('Server qəbul etmədi: Bu icranı yalnız onu başladan əməkdaş dəyişə bilər.')).toBeTruthy();
@@ -153,7 +153,7 @@ describe('ExecutionScreen', () => {
     // What adopting my other install's claim does (sync-engine adoptExecution).
     await act(async () => {
       await t.db.run(`UPDATE executions SET id = ?, claim = 'accepted' WHERE id = ?`, [OTHER_EXECUTION, t.id]);
-      await t.db.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [OTHER_EXECUTION, t.id]);
+      await t.db.run(`UPDATE outbox SET entity_id = ? WHERE entity_type = 'execution' AND entity_id = ?`, [OTHER_EXECUTION, t.id]);
       await t.db.run('UPDATE occurrences SET claim_execution_id = ?, claim_user_id = ?, claim_name = ?', [OTHER_EXECUTION, ME, 'Aysel Əliyeva']);
       t.services.feed.emit();
     });
@@ -301,7 +301,7 @@ describe('ExecutionScreen inputs and races', () => {
     await fireEvent.press(within(screen.getByTestId(`item-${t.c.problem.id}`)).getByRole('button', { name: 'Foto: Qalereya' }));
     await act(async () => {
       await t.db.run(`UPDATE executions SET id = ?, claim = 'accepted' WHERE id = ?`, [OTHER_EXECUTION, t.id]);
-      await t.db.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [OTHER_EXECUTION, t.id]);
+      await t.db.run(`UPDATE outbox SET entity_id = ? WHERE entity_type = 'execution' AND entity_id = ?`, [OTHER_EXECUTION, t.id]);
       t.services.feed.emit();
     });
     await screen.findByText('Zal');

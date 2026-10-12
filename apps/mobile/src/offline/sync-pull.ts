@@ -19,10 +19,10 @@ async function pruneOld(tx: Db, returnedIds: string[], now: number): Promise<voi
         SELECT 1 FROM executions e
         WHERE e.occurrence_id = o.id
           AND (e.rev > e.synced_rev OR e.claim = 'pending'
-            OR EXISTS (SELECT 1 FROM outbox x WHERE x.execution_id = e.id)
-            OR EXISTS (SELECT 1 FROM media m WHERE m.execution_id = e.id AND (m.uploaded_at IS NULL OR m.file_deleted_at IS NULL))))`;
-  await tx.run(`DELETE FROM media WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
-  await tx.run(`DELETE FROM media_refusals WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
+            OR EXISTS (SELECT 1 FROM outbox x WHERE x.entity_type = 'execution' AND x.entity_id = e.id)
+            OR EXISTS (SELECT 1 FROM media m WHERE m.owner_type = 'execution' AND m.owner_id = e.id AND (m.uploaded_at IS NULL OR m.file_deleted_at IS NULL))))`;
+  await tx.run(`DELETE FROM media WHERE owner_type = 'execution' AND owner_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
+  await tx.run(`DELETE FROM media_refusals WHERE owner_type = 'execution' AND owner_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
   await tx.run(`DELETE FROM executions WHERE occurrence_id IN (${prunable})`, params);
   await tx.run(`DELETE FROM occurrences WHERE id IN (${prunable})`, params);
 }
@@ -82,7 +82,7 @@ async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void
     );
     return;
   }
-  const queued = (await tx.first<{ n: number }>('SELECT count(*) AS n FROM outbox WHERE execution_id = ?', [x.id]))?.n ?? 0;
+  const queued = (await tx.first<{ n: number }>(`SELECT count(*) AS n FROM outbox WHERE entity_type = 'execution' AND entity_id = ?`, [x.id]))?.n ?? 0;
   if (queued > 0) return; // Local changes not sent yet win; the next pull sees their result.
   // The local lock at closes_at is sticky even before the server's sweep has run (decision 15).
   const state = local.state === 'partial' && x.state === 'active' ? 'partial' : x.state;
