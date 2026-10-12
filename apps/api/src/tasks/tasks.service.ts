@@ -9,6 +9,7 @@ import { sites, tasks } from '../db/schema';
 import { SchedulingScope } from '../scheduling/scheduling-scope';
 import type { CreateTaskDto } from './dto';
 import { TaskAssignees } from './task-assignees';
+import { TaskProblems } from './task-problems';
 import { TaskQueries } from './task-queries';
 import { auditView } from './task-rows';
 import { TaskWriter } from './task-writer';
@@ -21,6 +22,7 @@ export class TasksService {
     private readonly clock: Clock,
     private readonly siteScope: SchedulingScope,
     private readonly assignees: TaskAssignees,
+    private readonly problems: TaskProblems,
     private readonly writer: TaskWriter,
     private readonly queries: TaskQueries,
   ) {}
@@ -31,7 +33,17 @@ export class TasksService {
     const [known] = await tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, dto.id));
     if (known) return this.queries.detail(p, dto.id);
     const now = this.clock.now();
-    if (dto.siteId) await this.assertSite(p, dto.siteId);
+    let siteId = dto.siteId;
+    if (dto.problemId) {
+      const problem = await this.problems.readable(p, dto.problemId);
+      if (!problem) throw new AppError('NOT_FOUND');
+      // Only problems of closed runs: their rows no longer change (spec §1).
+      if (problem.executionState !== 'completed' && problem.executionState !== 'partial') throw new AppError('PROBLEM_NOT_CLOSED');
+      if (problem.taskId) throw new AppError('PROBLEM_ALREADY_HAS_TASK');
+      siteId = problem.pr.siteId;
+    } else if (siteId) {
+      await this.assertSite(p, siteId);
+    }
     const assignee = await this.assignees.resolve(p, dto.assignee);
     const [row] = await tx
       .insert(tasks)
@@ -41,13 +53,15 @@ export class TasksService {
         title: dto.title,
         instructions: dto.instructions,
         priority: dto.priority,
-        siteId: dto.siteId,
+        siteId,
         createdByUserId: p.userId,
         assigneeUserId: assignee.userId,
         assigneeTeamId: assignee.teamId,
-        requiresReview: dto.requiresReview ?? false,
+        // Problem fixes are reviewed unless the creator says otherwise (spec §1).
+        requiresReview: dto.requiresReview ?? dto.problemId !== null,
         evidence: dto.evidence,
         dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+        problemId: dto.problemId,
         createdAt: now,
         updatedAt: now,
       })
