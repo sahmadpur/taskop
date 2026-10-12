@@ -142,3 +142,5 @@ export interface TaskDbRow {
 }
 
 export const taskRow = async (id: string): Promise<TaskDbRow> => (await ownerQuery<TaskDbRow>('select * from tasks where id = $1', [id])).rows[0]!;
+
+export const act = (api: Api, taskId: string, action: 'accept' | 'start', at: string) => api.post(`/api/v1/tasks/${taskId}/${action}`, { at });

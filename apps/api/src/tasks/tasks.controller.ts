@@ -1,12 +1,13 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { TaskAssigneeOptions, TaskDetail } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { CreateTaskDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse } from './dto';
+import { CreateTaskDto, TaskActionCommandDto, TaskAssigneeOptionsResponse, TaskAssigneeQueryDto, TaskDetailResponse } from './dto';
 import { TaskAssignees } from './task-assignees';
 import { TaskQueries } from './task-queries';
+import { TaskWorkService } from './task-work.service';
 import { TasksService } from './tasks.service';
 
 /** Spec §6.2. Routes without a permission decorator decide access in the service (spec §6.1). */
@@ -18,6 +19,7 @@ export class TasksController {
     @Inject(TasksService) private readonly tasks: TasksService,
     @Inject(TaskQueries) private readonly queries: TaskQueries,
     @Inject(TaskAssignees) private readonly assignees: TaskAssignees,
+    @Inject(TaskWorkService) private readonly work: TaskWorkService,
   ) {}
 
   /** Declared before `:id`, so "assignees" is never parsed as an id. */
@@ -39,5 +41,20 @@ export class TasksController {
   @ApiCreatedResponse({ type: TaskDetailResponse })
   create(@CurrentPrincipal() p: Principal, @Body() body: CreateTaskDto): Promise<TaskDetail> {
     return this.tasks.create(p, body);
+  }
+
+  /** The assignee, or a team member while nobody has accepted (spec Decision 8). */
+  @Post(':id/accept')
+  @HttpCode(200)
+  @ApiOkResponse({ type: TaskDetailResponse })
+  accept(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskActionCommandDto): Promise<TaskDetail> {
+    return this.work.accept(p, id, body);
+  }
+
+  @Post(':id/start')
+  @HttpCode(200)
+  @ApiOkResponse({ type: TaskDetailResponse })
+  start(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskActionCommandDto): Promise<TaskDetail> {
+    return this.work.start(p, id, body);
   }
 }

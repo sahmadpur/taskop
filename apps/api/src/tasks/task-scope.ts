@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, or, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
 import { ScopeService } from '../common/scope.service';
 import { DbService } from '../db/db.service';
@@ -80,5 +81,34 @@ export class TaskScope {
       .from(tasks)
       .where(eq(tasks.id, id));
     return r ?? { canRead: false, canManage: false, canReview: false };
+  }
+
+  /** Locks the task row first: every command decides access after the lock, so it sees the committed state. */
+  async lock(id: string): Promise<TaskRow> {
+    const [t] = await this.db.tx().select().from(tasks).where(eq(tasks.id, id)).for('update');
+    if (!t) throw new AppError('NOT_FOUND');
+    return t;
+  }
+
+  /**
+   * Who may run a worker command on a locked task (spec Decision 8): the assignee, or a team member while nobody
+   * has accepted. A member who lost the race gets TASK_ALREADY_TAKEN, other readers 403, everyone else 404.
+   */
+  async assertWorker(p: Principal, t: TaskRow): Promise<void> {
+    if (t.assigneeUserId === p.userId) return;
+    const member = t.assigneeTeamId !== null && (await this.isActiveTeamMember(p.userId, t));
+    if (member && t.assigneeUserId === null) return;
+    if (member) throw new AppError('TASK_ALREADY_TAKEN');
+    if ((await this.access(p, t.id)).canRead) throw new AppError('FORBIDDEN');
+    throw new AppError('NOT_FOUND');
+  }
+
+  private async isActiveTeamMember(userId: string, t: TaskRow): Promise<boolean> {
+    const [r] = await this.db
+      .tx()
+      .select({ member: sql<boolean>`(${activeTeamMember(userId, tasks.assigneeTeamId)})` })
+      .from(tasks)
+      .where(eq(tasks.id, t.id));
+    return r?.member === true;
   }
 }

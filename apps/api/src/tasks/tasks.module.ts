@@ -4,6 +4,7 @@ import { TaskAssignees } from './task-assignees';
 import { TaskProblems } from './task-problems';
 import { TaskQueries } from './task-queries';
 import { TaskScope } from './task-scope';
+import { TaskWorkService } from './task-work.service';
 import { TaskWriter } from './task-writer';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
@@ -12,6 +13,6 @@ import { TasksService } from './tasks.service';
 @Module({
   imports: [SchedulingModule],
   controllers: [TasksController],
-  providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter],
+  providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter, TaskWorkService],
 })
 export class TasksModule {}
