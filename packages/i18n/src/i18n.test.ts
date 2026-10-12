@@ -216,3 +216,26 @@ describe('mobile task translations', () => {
     expect(az.mobile.tasks.create.teamOption.replace('{{name}}', 'Texniki xidmət').replace('{{count}}', '3')).toBe('Texniki xidmət (3 nəfər)');
   });
 });
+
+describe('task web translations', () => {
+  it('has the strings the tasks page, the dialog, the drawer and the problems page use', () => {
+    expect(az.tasks.page.tabs).toEqual({ all: 'Hamısı', review: 'Yoxlamamı gözləyir', overdue: 'Gecikmiş', mine: 'Mənim yaratdıqlarım' });
+    expect(az.tasks.page.new).toBe('Yeni tapşırıq');
+    for (const k of ['title', 'status', 'assignee', 'site', 'due', 'source'] as const) expect(az.tasks.page.columns[k], k).toBeTypeOf('string');
+    expect(az.tasks.page.teamWaiting).toContain('{{team}}');
+    expect(az.tasks.picker.members).toContain('{{count}}');
+    expect(az.tasks.dialog.dueHint).toContain('{{timeZone}}');
+    expect(az.tasks.dialog.siteFromProblem).toContain('{{site}}');
+    expect(az.tasks.dialog.uploadFailed).toContain('{{count}}');
+    expect(az.tasks.dialog.mediaLimit).toContain('{{count}}');
+    for (const s of ['waiting', 'uploading', 'done', 'failed', 'refused'] as const) expect(az.tasks.dialog.fileStates[s], s).toBeTypeOf('string');
+    expect(az.tasks.dialog.uploadClock).toBe('Kompüterin saatını yoxlayın.');
+    expect(az.tasks.dialog.uploadLimit).toBe('Təlimat faylları limiti dolub (5).');
+    expect(az.tasks.drawer.submission).toContain('{{n}}');
+    expect(az.tasks.drawer.evidenceValue).toContain('{{photo}}');
+    expect(az.tasks.problems.create).toBe('Tapşırıq yarat');
+    // Part 1's keys are untouched.
+    expect(az.tasks.flags.overdue).toBe('Gecikib');
+    expect(az.tasks.statuses.awaiting_review).toBe('Yoxlamada');
+  });
+});
