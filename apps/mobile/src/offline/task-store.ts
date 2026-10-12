@@ -172,6 +172,18 @@ export function createTaskStore(deps: Pick<StoreDeps, 'db' | 'clock' | 'newId' |
       const evidence = taskEvidenceMet(task.server.evidence, await kindsOf(tx, draft.mediaIds));
       if (!evidence.ok) return evidence;
       const submittedAt = iso(now);
+      // Media kept after a state change were never registered and have no queued registration: queue one before the submission lists them.
+      const unregistered = await tx.all<MediaRow>(
+        `SELECT * FROM media WHERE owner_type = 'task' AND owner_id = ? AND registered_at IS NULL
+           AND id IN (SELECT value FROM json_each(?))
+           AND id NOT IN (SELECT ref_id FROM outbox WHERE kind = 'task.media' AND ref_id IS NOT NULL)
+         ORDER BY captured_at, id`,
+        [taskId, JSON.stringify(draft.mediaIds)],
+      );
+      for (const row of unregistered) {
+        const m = toMedia(row);
+        await appendCommand(tx, { entityType: 'task', entityId: taskId, kind: 'task.media', refId: m.id, payload: { ...taskMediaBody(m, m.role ?? 'response') }, createdAt: submittedAt });
+      }
       await tx.run('UPDATE task_drafts SET submitted_at = ?, updated_at = ? WHERE task_id = ?', [submittedAt, submittedAt, taskId]);
       await tx.run('UPDATE tasks SET local_status = ?, sync_note = NULL, updated_at = ? WHERE id = ?', [next, submittedAt, taskId]);
       await appendCommand(tx, {

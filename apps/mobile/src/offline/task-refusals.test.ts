@@ -196,4 +196,39 @@ describe('task refusals', () => {
     expect((submit.payload as { mediaIds: string[] }).mediaIds).toEqual([kept]);
     expect((await h.tasks.task(TASK))!.draft!.mediaIds).toEqual([kept]);
   });
+
+  it('an instruction photo refused with TASK_STATE_INVALID for a task the phone does not hold leaves nothing behind', async () => {
+    const h = await createHarness();
+    h.net.online = false;
+    const photo = capturedPhoto(h.transport);
+    await h.tasks.queueInstructionMedia(TASK, [photo]);
+    h.api.on('taskRegisterMedia', refuse(409, 'TASK_STATE_INVALID'));
+    h.api.sync = syncResponse({ tasks: [] });
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    expect(await counts(h)).toEqual({ tasks: 0, drafts: 0, media: 0, outbox: 0 });
+    expect(h.transport.removed).toEqual([photo.localUri]);
+    expect(h.removedTasks).toEqual([]);
+  });
+
+  it('a photo kept after TASK_STATE_INVALID is registered again when the task is started and submitted again', async () => {
+    const h = await withTask();
+    await h.tasks.start(TASK);
+    const id = await h.tasks.attachMedia(TASK, capturedPhoto(h.transport));
+    h.api.on('taskStart', async () => {
+      h.api.sync = syncResponse({ tasks: [syncTask({ status: 'new', rev: 9 })] });
+      throw new ApiError(409, 'TASK_STATE_INVALID', 'errors.TASK_STATE_INVALID');
+    });
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    expect(await listCommands(h.db)).toEqual([]);
+    h.net.online = false;
+    await h.tasks.start(TASK);
+    await h.tasks.submit(TASK);
+    expect((await listCommands(h.db)).map((c) => [c.kind, c.refId])).toEqual([
+      ['task.start', null],
+      ['task.media', id],
+      ['task.submit', expect.any(String)],
+    ]);
+  });
 });
