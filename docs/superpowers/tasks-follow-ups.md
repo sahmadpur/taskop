@@ -1,0 +1,70 @@
+# Tasks — follow-ups
+
+Items found while building sub-project 5 that are out of its scope. ⚑ marks the ones to look at first.
+
+- ⚑ **Notifications (SP6).** `task.assigned`, `task.accepted`, `task.submitted`, `task.rejected`, `task.completed`, `task.cancelled` and `task.overdue` are emitted with no listeners. SP6 subscribes for FR-14.10 (completion to the creator) and FR-15.03 (overdue).
+- ⚑ **Production bucket CORS.** Apply the "Deployment plan note" of `docs/superpowers/plans/2026-10-12-tasks-1-api.md` to the deployment plan: the `taskop-media` bucket on `files.taskop.app` must allow origin `https://admin.taskop.app` (`GET`, `PUT`, `HEAD`; `Content-Type`, `Content-Length`; expose `ETag`), or web uploads fail in the browser while the phone keeps working.
+- ⚑ **Platform-admin reads.** The task endpoints are tenant-only. Add `platform/tenants/:tenantId/tasks…` variants with the `route-mode` pattern if support needs them.
+- **Permission backfill.** `0010_tasks_security.sql` gave the task keys to the existing Admin, Manager and Auditor roles (SP2–SP4 backfilled Admin only). Nothing was deployed then; revisit the rule before the first production migration of a later sub-project.
+- **Overdue in the timeline.** `overdue_at` is a flag with a timestamp, not a `task_status_history` row. If reports (SP7, FR-18.12) need it in the status timeline, add an event-type column to the history table.
+- **Sync size.** `/me/sync` returns every open task of the user and `knownTaskIds` is capped at 100 (to keep the sync URL short). If a user ever holds more tasks, move tasks to a change cursor on `(updated_at, id)` (the `tasks_sync_idx` index is already there).
+- **Concurrent duplicate creates** (the same task id sent twice in parallel) can produce one `500` from `tasks_pkey`; the retry returns the stored task. Map `tasks_pkey` to a replay if it shows up in logs.
+- **Instruction media** can be added but not removed after creation (no `DELETE` on `task_media`). Add an `archived_at` column if managers ask to remove a wrong photo.
+- **Media retention per plan** (NFR-10.03) → sub-project 9. `task-media.cleanup` only removes never-uploaded objects.
+
+## Deferred from task reviews
+
+Small items noticed while reviewing each piece of the tasks API and left for later.
+
+### Tests
+
+- Request-schema tests could cover more combinations of evidence, review and list-query settings, and the limits test pins only the cap on `knownTaskIds`.
+- The sync test checks the task ids but there is no API-level assertion on a task's execution state yet.
+- The database test for the tasks migration could also assert: the backfill start index is found, replaying it is harmless and bumps `roles.version`, the `taskop_platform` grants, and `WITH CHECK` on the other tables.
+- Missing coverage on reading and listing:
+  - media attached to another execution
+  - paging a resolved list with a cursor
+  - paging when two rows share the same cursor value
+  - widening a filter beyond the caller's scope
+  - the sub-site read rule for a reader who is not the creator
+- Missing coverage on creating and assigning:
+  - a partial-run create
+  - a user without `assignments.view`
+  - a concurrent create that reaches the unique constraint rather than the pre-check
+  - the replay not emitting `task.assigned` again
+- Missing coverage on accepting and starting:
+  - a concurrent accept does not check that the loser gets `TASK_ALREADY_TAKEN`
+  - starting a team task nobody accepted
+  - a member of an inactive team
+  - a replay carrying a future time
+- Missing coverage on media registration: manage permission returning 404, the photo cap, a team member registering before anyone accepted, and instruction media counted only while non-pending.
+- Missing coverage on submitting: media captured by someone else, media already linked, more than 3 videos, the video key, a replay by an unrelated caller, a foreign submission id, and no extra event on a replay.
+- Missing coverage on edits and reassignment:
+  - both team-reassign branches
+  - review settings changed by a non-manager creator
+  - cancelling from awaiting review
+  - resending the same site
+  - resends for a deactivated team or an out-of-scope site
+- Missing coverage on the due-date sweep and deactivation: the locked-row test only counts rows and does not assert that no history row is written, there is no two-tenant sweep test, and there is no negative test for setting sites on an active user.
+- Missing coverage on sync: a cancelled task inside the 7-day window.
+- Missing coverage on problem media: a pending problem medium, problem media on an ad-hoc task, and the URL of a purged medium.
+- Missing coverage on tenant isolation: a foreign `problemId` on create, a foreign assignee or site on PATCH, no positive control in the 404 loop, and reading a task at a child site.
+- Housekeeping: import order in `i18n.test.ts`, the web client test records method and URL but not request bodies, and a repeated `DAY` constant in tests.
+
+### API behaviour
+
+- A `media` list on a problem can be shorter than `mediaIds`; apps must not assume the two are the same length.
+- A reassigned task keeps its old `submittedAt`, which the web and phone screens should keep in mind.
+- The `task.updated` audit entry also appears for a reassignment.
+- Pending media counts as evidence on submit (by design); the evidence message key is built from a template instead of the typed issue codes that already exist in contracts.
+- `knownTaskIds` in `/me/sync` can echo a duplicated id twice in `removedTaskIds`.
+- Some plan documents still say 200 for the `knownTaskIds` cap; the real cap is 100, which the phone work (Part 2) should use.
+- Possible refactors: a shared upload-ticket helper for the small media-service mirrors (ticket, uploaded replay literal, MIME check), one helper for the revision-bump update that is repeated six times, and reusing the team-member predicate in `isActiveTeamMember`.
+
+### Infra and housekeeping
+
+- `seaweedfs-init` restarts `on-failure` without a limit; use `on-failure:20`.
+- The media purge helper types its parent column loosely.
+- The tasks index predicate behind `tasks_due_idx` must be kept in step with the list of final statuses (a comment should say so).
+- Prettier is not enforced across the repository.
+- A `MaxListenersExceededWarning` appears in some test runs; it predates the tasks code (it comes from `http.Server`).

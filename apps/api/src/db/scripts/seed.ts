@@ -1,6 +1,6 @@
 import { hash } from '@node-rs/argon2';
 import { addDays, type Answers, type ChecklistContent, computeScore, countItems, deriveProblems, localDateOf, progress, regenerateIds, zonedTimeToUtc } from '@taskop/contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { uuidv7 } from 'uuidv7';
 import { siteLabel } from '../../tenancy/sites.service';
@@ -192,6 +192,75 @@ async function seedDemoExecution(tx: Tx, tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * Idempotent: the team "Texniki xidmət" (elvin, nigar), an ad-hoc task from Leyla to elvin due tomorrow at 18:00 Baku,
+ * and a team task created from the demo run's manual problem, with review on. Skipped once the tenant has a task.
+ */
+async function seedDemoTasks(tx: Tx, tenantId: string): Promise<void> {
+  const existing = await tx.select({ id: schema.tasks.id }).from(schema.tasks).where(eq(schema.tasks.tenantId, tenantId)).limit(1);
+  if (existing.length) return;
+  const [leyla] = await tx
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, 'manager@demo.taskop.az')));
+  const workers = await tx
+    .select({ id: schema.users.id, username: schema.users.username })
+    .from(schema.users)
+    .where(and(eq(schema.users.tenantId, tenantId), inArray(schema.users.username, ['elvin', 'nigar'])));
+  const elvin = workers.find((u) => u.username === 'elvin');
+  const [warehouse] = await tx.select({ id: schema.sites.id }).from(schema.sites).where(and(eq(schema.sites.tenantId, tenantId), eq(schema.sites.name, 'Anbar №1')));
+  if (!leyla || !elvin || !warehouse) return;
+
+  let [team] = await tx.select({ id: schema.teams.id }).from(schema.teams).where(and(eq(schema.teams.tenantId, tenantId), eq(schema.teams.name, 'Texniki xidmət')));
+  if (!team) {
+    [team] = await tx.insert(schema.teams).values({ tenantId, name: 'Texniki xidmət', description: 'Təmir və texniki işlər' }).returning({ id: schema.teams.id });
+    await tx.insert(schema.userTeams).values(workers.map((u) => ({ tenantId, userId: u.id, teamId: team!.id })));
+  }
+
+  const now = new Date();
+  const dueAt = zonedTimeToUtc(addDays(localDateOf(now, 'Asia/Baku'), 1), 18 * 60, 'Asia/Baku');
+  const adhocId = uuidv7();
+  await tx.insert(schema.tasks).values({
+    id: adhocId,
+    tenantId,
+    title: 'Soyuducunun qapısını təmir edin',
+    instructions: 'Qapının rezin kipləşdiricisini dəyişin və qapının tam bağlandığını yoxlayın.',
+    priority: 'high',
+    siteId: warehouse.id,
+    createdByUserId: leyla.id,
+    assigneeUserId: elvin.id,
+    evidence: { photo: 'required', video: 'optional', liveOnly: true },
+    dueAt,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const history: (typeof schema.taskStatusHistory.$inferInsert)[] = [{ tenantId, taskId: adhocId, fromStatus: null, toStatus: 'new', actorUserId: leyla.id, at: now }];
+
+  const [problem] = await tx
+    .select({ id: schema.executionProblems.id, siteId: schema.executionProblems.siteId, note: schema.executionProblems.note })
+    .from(schema.executionProblems)
+    .where(and(eq(schema.executionProblems.tenantId, tenantId), eq(schema.executionProblems.source, 'manual')))
+    .limit(1);
+  if (problem) {
+    const fixId = uuidv7();
+    await tx.insert(schema.tasks).values({
+      id: fixId,
+      tenantId,
+      title: 'Zibil qutusunun qapağını dəyişin',
+      instructions: problem.note ?? '',
+      siteId: problem.siteId,
+      createdByUserId: leyla.id,
+      assigneeTeamId: team!.id,
+      requiresReview: true,
+      problemId: problem.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    history.push({ tenantId, taskId: fixId, fromStatus: null, toStatus: 'new', actorUserId: leyla.id, at: now });
+  }
+  await tx.insert(schema.taskStatusHistory).values(history);
+}
+
 export async function seed(url: string): Promise<void> {
   const db = drizzle(url, { schema });
   await seedGlobalTemplates(db);
@@ -203,6 +272,7 @@ export async function seed(url: string): Promise<void> {
         await seedDemoChecklists(tx, existing.id, owner.id);
         await seedDemoScheduling(tx, existing.id, owner.id);
         await seedDemoExecution(tx, existing.id);
+        await seedDemoTasks(tx, existing.id);
       });
     }
     console.log('Demo tenant already exists');
@@ -252,6 +322,7 @@ export async function seed(url: string): Promise<void> {
     await seedDemoChecklists(tx, tenantId, ownerId);
     await seedDemoScheduling(tx, tenantId, ownerId);
     await seedDemoExecution(tx, tenantId);
+    await seedDemoTasks(tx, tenantId);
   });
   await db.$client.end();
   console.log('Demo tenant "demo" created.');
@@ -260,6 +331,7 @@ export async function seed(url: string): Promise<void> {
   console.log('  Workers: org code "demo", usernames elvin / nigar, PIN 482915');
   console.log('  Scheduling: shift "Səhər", daily "Səhər təmizliyi" at Anbar №1 (occurrences appear once the API has started)');
   console.log('  Execution: yesterday\'s "Səhər təmizliyi" by elvin, partial, with two problems (web schedule drawer and /problems)');
+  console.log('  Tasks: team "Texniki xidmət" (elvin, nigar); a task for elvin and a team task from the run\'s manual problem (web /tasks, phone Tapşırıqlar)');
 }
 
 async function main(): Promise<void> {
