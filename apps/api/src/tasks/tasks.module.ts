@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TaskAssignees } from './task-assignees';
+import { TaskMediaController } from './task-media.controller';
 import { TaskMediaService } from './task-media.service';
 import { TaskJobs } from './task-jobs';
 import { TaskListeners } from './task-listeners';
@@ -16,7 +17,7 @@ import { TasksService } from './tasks.service';
 /** Sub-project 5: tasks. Depends on scheduling (jobs, site scope); reads problems through executions/problem-rows. */
 @Module({
   imports: [SchedulingModule],
-  controllers: [TasksController],
+  controllers: [TasksController, TaskMediaController],
   providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter, TaskWorkService, TaskMediaService, TaskJobs, TaskListeners, TaskSync],
   exports: [TaskSync],
 })

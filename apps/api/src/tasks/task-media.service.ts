@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { isFinalTaskStatus, MEDIA_LIMITS, type MediaUploadTicket, TASK_LIMITS, type TaskEvidence, type TaskMediaRole } from '@taskop/contracts';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { isFinalTaskStatus, MEDIA_LIMITS, type MediaConfirmResult, type MediaUploadTicket, type MediaUrl, TASK_LIMITS, type TaskEvidence, type TaskMediaRole } from '@taskop/contracts';
+import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
-import { taskMedia } from '../db/schema';
-import { storageCap, tooLarge } from '../executions/media.service';
+import { executionMedia, executionProblems, taskMedia, tasks } from '../db/schema';
+import { assertStored, signView, storageCap, tooLarge } from '../executions/media.service';
 import { S3Service } from '../storage/s3.service';
 import type { TaskMediaRegisterDto } from './dto';
 import { type TaskRow, TaskScope } from './task-scope';
@@ -69,6 +69,46 @@ export class TaskMediaService {
       })
       .returning();
     return this.ticket(row!);
+  }
+
+  /**
+   * POST /task-media/:id/uploaded: the uploader only, and only while they can still read the task (ruling R4); the
+   * object must exist with the registered size and type. The row is locked first, so task-media.cleanup cannot delete
+   * the object between the check and the update.
+   */
+  async confirmUploaded(p: Principal, mediaId: string): Promise<MediaConfirmResult> {
+    const tx = this.db.tx();
+    const [m] = await tx.select().from(taskMedia).where(eq(taskMedia.id, mediaId)).for('update');
+    if (!m || !(await this.scope.access(p, m.taskId)).canRead) throw new AppError('NOT_FOUND');
+    if (m.capturedByUserId !== p.userId) throw new AppError('FORBIDDEN');
+    if (m.status === 'uploaded') return { mediaId, status: 'uploaded', uploadedAt: m.uploadedAt?.toISOString() ?? null };
+    await assertStored(this.s3, m);
+    const now = this.clock.now();
+    await tx.update(taskMedia).set({ status: 'uploaded', uploadedAt: now, storagePurgedAt: null }).where(eq(taskMedia.id, mediaId));
+    return { mediaId, status: 'uploaded', uploadedAt: now.toISOString() };
+  }
+
+  /** GET /task-media/:id/url: a 5-minute presigned GET for anyone who can read the task (NFR-10.02). */
+  async viewUrl(p: Principal, mediaId: string): Promise<MediaUrl> {
+    const [m] = await this.db.tx().select().from(taskMedia).where(eq(taskMedia.id, mediaId));
+    if (!m || !(await this.scope.access(p, m.taskId)).canRead) throw new AppError('NOT_FOUND');
+    if (m.status !== 'uploaded') throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
+    return signView(this.s3, m.storageKey);
+  }
+
+  /** GET /tasks/:id/problem-media/:mediaId/url (spec Decision 14): the source problem's media, for task readers. */
+  async problemMediaUrl(p: Principal, taskId: string, mediaId: string): Promise<MediaUrl> {
+    if (!(await this.scope.access(p, taskId)).canRead) throw new AppError('NOT_FOUND');
+    const [m] = await this.db
+      .tx()
+      .select({ storageKey: executionMedia.storageKey, status: executionMedia.status })
+      .from(tasks)
+      .innerJoin(executionProblems, eq(executionProblems.id, tasks.problemId))
+      .innerJoin(executionMedia, eq(executionMedia.executionId, executionProblems.executionId))
+      .where(and(eq(tasks.id, taskId), eq(executionMedia.id, mediaId), sql`${executionMedia.id} = any(${executionProblems.mediaIds})`));
+    if (!m) throw new AppError('NOT_FOUND');
+    if (m.status !== 'uploaded') throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
+    return signView(this.s3, m.storageKey);
   }
 
   /** Instruction media: the creator or a manager, while the task is open. Response media: the assignee, once accepted. */

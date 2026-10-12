@@ -1,10 +1,10 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { MediaUploadTicket, Page, TaskAssigneeOptions, TaskDetail, TaskSummary } from '@taskop/contracts';
+import type { MediaUploadTicket, MediaUrl, Page, TaskAssigneeOptions, TaskDetail, TaskSummary } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { MediaUploadTicketResponse } from '../executions/dto';
+import { MediaUploadTicketResponse, MediaUrlResponse } from '../executions/dto';
 import {
   CancelTaskDto,
   CreateTaskDto,
@@ -118,5 +118,12 @@ export class TasksController {
   @ApiOkResponse({ type: MediaUploadTicketResponse })
   registerMedia(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: TaskMediaRegisterDto): Promise<MediaUploadTicket> {
     return this.media.register(p, id, body);
+  }
+
+  /** The source problem's photos and videos, for anyone who can read the task (spec Decision 14). */
+  @Get(':id/problem-media/:mediaId/url')
+  @ApiOkResponse({ type: MediaUrlResponse })
+  problemMediaUrl(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Param('mediaId', ParseIdPipe) mediaId: string): Promise<MediaUrl> {
+    return this.media.problemMediaUrl(p, id, mediaId);
   }
 }

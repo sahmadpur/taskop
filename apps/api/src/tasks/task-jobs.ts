@@ -4,11 +4,14 @@ import { and, asc, inArray, isNull, lte, notInArray, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { perTenant, tenantsWith } from '../common/per-tenant';
 import { DbService } from '../db/db.service';
-import { tasks } from '../db/schema';
+import { taskMedia, tasks } from '../db/schema';
 import { JobsService } from '../scheduling/jobs.service';
+import { purgeStalePending } from '../storage/purge-pending-media';
+import { S3Service } from '../storage/s3.service';
 import { TaskWriter } from './task-writer';
 
 export const TASK_SWEEP_QUEUE = 'tasks.sweep';
+export const TASK_MEDIA_CLEANUP_QUEUE = 'task-media.cleanup';
 
 /** The task cron jobs (spec §6.5). One RLS transaction per tenant. */
 @Injectable()
@@ -20,10 +23,13 @@ export class TaskJobs implements OnModuleInit {
     private readonly clock: Clock,
     private readonly jobs: JobsService,
     private readonly writer: TaskWriter,
+    private readonly s3: S3Service,
   ) {}
 
   onModuleInit(): void {
     this.jobs.define({ name: TASK_SWEEP_QUEUE, cron: '* * * * *', handler: (tenantIds) => this.sweepAll(tenantIds) });
+    // 03:45 UTC = 07:45 in Baku, after media.cleanup and before the working day.
+    this.jobs.define({ name: TASK_MEDIA_CLEANUP_QUEUE, cron: '45 3 * * *', handler: (tenantIds) => this.cleanupAll(tenantIds) });
   }
 
   /** tasks.sweep: overdue_at = now on open tasks with now ≥ due_at, once; rev bumped; task.overdue per task. */
@@ -53,5 +59,10 @@ export class TaskJobs implements OnModuleInit {
       .returning();
     for (const t of flagged) await this.writer.emit('task.overdue', t, null);
     return flagged.length;
+  }
+
+  /** task-media.cleanup (spec §6.5, Decision 3): deletes objects of media still pending after 14 days; rows stay. */
+  cleanupAll(only?: string[]): Promise<number> {
+    return purgeStalePending({ db: this.db, clock: this.clock, s3: this.s3, logger: this.logger }, taskMedia, taskMedia.taskId, 'Task media cleanup', only);
   }
 }

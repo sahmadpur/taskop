@@ -25,6 +25,18 @@ export const tooLarge = (cmd: Pick<RegisterMediaCommandDto, 'kind' | 'bytes' | '
 /** Registrations kept per item and kind: room for retakes of media the worker removed on the phone. */
 export const storageCap = (limit: number): number => Math.max(limit * 3, 10);
 
+/** The object behind a medium must exist with the registered size and type (shared by execution and task media). */
+export async function assertStored(s3: S3Service, m: { storageKey: string; bytes: number; mime: string }): Promise<void> {
+  const stored = await s3.head(m.storageKey);
+  if (!stored || stored.contentLength !== m.bytes || stored.contentType !== m.mime) throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
+}
+
+/** A 5-minute presigned GET of a stored object, as the view-URL endpoints answer it. */
+export async function signView(s3: S3Service, storageKey: string): Promise<MediaUrl> {
+  const get = await s3.presignGet(storageKey);
+  return { url: get.url, expiresAt: get.expiresAt.toISOString() };
+}
+
 /**
  * Photos and videos (spec §6.7). The file goes straight from the phone to storage; the API only signs and checks.
  * Lock order: the occurrence row, then the execution row (same as ExecutionsService).
@@ -110,8 +122,7 @@ export class MediaService {
     if (!row) throw new AppError('NOT_FOUND');
     if (row.executorUserId !== p.userId) throw new AppError('NOT_EXECUTOR');
     if (row.m.status === 'uploaded') return { mediaId, status: 'uploaded', uploadedAt: row.m.uploadedAt?.toISOString() ?? null };
-    const stored = await this.s3.head(row.m.storageKey);
-    if (!stored || stored.contentLength !== row.m.bytes || stored.contentType !== row.m.mime) throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
+    await assertStored(this.s3, row.m);
     const now = this.clock.now();
     await tx.update(executionMedia).set({ status: 'uploaded', uploadedAt: now, storagePurgedAt: null }).where(eq(executionMedia.id, mediaId));
     return { mediaId, status: 'uploaded', uploadedAt: now.toISOString() };
@@ -128,8 +139,7 @@ export class MediaService {
     if (!row) throw new AppError('NOT_FOUND');
     await this.access.assertCanRead(p, row.executorUserId, row.occurrenceId);
     if (row.m.status !== 'uploaded') throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
-    const get = await this.s3.presignGet(row.m.storageKey);
-    return { url: get.url, expiresAt: get.expiresAt.toISOString() };
+    return signView(this.s3, row.m.storageKey);
   }
 
   /**
