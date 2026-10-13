@@ -1,6 +1,6 @@
 import type { PushPlatform, RegisterPushDeviceInput } from '@taskop/contracts';
 import type { AppStatePort } from '@/offline/sync-triggers';
-import type { PushPermission, PushPort, PushTokenStore } from '../ports';
+import type { NotificationEvents, PushPermission, PushPort, PushTokenStore, TapResponse } from '../ports';
 
 /** Test-only: nothing in the app imports this file. */
 export const PROJECT_ID = 'f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f';
@@ -61,4 +61,35 @@ export function fakeAppState(): AppStatePort & { emit(active: boolean): void; re
       return listeners.size;
     },
   };
+}
+
+export type FakeEvents = NotificationEvents & { last: TapResponse | null; cleared: number; tap(r: TapResponse): void; receive(data: unknown): void };
+
+export function fakeEvents(last: TapResponse | null = null): FakeEvents {
+  const responses = new Set<(r: TapResponse) => void>();
+  const received = new Set<(data: unknown) => void>();
+  const events: FakeEvents = {
+    last,
+    cleared: 0,
+    lastResponse: () => events.last,
+    clearLastResponse: () => {
+      events.last = null;
+      events.cleared += 1;
+    },
+    onResponse: (listener) => {
+      responses.add(listener);
+      return () => {
+        responses.delete(listener);
+      };
+    },
+    onReceived: (listener) => {
+      received.add(listener);
+      return () => {
+        received.delete(listener);
+      };
+    },
+    tap: (r) => responses.forEach((l) => l(r)),
+    receive: (data) => received.forEach((l) => l(data)),
+  };
+  return events;
 }
