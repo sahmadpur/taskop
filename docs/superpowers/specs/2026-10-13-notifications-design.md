@@ -320,8 +320,8 @@ Bursts (many occurrences turning overdue in one sweep) produce one event per occ
 - **Foreground receipt:** trigger a sync (`manual` trigger) so the unread count and any new work arrive.
 - **Tap** (listener plus `getLastNotificationResponseAsync` for a cold start):
   - if `data.userId` is not the signed-in user → open the inbox only;
-  - `occurrence` → run a sync, then open `/execution/[occurrenceId]` if the occurrence is in the local store; otherwise open the inbox;
-  - `task` → open `/task/[id]`;
+  - `occurrence` → run a sync (waiting at most 5 s), then: an execution exists on the phone → `/execution/[occurrenceId]`; the occurrence is on the phone but not started → Home (where its "Başla" is); not on the phone → the inbox;
+  - `task` → sync as above, then: on the phone → `/task/[id]`; not on the phone and the user holds `tasks.manage` → `/review/[id]` (creators' submitted/completed notices); otherwise → the inbox;
   - `none` → open the inbox.
 - After each sync, set the app-icon badge with `setBadgeCountAsync(unreadNotifications)`. Clear it on logout.
 
