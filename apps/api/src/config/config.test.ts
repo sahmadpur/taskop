@@ -32,4 +32,13 @@ describe('loadConfig', () => {
     expect([c.S3_BUCKET, c.S3_FORCE_PATH_STYLE, c.S3_PUBLIC_ENDPOINT]).toEqual(['taskop-media', true, 'http://192.168.1.20:8333']);
     expect(() => loadConfig({ ...valid, S3_ENDPOINT: undefined })).toThrow(/S3_ENDPOINT/);
   });
+  it('turns real push on except in tests, and reads the optional Expo token', () => {
+    expect(loadConfig(valid).NOTIFICATIONS_PUSH_ENABLED).toBe(true);
+    expect(loadConfig({ ...valid, NODE_ENV: 'production' }).NOTIFICATIONS_PUSH_ENABLED).toBe(true);
+    expect(loadConfig({ ...valid, NODE_ENV: 'test' }).NOTIFICATIONS_PUSH_ENABLED).toBe(false);
+    expect(loadConfig({ ...valid, NODE_ENV: 'test', NOTIFICATIONS_PUSH_ENABLED: 'true' }).NOTIFICATIONS_PUSH_ENABLED).toBe(true);
+    expect(loadConfig({ ...valid, NOTIFICATIONS_PUSH_ENABLED: 'false' }).NOTIFICATIONS_PUSH_ENABLED).toBe(false);
+    expect(loadConfig(valid).EXPO_ACCESS_TOKEN).toBeUndefined();
+    expect(loadConfig({ ...valid, EXPO_ACCESS_TOKEN: 'expo-token' }).EXPO_ACCESS_TOKEN).toBe('expo-token');
+  });
 });

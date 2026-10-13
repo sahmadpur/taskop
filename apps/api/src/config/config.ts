@@ -34,9 +34,13 @@ const configSchema = z.object({
   S3_SECRET_KEY: z.string().min(1),
   S3_FORCE_PATH_STYLE: z.stringbool().default(true),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  /** Optional: enables Expo's enhanced push security when the project requires an access token (SP6 spec §6.2). */
+  EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
+  /** Real Expo pushes. Unset: on, except under NODE_ENV=test, where FakePushSender records them (Spec decision 11). */
+  NOTIFICATIONS_PUSH_ENABLED: z.stringbool().optional(),
 });
 
-export type AppConfig = z.infer<typeof configSchema>;
+export type AppConfig = Omit<z.infer<typeof configSchema>, 'NOTIFICATIONS_PUSH_ENABLED'> & { NOTIFICATIONS_PUSH_ENABLED: boolean };
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const result = configSchema.safeParse(env);
@@ -49,5 +53,6 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     ...c,
     JWT_PRIVATE_KEY: c.JWT_PRIVATE_KEY.replace(/\\n/g, '\n'),
     JWT_PUBLIC_KEY: c.JWT_PUBLIC_KEY.replace(/\\n/g, '\n'),
+    NOTIFICATIONS_PUSH_ENABLED: c.NOTIFICATIONS_PUSH_ENABLED ?? c.NODE_ENV !== 'test',
   };
 }

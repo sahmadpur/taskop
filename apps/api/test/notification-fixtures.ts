@@ -3,7 +3,9 @@ import type { SystemRoleKey } from '@taskop/contracts';
 import pg from 'pg';
 import { uuidv7 } from 'uuidv7';
 import { inject } from 'vitest';
+import { NotificationDelivery } from '../src/notifications/notification-delivery';
 import { type FanoutResult, NotificationFanout } from '../src/notifications/notification-fanout';
+import { FakePushSender, PUSH_SENDER } from '../src/notifications/push-sender';
 import type { TestApp } from './app';
 import { as, createUserDirect, loginStaff } from './fixtures';
 import { ownerQuery } from './owner-db';
@@ -122,4 +124,16 @@ export async function deliveriesOf(userId: string): Promise<DeliveryRow[]> {
     [userId],
   );
   return r.rows;
+}
+
+/** The app's push sender; FakePushSender whenever NODE_ENV=test. */
+export const pushSender = (t: TestApp) => t.app.get<FakePushSender>(PUSH_SENDER);
+
+/** Runs the delivery worker for every queued delivery of the tenant: push rows in one job, each email in its own. */
+export async function deliverAll(t: TestApp, tenantId: string): Promise<void> {
+  const r = await ownerQuery<{ id: string; channel: string }>("select id, channel from notification_deliveries where tenant_id = $1 and status = 'queued' order by id", [tenantId]);
+  const push = r.rows.filter((d) => d.channel === 'push').map((d) => d.id);
+  const delivery = t.app.get(NotificationDelivery);
+  if (push.length) await delivery.run({ tenantId, deliveryIds: push });
+  for (const d of r.rows.filter((x) => x.channel === 'email')) await delivery.run({ tenantId, deliveryIds: [d.id] });
 }
