@@ -120,6 +120,8 @@ export class SyncService {
         mediaPending,
       })),
       ...(await this.taskSync.forUser(p, q.knownTaskIds, now)),
+      // Counted from the inbox once it exists (Task 16).
+      unreadNotifications: 0,
     };
   }
 }

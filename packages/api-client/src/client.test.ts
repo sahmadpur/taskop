@@ -3,7 +3,7 @@ import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenSto
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
-  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password' },
+  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
   role: { id, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
   permissions: [],
   tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -318,7 +318,7 @@ describe('execution endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url} ${init.body ?? ''}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [], unreadNotifications: 0 });
       if (url.endsWith('/answers')) return json(200, { executionId: id, rev: 2, stale: false, state: 'active', progress });
       if (url.endsWith('/complete')) return json(200, { executionId: id, state: 'completed', completedAt: '2026-11-02T05:00:00.000Z', late: false, progress, score: null });
       if (url.endsWith(`/executions/${id}/media`)) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: { 'Content-Type': 'image/jpeg' }, expiresAt: '2026-11-02T04:15:00.000Z' });
@@ -387,7 +387,7 @@ describe('task endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: now, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [id] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: now, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [id], unreadNotifications: 0 });
       if (url.includes('/tasks/assignees')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null, kind: 'worker' }], teams: [], sites: [] });
       if (url.endsWith('/uploaded')) return json(200, { mediaId: id, status: 'uploaded', uploadedAt: now });
       if (url.endsWith('/url')) return json(200, { url: 'http://files.test/x', expiresAt: now });

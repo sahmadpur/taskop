@@ -72,7 +72,7 @@ describe('task read models', () => {
 
   it('adds tasks and removed ids to the sync response, and knownTaskIds to the query', () => {
     const { history: _h, canManage: _m, canReview: _r, ...phone } = detail;
-    const r = syncResponseSchema.parse({ serverTime: AT, occurrences: [], checklistVersions: [], executions: [], tasks: [phone], removedTaskIds: [ID] });
+    const r = syncResponseSchema.parse({ serverTime: AT, occurrences: [], checklistVersions: [], executions: [], tasks: [phone], removedTaskIds: [ID], unreadNotifications: 0 });
     expect(r.tasks[0]!.status).toBe('awaiting_review');
     expect(syncQuerySchema.parse({ knownTaskIds: `${ID},${ID}` })).toEqual({ knownVersionIds: [], knownTaskIds: [ID, ID] });
     expect(syncQuerySchema.safeParse({ knownTaskIds: Array(100).fill(ID).join(',') }).success).toBe(true);

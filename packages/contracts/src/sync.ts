@@ -33,5 +33,7 @@ export const syncResponseSchema = z.object({
   /** The complete current set: open tasks of the user, unaccepted team tasks, and tasks closed in the last 7 days. */
   tasks: z.array(syncTaskSchema),
   removedTaskIds: z.array(idSchema),
+  /** The caller's unread inbox rows (spec §4); the phone sets its app-icon badge from it. */
+  unreadNotifications: z.number().int().min(0),
 });
 export type SyncResponse = z.infer<typeof syncResponseSchema>;

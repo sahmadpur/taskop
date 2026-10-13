@@ -50,6 +50,7 @@ describe('execution read models', () => {
       executions: [],
       tasks: [],
       removedTaskIds: [],
+      unreadNotifications: 0,
     });
     expect(r.checklistVersions[0]!.content).toEqual({ schemaVersion: 2, anything: true });
   });

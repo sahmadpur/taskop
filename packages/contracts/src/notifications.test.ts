@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aggregateDeliveryStatus,
+  ALL_PERMISSIONS,
   DEFAULT_RULES,
   DELIVERY_STATUSES,
   isProblemType,
@@ -9,18 +10,23 @@ import {
   MESSAGE_LIMITS,
   messageDetailSchema,
   messageSummarySchema,
+  meSchema,
   messageTargetOptionsSchema,
+  NOTIFICATION_AUDIT_ACTIONS,
   NOTIFICATION_ISSUE_CODES,
   NOTIFICATION_TYPE_META,
   NOTIFICATION_TYPES,
   notificationItemSchema,
   notificationListQuerySchema,
   notificationRuleDtoSchema,
+  PERMISSION_GROUPS,
   preferencesSchema,
   pushDataSchema,
   registerPushDeviceSchema,
   RULE_TYPES,
   sendMessageSchema,
+  SYSTEM_ROLE_DEFAULTS,
+  syncResponseSchema,
   updateNotificationRuleSchema,
   updatePreferencesSchema,
 } from './index.js';
@@ -193,5 +199,39 @@ describe('message schemas', () => {
     for (const code of NOTIFICATION_ISSUE_CODES) expect(code).toMatch(/^notifications\.issues\.[a-zA-Z]+$/);
     expect(new Set(NOTIFICATION_ISSUE_CODES).size).toBe(NOTIFICATION_ISSUE_CODES.length);
     expect(NOTIFICATION_ISSUE_CODES).toContain('notifications.issues.noTargets');
+  });
+});
+
+describe('changes to existing contracts', () => {
+  it('adds the unread count to the sync response', () => {
+    const base = { serverTime: AT, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [] };
+    expect(syncResponseSchema.parse({ ...base, unreadNotifications: 3 }).unreadNotifications).toBe(3);
+    expect(syncResponseSchema.safeParse(base).success).toBe(false);
+    expect(syncResponseSchema.safeParse({ ...base, unreadNotifications: -1 }).success).toBe(false);
+  });
+
+  it('reports the email preference on the profile', () => {
+    const me = {
+      user: { id: ID, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: false },
+      role: { id: ID, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
+      permissions: [],
+      tenant: { id: ID, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
+    };
+    expect(meSchema.parse(me).user.emailNotifications).toBe(false);
+  });
+
+  it('adds the notification permissions last, with the role defaults', () => {
+    expect(PERMISSION_GROUPS.at(-1)).toEqual({ group: 'notifications', keys: ['notifications.manage', 'notifications.send'] });
+    expect(SYSTEM_ROLE_DEFAULTS.owner.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));
+    expect(SYSTEM_ROLE_DEFAULTS.admin.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));
+    expect(SYSTEM_ROLE_DEFAULTS.manager.permissions).toContain('notifications.send');
+    expect(SYSTEM_ROLE_DEFAULTS.manager.permissions).not.toContain('notifications.manage');
+    expect(SYSTEM_ROLE_DEFAULTS.worker.permissions).toEqual([]);
+    expect(SYSTEM_ROLE_DEFAULTS.auditor.permissions.filter((k) => k.startsWith('notifications.'))).toEqual([]);
+    expect(ALL_PERMISSIONS.slice(-2)).toEqual(['notifications.manage', 'notifications.send']);
+  });
+
+  it('lists the audited notification actions', () => {
+    expect(NOTIFICATION_AUDIT_ACTIONS).toEqual(['notification_rule.updated', 'notification_rule.reset', 'notification.message_sent']);
   });
 });
