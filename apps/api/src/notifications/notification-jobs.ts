@@ -1,14 +1,16 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { and, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { sanitiseForLog } from '../common/error.filter';
 import { eachTenant, perTenant, tenantsWith } from '../common/per-tenant';
 import { DbService } from '../db/db.service';
-import { notificationDeliveries, notificationEvents, notifications, pushDevices } from '../db/schema';
+import { notificationDeliveries, notificationEvents, notifications, occurrences, pushDevices } from '../db/schema';
 import { JobsService } from '../scheduling/jobs.service';
 import { disableDevice, LOUD_TICKET_ERRORS, ticketErrorText } from './notification-delivery';
+import { NotificationEvents } from './notification-events';
 import { PUSH_SENDER, type PushReceipt, type PushSender } from './push-sender';
 import { type DeliverJob, deliveryJobs, type FanoutJob, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES } from './queues';
+import { NotificationRules } from './rules.service';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -35,12 +37,71 @@ export class NotificationJobs implements OnModuleInit {
     private readonly clock: Clock,
     private readonly jobs: JobsService,
     @Inject(PUSH_SENDER) private readonly push: PushSender,
+    private readonly rules: NotificationRules,
+    private readonly events: NotificationEvents,
   ) {}
 
   onModuleInit(): void {
+    this.jobs.define({ name: NOTIFICATION_QUEUES.scan, cron: NOTIFICATION_CRONS.scan, handler: (ids) => this.scanAll(ids) });
     this.jobs.define({ name: NOTIFICATION_QUEUES.receipts, cron: NOTIFICATION_CRONS.receipts, handler: (ids) => this.receiptsAll(ids) });
     this.jobs.define({ name: NOTIFICATION_QUEUES.sweep, cron: NOTIFICATION_CRONS.sweep, handler: (ids) => this.sweepAll(ids) });
     this.jobs.define({ name: NOTIFICATION_QUEUES.cleanup, cron: NOTIFICATION_CRONS.cleanup, handler: (ids) => this.cleanupAll(ids) });
+  }
+
+  /**
+   * notifications.scan (spec §3.4): no status changes when a run opens or nears its due time, so this finds them.
+   * Only for enabled rules; dedupe keys make each fire at most once. Returns the events actually recorded.
+   */
+  async scanAll(only?: string[]): Promise<number> {
+    const now = this.clock.now();
+    const opened = new Date(+now - NOTIFICATION_LIMITS.availableWindowMinutes * MINUTE);
+    // Pending runs that opened in the last 15 minutes (even if their window has since closed), or are still open.
+    const tenantIds = await tenantsWith(
+      this.db,
+      sql`select distinct tenant_id from occurrences
+          where status = 'pending' and starts_at <= ${now} and (starts_at >= ${opened} or due_at > ${now})`,
+      only,
+    );
+    return perTenant(this.db, this.logger, 'Notification scan', tenantIds, async () => {
+      const tx = this.db.tx();
+      const notYet = (type: 'checklist.available' | 'checklist.due_soon') =>
+        sql`not exists (select 1 from notification_events e where e.dedupe_key = ${`${type}:`} || ${occurrences.id}::text)`;
+      let recorded = 0;
+      const available = await this.rules.effective('checklist.available');
+      if (available.enabled) {
+        // No due_at filter: after downtime a short run that opened in the window is still announced.
+        const rows = await tx
+          .select({ id: occurrences.id })
+          .from(occurrences)
+          .where(and(eq(occurrences.status, 'pending'), lte(occurrences.startsAt, now), gte(occurrences.startsAt, opened), notYet('checklist.available')))
+          .orderBy(occurrences.startsAt, occurrences.id);
+        for (const r of rows) {
+          if (await this.events.record('checklist.available', { occurrenceId: r.id }, null, `checklist.available:${r.id}`)) recorded++;
+        }
+      }
+      const dueSoon = await this.rules.effective('checklist.due_soon');
+      if (dueSoon.enabled && dueSoon.leadMinutes) {
+        const lead = dueSoon.leadMinutes;
+        const rows = await tx
+          .select({ id: occurrences.id })
+          .from(occurrences)
+          .where(
+            and(
+              eq(occurrences.status, 'pending'),
+              gt(occurrences.dueAt, now),
+              lte(occurrences.dueAt, new Date(+now + lead * MINUTE)),
+              // A window shorter than the lead: the available notice covers it.
+              sql`${occurrences.dueAt} - make_interval(mins => ${lead}) > ${occurrences.startsAt}`,
+              notYet('checklist.due_soon'),
+            ),
+          )
+          .orderBy(occurrences.dueAt, occurrences.id);
+        for (const r of rows) {
+          if (await this.events.record('checklist.due_soon', { occurrenceId: r.id }, null, `checklist.due_soon:${r.id}`)) recorded++;
+        }
+      }
+      return recorded;
+    });
   }
 
   /** notifications.receipts: Expo receipts for pushes sent 15 min–24 h ago (Spec decision 10). Returns the rows settled. */
