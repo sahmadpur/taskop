@@ -315,7 +315,7 @@ describe('notification web translations', () => {
     }
     for (const k of ['type', 'enabled', 'roles', 'leadTime'] as const) expect(n().rules.columns[k], `rules.columns.${k}`).toBeTypeOf('string');
     for (const k of [
-      'compose', 'recipients', 'recipientsPlaceholder', 'people', 'teams', 'sites', 'members', 'chosen', 'remove', 'targetLimit',
+      'compose', 'recipients', 'recipientsPlaceholder', 'people', 'teams', 'sites', 'members', 'chosen', 'remove', 'targetLimit', 'refine', 'sitesCapped',
       'titleLabel', 'bodyLabel', 'counter', 'email', 'send', 'confirmTitle', 'confirm', 'sent', 'history', 'emptyHistory', 'more',
       'processing', 'notRequested', 'detailTitle', 'sentBy', 'targets', 'totals', 'recipient', 'notRead', 'devices', 'noDevice',
       'noRecipientsYet',
@@ -338,6 +338,7 @@ describe('notification web translations', () => {
     expect(n().messages.members).toContain('{{count}}');
     expect(n().messages.remove).toContain('{{name}}');
     expect(n().messages.targetLimit).toContain('{{count}}');
+    expect(n().messages.sitesCapped).toContain('{{count}}');
     expect(n().messages.counter).toContain('{{count}}');
     expect(n().messages.counter).toContain('{{max}}');
     expect(n().messages.confirm).toContain('{{count}}');

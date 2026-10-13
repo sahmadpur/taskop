@@ -66,6 +66,8 @@ export default {
     chosen: 'Seçilmiş alıcılar',
     remove: 'Sil: {{name}}',
     targetLimit: 'Hər növdən ən çox {{count}} seçmək olar.',
+    refine: 'Siyahıda hamısı göstərilmir — axtarışı dəqiqləşdirin.',
+    sitesCapped: 'Yalnız ilk {{count}} obyekt göstərilir.',
     titleLabel: 'Başlıq',
     bodyLabel: 'Mətn',
     counter: '{{count}}/{{max}}',
