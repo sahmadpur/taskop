@@ -4,6 +4,9 @@ import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { InboxService } from './inbox.service';
 import { MeNotificationsController } from './me-notifications.controller';
+import { MessageQueries } from './message-queries';
+import { MessagesController } from './messages.controller';
+import { MessagesService } from './messages.service';
 import { NotificationDelivery } from './notification-delivery';
 import { NotificationEvents } from './notification-events';
 import { NotificationFanout } from './notification-fanout';
@@ -19,7 +22,7 @@ import { ScopeSubjects } from './scope-subjects';
 /** Sub-project 6: notifications. Reaches scheduling and tasks only through DomainEvents, their scope services and the DB. */
 @Module({
   imports: [SchedulingModule, TasksModule],
-  controllers: [NotificationRulesController, MeNotificationsController],
+  controllers: [NotificationRulesController, MeNotificationsController, MessagesController],
   providers: [
     NotificationEvents,
     NotificationListeners,
@@ -31,6 +34,8 @@ import { ScopeSubjects } from './scope-subjects';
     NotificationDelivery,
     NotificationJobs,
     InboxService,
+    MessagesService,
+    MessageQueries,
     { provide: PUSH_SENDER, inject: [APP_CONFIG], useFactory: (config: AppConfig) => pushSenderFor(config) },
   ],
   exports: [NotificationEvents, NotificationRules, InboxService],
