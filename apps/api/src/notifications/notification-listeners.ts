@@ -1,10 +1,11 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { NotificationType, OccurrenceStatus } from '@taskop/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
+import { Clock } from '../common/clock';
 import { DomainEvents, type TaskEvent, type TaskEventName } from '../common/domain-events';
 import { sanitiseForLog } from '../common/error.filter';
 import { DbService, type Tx } from '../db/db.service';
-import { tasks } from '../db/schema';
+import { pushDevices, tasks, users } from '../db/schema';
 import { NotificationEvents } from './notification-events';
 
 /** task.* events that become notifications of the same name (spec §6.1 step 2). task.accepted is not notified. */
@@ -19,6 +20,7 @@ export class NotificationListeners implements OnModuleInit {
     private readonly events: DomainEvents,
     private readonly db: DbService,
     private readonly notifications: NotificationEvents,
+    private readonly clock: Clock,
   ) {}
 
   onModuleInit(): void {
@@ -33,6 +35,7 @@ export class NotificationListeners implements OnModuleInit {
     );
     for (const name of TASK_TYPES) this.events.on(name, (e) => this.guarded(name, () => this.notifications.record(name, { taskId: e.taskId }, e.actorUserId)));
     this.events.on('task.submitted', (e) => this.guarded('task.submitted', (sp) => this.onSubmitted(sp, e)));
+    this.events.on('user.access_changed', (e) => this.guarded('user.access_changed', (sp) => this.onAccessChanged(sp, e.userId)));
   }
 
   /**
@@ -59,5 +62,18 @@ export class NotificationListeners implements OnModuleInit {
     const [t] = await sp.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, e.taskId));
     if (t?.status !== 'awaiting_review') return;
     await this.notifications.record('task.submitted', { taskId: e.taskId }, e.actorUserId);
+  }
+
+  /**
+   * Spec §6.5: a deactivated user's phones stop receiving pushes. Reactivation re-enables nothing; the phone
+   * re-registers. Guarded like every handler here, so it can never roll back the deactivation.
+   */
+  private async onAccessChanged(sp: Tx, userId: string): Promise<void> {
+    const [u] = await sp.select({ status: users.status }).from(users).where(eq(users.id, userId));
+    if (u?.status !== 'deactivated') return;
+    await sp
+      .update(pushDevices)
+      .set({ disabledAt: this.clock.now() })
+      .where(and(eq(pushDevices.userId, userId), isNull(pushDevices.disabledAt)));
   }
 }

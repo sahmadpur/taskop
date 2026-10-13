@@ -5,6 +5,7 @@ import { Clock } from '../common/clock';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
 import { checklistVersions, executions, occurrenceAssignees, occurrences } from '../db/schema';
+import { InboxService } from '../notifications/inbox.service';
 import { OccurrenceQueries } from '../scheduling/occurrence-queries';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import { TaskSync } from '../tasks/task-sync';
@@ -25,6 +26,7 @@ export class SyncService {
     private readonly writer: OccurrenceWriter,
     private readonly lookups: ExecutionLookups,
     private readonly taskSync: TaskSync,
+    private readonly inbox: InboxService,
   ) {}
 
   async pull(p: Principal, q: SyncQueryDto): Promise<SyncResponse> {
@@ -120,8 +122,7 @@ export class SyncService {
         mediaPending,
       })),
       ...(await this.taskSync.forUser(p, q.knownTaskIds, now)),
-      // Counted from the inbox once it exists (Task 16).
-      unreadNotifications: 0,
+      unreadNotifications: await this.inbox.unreadCount(p.userId),
     };
   }
 }

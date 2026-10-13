@@ -32,8 +32,7 @@ export class MeService {
         username: row.user.username,
         emailVerified: row.user.emailVerifiedAt !== null,
         credentialKind: row.user.credentialKind,
-        // Read from users.email_notifications once the column exists (Task 16).
-        emailNotifications: true,
+        emailNotifications: row.user.emailNotifications,
       },
       role: { id: row.role.id, name: row.role.name, systemKey: row.role.systemKey, dataScope },
       permissions,

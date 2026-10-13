@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { InboxService } from './inbox.service';
+import { MeNotificationsController } from './me-notifications.controller';
 import { NotificationDelivery } from './notification-delivery';
 import { NotificationEvents } from './notification-events';
 import { NotificationFanout } from './notification-fanout';
@@ -17,7 +19,7 @@ import { ScopeSubjects } from './scope-subjects';
 /** Sub-project 6: notifications. Reaches scheduling and tasks only through DomainEvents, their scope services and the DB. */
 @Module({
   imports: [SchedulingModule, TasksModule],
-  controllers: [NotificationRulesController],
+  controllers: [NotificationRulesController, MeNotificationsController],
   providers: [
     NotificationEvents,
     NotificationListeners,
@@ -28,8 +30,9 @@ import { ScopeSubjects } from './scope-subjects';
     NotificationFanout,
     NotificationDelivery,
     NotificationJobs,
+    InboxService,
     { provide: PUSH_SENDER, inject: [APP_CONFIG], useFactory: (config: AppConfig) => pushSenderFor(config) },
   ],
-  exports: [NotificationEvents, NotificationRules],
+  exports: [NotificationEvents, NotificationRules, InboxService],
 })
 export class NotificationsModule {}
