@@ -15,8 +15,8 @@ import { type DeliverJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES 
 /** Spec §6.1 step 5: these push with high priority. */
 export const HIGH_PRIORITY_TYPES: ReadonlySet<NotificationType> = new Set(['checklist.overdue', 'problem.critical', 'task.overdue']);
 
-/** Errors worth an operator's attention; every ticket error fails the row without retry (Spec decision 9). */
-const LOUD_TICKET_ERRORS = new Set(['InvalidCredentials', 'MessageTooBig']);
+/** Errors worth an operator's attention (tickets and receipts); every such error fails the row without retry (Spec decision 9). */
+export const LOUD_TICKET_ERRORS: ReadonlySet<string> = new Set(['InvalidCredentials', 'MessageTooBig']);
 
 /** The last_error of a refused push ticket or receipt, e.g. "DeviceNotRegistered: …". At most 500 characters. */
 export function ticketErrorText(failure: Extract<PushTicket | PushReceipt, { ok: false }>): string {
@@ -124,7 +124,7 @@ export class NotificationDelivery implements OnModuleInit {
 
   /**
    * Queued rows that nobody claimed in the last 5 minutes (a crashed run's claim expires, and the sweep re-queues by
-   * coalesce(claimed_at, created_at)). Rows that can no longer go out are marked skipped here.
+   * coalesce(claimed_at, updated_at)). Rows that can no longer go out are marked skipped here.
    */
   private async claim(ids: string[], claimedAt: Date): Promise<{ push: PushItem[]; email: EmailItem[] }> {
     const tx = this.db.tx();

@@ -5,6 +5,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { NotificationDelivery } from './notification-delivery';
 import { NotificationEvents } from './notification-events';
 import { NotificationFanout } from './notification-fanout';
+import { NotificationJobs } from './notification-jobs';
 import { NotificationListeners } from './notification-listeners';
 import { NotificationRecipients } from './notification-recipients';
 import { NotificationTargets } from './notification-targets';
@@ -26,6 +27,7 @@ import { ScopeSubjects } from './scope-subjects';
     NotificationRecipients,
     NotificationFanout,
     NotificationDelivery,
+    NotificationJobs,
     { provide: PUSH_SENDER, inject: [APP_CONFIG], useFactory: (config: AppConfig) => pushSenderFor(config) },
   ],
   exports: [NotificationEvents, NotificationRules],
