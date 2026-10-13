@@ -327,7 +327,7 @@ Bursts (many occurrences turning overdue in one sweep) produce one event per occ
 
 ### 7.4 Screens
 
-- **Home header bell** with an unread badge (from the sync count) → new stack route `/notifications`.
+- **Home header bell** with an unread badge (from the sync count) → `/notifications`, a hidden tab screen like the app's other pushed screens (it reloads on focus).
 - **Inbox screen** (`app/(app)/notifications.tsx`): online-only list from `GET /me/notifications`, pull to refresh, infinite scroll, unread rows bold, "Hamısını oxunmuş et". Tapping a row marks it read and opens its target as in §7.3. Offline, a short message says the list needs a connection.
 - **Profile:** an email notifications switch (`PATCH /me/preferences`) and the push permission state; when denied, a button opens the OS settings.
 
