@@ -29,11 +29,19 @@ const tokenStore: TokenStore = {
 
 const cacheMe = (me: Me) => secureStorage.set(STORAGE_KEYS.me, JSON.stringify(me));
 
+/** A profile cached before sub-project 6 has no emailNotifications; the server's default (true) stands in until the next refresh. */
+function withPreferenceDefaults(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const user = (raw as { user?: unknown }).user;
+  if (typeof user !== 'object' || user === null || 'emailNotifications' in user) return raw;
+  return { ...raw, user: { ...user, emailNotifications: true } };
+}
+
 async function loadCachedMe(): Promise<Me | null> {
   const raw = await secureStorage.get(STORAGE_KEYS.me);
   if (!raw) return null;
   try {
-    const parsed = meSchema.safeParse(JSON.parse(raw));
+    const parsed = meSchema.safeParse(withPreferenceDefaults(JSON.parse(raw)));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

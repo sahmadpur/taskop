@@ -10,7 +10,7 @@ jest.mock('./secure-storage', () => ({
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
-  user: { id, fullName: 'Elvin Məmmədov', jobTitle: null, kind: 'worker', email: null, username: 'elvin', emailVerified: false, credentialKind: 'pin' },
+  user: { id, fullName: 'Elvin Məmmədov', jobTitle: null, kind: 'worker', email: null, username: 'elvin', emailVerified: false, credentialKind: 'pin', emailNotifications: true },
   role: { id, name: 'Worker', systemKey: 'worker', dataScope: 'own' },
   permissions: [],
   tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -50,6 +50,16 @@ describe('mobile session', () => {
     await session.bootstrap();
     expect(session.get()).toMatchObject({ status: 'authenticated', offline: true });
     expect(mockStore.get('taskop.refreshToken')).toBe('r1');
+  });
+
+  it('restores a profile cached by the previous app version when offline', async () => {
+    // Written before sub-project 6: no emailNotifications. The worker must stay signed in offline.
+    const { emailNotifications: _dropped, ...oldUser } = me.user;
+    mockStore.set('taskop.refreshToken', 'r1');
+    mockStore.set('taskop.me', JSON.stringify({ ...me, user: oldUser }));
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await session.bootstrap();
+    expect(session.get()).toMatchObject({ status: 'authenticated', offline: true, me: { user: { username: 'elvin', emailNotifications: true } } });
   });
 
   it('falls back to the cached profile offline when refresh fails with a 5xx', async () => {

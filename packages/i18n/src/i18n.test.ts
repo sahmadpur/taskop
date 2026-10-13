@@ -286,3 +286,20 @@ describe('notification translations', () => {
     expect(az.audit.entityTypes.notification_message).toBe('Bildiriş mesajı');
   });
 });
+
+describe('mobile notification translations', () => {
+  it('labels the bell, the inbox and the profile settings', () => {
+    expect(az.mobile.notifications.bell.replace('{{count}}', '3')).toBe('Bildirişlər, 3 oxunmamış');
+    for (const k of ['channel', 'unread', 'online'] as const) expect(az.mobile.notifications[k], k).toBeTypeOf('string');
+    for (const k of ['email', 'noEmail', 'online', 'push', 'deniedHint', 'openSettings'] as const) {
+      expect(az.mobile.notifications.profile[k], k).toBeTypeOf('string');
+    }
+    expect(Object.keys(az.mobile.notifications.profile.pushStates).sort()).toEqual(['denied', 'granted', 'unavailable', 'undetermined']);
+  });
+
+  it('shares the inbox wording with the web (Part 1)', () => {
+    expect(az.notifications.title).toBe('Bildirişlər');
+    expect(az.notifications.markAllRead).toBe('Hamısını oxunmuş et');
+    expect(az.notifications.empty).toBe('Bildiriş yoxdur');
+  });
+});
