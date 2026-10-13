@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, or, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { AppError } from '../common/app-error';
-import type { Principal } from '../common/request';
+import type { Principal, TaskReader } from '../common/request';
 import { ScopeService } from '../common/scope.service';
 import { DbService } from '../db/db.service';
 import { tasks } from '../db/schema';
@@ -32,7 +32,7 @@ export class TaskScope {
   ) {}
 
   /** Rule 3: the data scope covers the task. Callers check tasks.view / tasks.manage first. Unknown scopes fail closed. */
-  covers(p: Principal): SQL {
+  covers(p: TaskReader): SQL {
     switch (p.dataScope) {
       case 'all':
         return sql`true`;
@@ -55,7 +55,7 @@ export class TaskScope {
   }
 
   /** Rules 1–3: creator, assignee, member of an unaccepted team task, or tasks.view / tasks.manage within scope. */
-  readable(p: Principal): SQL {
+  readable(p: TaskReader): SQL {
     const view = p.permissions.has('tasks.view') || p.permissions.has('tasks.manage');
     return or(eq(tasks.createdByUserId, p.userId), eq(tasks.assigneeUserId, p.userId), and(isNull(tasks.assigneeUserId), this.memberOfTeam(p.userId)), view ? this.covers(p) : undefined)!;
   }
