@@ -11,6 +11,6 @@ import { startPushRegistration } from './push-registration';
  */
 export function NotificationsBridge() {
   const services = useOffline();
-  useEffect(() => startPushRegistration({ push: nativePush, tokens: pushTokenStore, api, appState: rnAppState() }), [services.userId]);
+  useEffect(() => startPushRegistration({ push: nativePush, tokens: pushTokenStore, api, appState: rnAppState(), userId: services.userId }), [services.userId]);
   return null;
 }

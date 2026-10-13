@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
-import { session, useSession } from '@/lib/session';
+import { api, session, useSession } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
+import { nativePush, pushTokenStore } from '@/notifications/native';
+import { clearAppBadge, endPushSignOut, unregisterPush } from '@/notifications/push-registration';
 import { useOffline } from '@/offline/context';
 
 export function ProfileScreen() {
@@ -32,6 +34,9 @@ export function ProfileScreen() {
       setBusy(false);
     };
     const finish = async () => {
+      // Spec §7.2: before the session ends, so the request still carries this user's token. Blocks push registration
+      // first, never throws, and takes at most 3 s.
+      await unregisterPush({ push: nativePush, tokens: pushTokenStore, api });
       let cleared = false;
       try {
         await services.clearAll();
@@ -40,6 +45,8 @@ export function ProfileScreen() {
         // The worker already confirmed; the next sign-in clears another user's data anyway (ensureUser).
         console.error('[offline] Could not clear local data on logout', e instanceof Error ? e.message : 'unknown error');
       }
+      // After clearAll, which stops the sync that sets it: nothing can bring the old count back.
+      await clearAppBadge(nativePush);
       try {
         await session.signOut();
       } catch (e) {
@@ -48,6 +55,7 @@ export function ProfileScreen() {
         // The local data is gone and the services are stopped: staying signed in would silently lose later work.
         if (cleared) session.forceSignedOut();
       } finally {
+        endPushSignOut();
         release();
       }
     };

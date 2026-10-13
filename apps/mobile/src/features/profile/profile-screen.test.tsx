@@ -1,35 +1,123 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 import '@/lib/i18n';
+import type { FakePush, FakeTokens } from '@/notifications/testing/fakes';
+import { PUSH_TOKEN } from '@/notifications/testing/fakes';
 import { ME, OCC } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
 import { ProfileScreen } from './profile-screen';
 
-const mockSignOut = jest.fn(async () => undefined);
+const mockSignOut = jest.fn();
 const mockForceSignedOut = jest.fn();
+const mockRemove = jest.fn();
+const mockEvents: string[] = [];
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/lib/session', () => ({
+  api: { pushDevices: { remove: (...a: unknown[]) => mockRemove(...a) } },
   session: { signOut: () => mockSignOut(), forceSignedOut: () => mockForceSignedOut() },
   useSession: () => ({
     status: 'authenticated',
     offline: false,
     me: {
-      user: { fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null },
+      user: { fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true },
       role: { name: 'Worker', systemKey: 'worker' },
       tenant: { name: 'Acme' },
+      permissions: [],
     },
   }),
 }));
+jest.mock('@/notifications/native', () => {
+  const { fakePush, fakeTokens } = jest.requireActual<typeof import('@/notifications/testing/fakes')>('@/notifications/testing/fakes');
+  return { nativePush: fakePush(), pushTokenStore: fakeTokens(), openSettings: jest.fn(async () => undefined) };
+});
+const native = jest.requireMock<{ nativePush: FakePush; pushTokenStore: FakeTokens; openSettings: jest.Mock }>('@/notifications/native');
 
 const press = (buttons: AlertButton[] | undefined, text: string) => act(async () => buttons!.find((b) => b.text === text)!.onPress?.());
 
 beforeEach(() => {
-  mockSignOut.mockClear();
-  mockForceSignedOut.mockClear();
+  mockEvents.length = 0;
+  mockSignOut.mockReset();
+  mockSignOut.mockImplementation(async () => void mockEvents.push('signOut'));
+  mockForceSignedOut.mockReset();
+  mockRemove.mockReset();
+  mockRemove.mockImplementation(async () => void mockEvents.push('remove'));
+  native.pushTokenStore.value = null;
+  native.nativePush.setBadge.mockReset();
+  native.nativePush.setBadge.mockImplementation(async (n: number) => void mockEvents.push(`badge:${n}`));
 });
 
 describe('logout', () => {
+  it("removes this phone's push device before signing out, and clears the badge", async () => {
+    const t = await createTestServices();
+    await t.seed();
+    native.pushTokenStore.value = PUSH_TOKEN;
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
+    expect(mockRemove).toHaveBeenCalledWith(PUSH_TOKEN);
+    expect(mockEvents).toEqual(['remove', 'badge:0', 'signOut']);
+    expect(native.pushTokenStore.value).toBeNull();
+  });
+
+  it('clears the badge only after the local data is cleared, so a sync finishing meanwhile cannot bring it back', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const clearAll = t.services.clearAll.bind(t.services);
+    jest.spyOn(t.services, 'clearAll').mockImplementation(async () => {
+      mockEvents.push('clearAll:start');
+      await clearAll();
+      // A badge update from a sync that was still finishing, landing as the data is cleared.
+      await native.nativePush.setBadge(5);
+      mockEvents.push('clearAll:end');
+    });
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
+    expect(mockEvents).toEqual(['clearAll:start', 'badge:5', 'clearAll:end', 'badge:0', 'signOut']);
+    expect(native.nativePush.setBadge).toHaveBeenLastCalledWith(0);
+  });
+
+  it('still clears the badge and signs out when clearing the local data fails', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(t.services, 'clearAll').mockRejectedValueOnce(new Error('disk'));
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
+    expect(native.nativePush.setBadge).toHaveBeenCalledWith(0);
+    error.mockRestore();
+  });
+
+  it('still signs out when removing the push device fails', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    native.pushTokenStore.value = PUSH_TOKEN;
+    mockRemove.mockRejectedValueOnce(new Error('offline'));
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(mockSignOut).toHaveBeenCalled());
+    expect(await t.services.store.occurrences()).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('removes the device only after the worker confirmed deleting unsynced data', async () => {
+    const t = await createTestServices();
+    await t.seed();
+    await t.services.store.start(OCC, ME);
+    native.pushTokenStore.value = PUSH_TOKEN;
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Çıxış' }));
+    await eventually(async () => expect(alert).toHaveBeenCalledTimes(1));
+    await press(alert.mock.calls[0]![2], 'Ləğv et');
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(native.nativePush.setBadge).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
   it('warns twice before deleting unsynced data', async () => {
     const t = await createTestServices();
     await t.seed();
