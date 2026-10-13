@@ -254,7 +254,7 @@ export async function migrate(db: Db, migrations: readonly string[] = MIGRATIONS
   return migrations.length;
 }
 
-export type MetaKey = 'userId' | 'clockOffsetMs' | 'lastSyncedAt';
+export type MetaKey = 'userId' | 'clockOffsetMs' | 'lastSyncedAt' | 'unreadNotifications';
 
 export async function getMeta(db: Db, key: MetaKey): Promise<string | null> {
   return (await db.first<{ value: string }>('SELECT value FROM meta WHERE key = ?', [key]))?.value ?? null;
