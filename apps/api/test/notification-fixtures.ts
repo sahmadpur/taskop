@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import type { SystemRoleKey } from '@taskop/contracts';
 import pg from 'pg';
 import { uuidv7 } from 'uuidv7';
 import { inject } from 'vitest';
+import type { TestApp } from './app';
+import { as, createUserDirect, loginStaff } from './fixtures';
 import { ownerQuery } from './owner-db';
+import type { Api } from './scheduling-fixtures';
 
 /** An Android device row straight in the DB (owner connection). */
 export async function addDevice(tenantId: string, userId: string, token = `ExponentPushToken[${randomUUID()}]`): Promise<{ id: string; token: string }> {
@@ -49,4 +53,15 @@ export async function asApp<T>(tenantId: string, fn: (c: pg.PoolClient) => Promi
     c.release();
     await pool.end();
   }
+}
+
+/** A staff user with a built-in role, linked to `siteIds`, logged in on the web. */
+export async function staffAt(t: TestApp, tenantId: string, owner: Api, roleKey: SystemRoleKey, siteIds: string[], fullName = `Staff ${roleKey}`) {
+  const u = await createUserDirect(t, tenantId, { kind: 'staff', roleKey, fullName, emailVerified: true });
+  if (siteIds.length) {
+    const res = await owner.put(`/api/v1/users/${u.id}/sites`, { siteIds });
+    if (res.status !== 200) throw new Error(`linking sites failed: ${JSON.stringify(res.body)}`);
+  }
+  const login = await loginStaff(t, u.email!, u.secret, 'web');
+  return { id: u.id, email: u.email!, api: as(t, login.accessToken) };
 }
