@@ -7,6 +7,7 @@ import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/features/notifications/notification-bell';
 import { session } from '@/lib/session';
+import { UserMenu } from './user-menu';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
@@ -85,10 +86,7 @@ export function AppShell() {
           <span className="text-muted-foreground text-sm">{me.tenant.name}</span>
           <div className="flex items-center gap-3">
             <NotificationBell />
-            <div className="text-right text-sm">
-              <div className="font-medium">{me.user.fullName}</div>
-              <div className="text-muted-foreground text-xs">{me.role.systemKey ? t(`roles.systemNames.${me.role.systemKey}`) : me.role.name}</div>
-            </div>
+            <UserMenu me={me} />
             <Button variant="ghost" size="icon" aria-label={t('nav.logout')} onClick={() => void session.signOut()}>
               <LogOut className="size-4" />
             </Button>
