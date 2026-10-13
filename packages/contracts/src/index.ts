@@ -23,6 +23,7 @@ export * from './execution-summary.js';
 export * from './execution-views.js';
 export * from './task-views.js';
 export * from './sync.js';
+export * from './notifications.js';
 export * from './templates.js';
 export * from './checklists.js';
 export * from './scheduling-time.js';
