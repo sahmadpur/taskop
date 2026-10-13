@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { NotificationEvents } from './notification-events';
+import { NotificationFanout } from './notification-fanout';
 import { NotificationListeners } from './notification-listeners';
 import { NotificationRecipients } from './notification-recipients';
 import { NotificationTargets } from './notification-targets';
@@ -13,7 +14,7 @@ import { ScopeSubjects } from './scope-subjects';
 @Module({
   imports: [SchedulingModule, TasksModule],
   controllers: [NotificationRulesController],
-  providers: [NotificationEvents, NotificationListeners, NotificationRules, ScopeSubjects, NotificationTargets, NotificationRecipients],
+  providers: [NotificationEvents, NotificationListeners, NotificationRules, ScopeSubjects, NotificationTargets, NotificationRecipients, NotificationFanout],
   exports: [NotificationEvents, NotificationRules],
 })
 export class NotificationsModule {}

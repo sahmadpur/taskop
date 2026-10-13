@@ -3,6 +3,7 @@ import type { SystemRoleKey } from '@taskop/contracts';
 import pg from 'pg';
 import { uuidv7 } from 'uuidv7';
 import { inject } from 'vitest';
+import { type FanoutResult, NotificationFanout } from '../src/notifications/notification-fanout';
 import type { TestApp } from './app';
 import { as, createUserDirect, loginStaff } from './fixtures';
 import { ownerQuery } from './owner-db';
@@ -64,4 +65,61 @@ export async function staffAt(t: TestApp, tenantId: string, owner: Api, roleKey:
   }
   const login = await loginStaff(t, u.email!, u.secret, client);
   return { id: u.id, email: u.email!, api: as(t, login.accessToken) };
+}
+
+/** Runs fan-out for every unprocessed event of the tenant, oldest first, as the worker would. */
+export async function fanOutAll(t: TestApp, tenantId: string): Promise<FanoutResult[]> {
+  const r = await ownerQuery<{ id: string }>('select id from notification_events where tenant_id = $1 and processed_at is null order by created_at, id', [tenantId]);
+  const out: FanoutResult[] = [];
+  for (const { id } of r.rows) out.push(await t.app.get(NotificationFanout).run({ tenantId, eventId: id }));
+  return out;
+}
+
+export interface InboxRow {
+  id: string;
+  event_id: string;
+  type: string;
+  title: string;
+  body: string;
+  target_kind: string;
+  target_id: string | null;
+  target_date: string | null;
+  created_at: Date;
+  read_at: Date | null;
+}
+
+/** A user's inbox, oldest first (owner connection). */
+export async function inboxOf(userId: string): Promise<InboxRow[]> {
+  const r = await ownerQuery<InboxRow>(
+    `select id, event_id, type, title, body, target_kind, target_id, to_char(target_date, 'YYYY-MM-DD') as target_date, created_at, read_at
+       from notifications where user_id = $1 order by created_at, id`,
+    [userId],
+  );
+  return r.rows;
+}
+
+export interface DeliveryRow {
+  id: string;
+  notification_id: string;
+  channel: 'push' | 'email';
+  device_id: string | null;
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  provider_ref: string | null;
+  sent_at: Date | null;
+}
+
+/**
+ * Every delivery of a user's notifications (owner connection): email first (the notification_channel enum is
+ * declared ('push', 'email'), so `channel desc` puts email before push), then push by device id, then by id.
+ */
+export async function deliveriesOf(userId: string): Promise<DeliveryRow[]> {
+  const r = await ownerQuery<DeliveryRow>(
+    `select d.id, d.notification_id, d.channel, d.device_id, d.status, d.attempts, d.last_error, d.provider_ref, d.sent_at
+       from notification_deliveries d join notifications n on n.id = d.notification_id
+      where n.user_id = $1 order by d.channel desc, d.device_id, d.id`,
+    [userId],
+  );
+  return r.rows;
 }

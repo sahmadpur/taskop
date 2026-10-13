@@ -1,3 +1,4 @@
+import type { DeliveryChannel } from '@taskop/contracts';
 import pg from 'pg';
 
 /** SP6 spec §6.3. */
@@ -72,4 +73,13 @@ export function failureText(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
   if (message.startsWith('Failed query:')) return 'Database error';
   return message.slice(0, 500);
+}
+
+/** Spec §6.1 step 4: push deliveries in batches of ≤ 100 (one Expo request each), email deliveries one per job. */
+export function deliveryJobs(tenantId: string, rows: ReadonlyArray<{ id: string; channel: DeliveryChannel }>): DeliverJob[] {
+  const push = rows.filter((r) => r.channel === 'push').map((r) => r.id);
+  const jobs: DeliverJob[] = [];
+  for (let i = 0; i < push.length; i += NOTIFICATION_LIMITS.pushBatch) jobs.push({ tenantId, deliveryIds: push.slice(i, i + NOTIFICATION_LIMITS.pushBatch) });
+  for (const r of rows) if (r.channel === 'email') jobs.push({ tenantId, deliveryIds: [r.id] });
+  return jobs;
 }
