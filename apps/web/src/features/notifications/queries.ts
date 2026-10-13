@@ -82,4 +82,6 @@ export const useMessages = () =>
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 
-export const useMessage = (id: string) => useQuery({ queryKey: notificationKeys.message(id), queryFn: () => api.messages.get(id) });
+/** One message's detail; a blank id (e.g. an empty `?message=`) asks for nothing. */
+export const useMessage = (id: string) =>
+  useQuery({ queryKey: notificationKeys.message(id), queryFn: () => api.messages.get(id), enabled: !!id });

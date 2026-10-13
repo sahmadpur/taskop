@@ -1,6 +1,6 @@
 import type { PermissionKey } from '@taskop/contracts';
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Megaphone, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
@@ -10,7 +10,7 @@ import { session } from '@/lib/session';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
-  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/shifts' | '/roster';
+  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/messages' | '/shifts' | '/roster';
   labelKey: string;
   icon: LucideIcon;
   /** One key, or a list of which any one suffices. */
@@ -25,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/schedule', labelKey: 'nav.schedule', icon: CalendarClock, permission: 'assignments.view' },
   { to: '/problems', labelKey: 'nav.problems', icon: TriangleAlert, permission: 'assignments.view' },
   { to: '/tasks', labelKey: 'nav.tasks', icon: ClipboardCheck, permission: ['tasks.view', 'tasks.manage'] },
+  { to: '/messages', labelKey: 'nav.messages', icon: Megaphone, permission: 'notifications.send' },
   { to: '/shifts', labelKey: 'nav.shifts', icon: Clock, permission: 'shifts.view' },
   { to: '/roster', labelKey: 'nav.roster', icon: CalendarDays, permission: 'shifts.view' },
   { to: '/users', labelKey: 'nav.users', icon: Users, permission: 'users.view' },

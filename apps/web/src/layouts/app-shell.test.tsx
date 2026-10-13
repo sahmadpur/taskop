@@ -45,6 +45,8 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Audit jurnalı' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Problemlər' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tapşırıqlar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Mesajlar' })).not.toBeInTheDocument();
+
     expect(screen.getByRole('link', { name: 'Parametrlər' })).toBeInTheDocument();
   });
 
@@ -65,6 +67,12 @@ describe('AppShell', () => {
     state.current = { status: 'authenticated', me: me([]) };
     renderShell();
     expect(await screen.findByRole('button', { name: 'Bildirişlər: 2 oxunmamış' })).toHaveTextContent('2');
+  });
+
+  it('shows Mesajlar to holders of notifications.send', async () => {
+    state.current = { status: 'authenticated', me: me(['notifications.send']) };
+    renderShell();
+    expect(await screen.findByRole('link', { name: 'Mesajlar' })).toHaveAttribute('href', '/messages');
   });
 
   it('AppShell redirects to login when the session ends', async () => {
