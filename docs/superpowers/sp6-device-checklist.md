@@ -1,6 +1,6 @@
 # SP6 notifications: manual device checklist (mobile)
 
-Everything here needs a real phone or your accounts, so Jest and the agents cannot run it. Spec: `docs/superpowers/specs/2026-10-13-notifications-design.md` (sections 9 and 10). Tick each item in the pull request description with the phone model and OS version. 
+Everything here needs a real phone or your accounts, so Jest and the agents cannot run it. Spec: `docs/superpowers/specs/2026-10-13-notifications-design.md` (section 9 is the manual checklist, section 10 the accounts). Tick each item in the pull request description with the phone model and OS version.
 **Run this checklist after Part 3 (web) is complete on this branch.** Items marked (web) need the web app's Mesajlar page, rules or "Bildiriş ayarları" menu.
 
 Never commit device notes, credentials, `google-services.json`, `.p8` or service-account keys.
@@ -22,13 +22,14 @@ Never commit device notes, credentials, `google-services.json`, `.p8` or service
 ```bash
 docker compose up -d
 ipconfig getifaddr en0                     # e.g. 192.168.1.20 (use your value below)
-cp apps/api/.env.example apps/api/.env
-cp apps/mobile/.env.example apps/mobile/.env
+cp -n apps/api/.env.example apps/api/.env          # -n: never overwrite an existing file
+cp -n apps/mobile/.env.example apps/mobile/.env
+pnpm --filter @taskop/api keys:generate            # prints JWT_PRIVATE_KEY and JWT_PUBLIC_KEY
 ```
 
-Then edit the two new files (both are gitignored):
+Then edit the two files (both are gitignored):
 
-- `apps/api/.env`: set `S3_PUBLIC_ENDPOINT=http://192.168.1.20:8333` (existing line), and check `JOBS_ENABLED=true` and `NOTIFICATIONS_PUSH_ENABLED=true` are present (they are in the example).
+- `apps/api/.env`: paste the two lines printed by `keys:generate` over the empty `JWT_PRIVATE_KEY=` and `JWT_PUBLIC_KEY=` (the API fails config validation without them; skip if the file already has them), set `S3_PUBLIC_ENDPOINT=http://192.168.1.20:8333` (existing line), and check `JOBS_ENABLED=true` and `NOTIFICATIONS_PUSH_ENABLED=true` are present (they are in the example).
 - `apps/mobile/.env`: set `EXPO_PUBLIC_API_URL=http://192.168.1.20:3000` (existing line).
 
 ```bash
@@ -51,13 +52,13 @@ docker compose exec postgres psql -U taskop_owner taskop -c "select platform, di
 
 ## C. Checklist (spec section 9)
 
-1. **First start asks once.** Fresh install, sign in as `elvin`: one permission prompt (iOS, and Android 13+). Allow: Profile shows "Push bildirişləri: Açıqdır". the database check from section B shows a row for the phone (`platform` ios or android, `disabled_at` empty). Kill and reopen: no second prompt.
+1. **First start asks once.** Fresh install, sign in as `elvin`: one permission prompt (iOS, and Android 13+). Allow: Profile shows "Push bildirişləri: Açıqdır". The database check from section B shows a row for the phone (`platform` ios or android, `disabled_at` empty). Kill and reopen: no second prompt.
 2. **Foreground banner (web).** App open on Home, assign a task to `elvin` on the web (Tapşırıqlar, new task). Within about 10 s: a banner with sound, the bell count grows by one, the task shows under Tapşırıqlar without a manual sync.
 3. **Tap from a closed app: occurrence.** Kill the app. (web) Make a checklist of `elvin` available, due soon or overdue (shorten the shift on the web). Tap the notification: the app opens on Home with that checklist's "Başla" if not started; if `elvin` had started it, on its execution screen.
 4. **Tap from a closed app: task (web).** Kill the app, assign another task on the web, tap the notification: the task screen of that task.
 5. **Cold-start tap routes to the inbox.** Kill the app. Trigger a push whose target is not on this phone (for example the manager's critical-problem push on the manager's phone, or a message-type notification). Tap it from the lock screen: the app starts and lands on the inbox (`/notifications`), with the Tabs layout mounted and no blank screen, error or redirect flash.
 6. **Cold-start tap routes to Home.** Kill the app. Trigger an occurrence push for a checklist on this phone and tap it from the lock screen: the app starts and lands on Home. This proves the router is ready before Tabs mounts (no "navigate before mounting" error, no stuck splash).
-7. **Manager notices.** Second phone signed in as the manager. `elvin` records a critical problem (on `elvin`'s phone: open a started checklist, tap "Problem qeyd et" on an item, choose severity "Kritik", add a note, save): push on the manager's phone; tapping it opens the inbox (the occurrence is not on the manager's phone). An email arrives in Mailpit for the manager. `elvin` submits a review task the manager created (manager creates a task for `elvin` with "requires review" on the web or in Tapşırıqlar; `elvin` completes it in Tapşırıqlar): tapping the push opens the Yoxlama screen with Təsdiqlə and Geri qaytar.
+7. **Manager notices.** Second phone signed in as the manager. `elvin` records a critical problem (on `elvin`'s phone: open a started checklist, tap "Problem qeyd et" on an item, choose severity "Kritik", add a note, save): push on the manager's phone; tapping it opens the inbox (the occurrence is not on the manager's phone). An email arrives in Mailpit for the manager. `elvin` submits a review task the manager created (manager creates a task for `elvin` with "Tamamlandıqdan sonra yoxlama tələb olunur" checked, on the web or in Tapşırıqlar; `elvin` completes it in Tapşırıqlar): tapping the push opens the Yoxlama screen with Təsdiqlə and Geri qaytar.
 8. **Badge and inbox.** The app icon shows the unread count. Open the bell: unread rows are bold; pull to refresh works. (web) Send 35 messages to `elvin` from the web (Mesajlar): scrolling loads the rest with no row twice. "Hamısını oxunmuş et": the bell and the icon badge clear. In airplane mode the inbox says "Bildirişlərə baxmaq üçün internet bağlantısı tələb olunur.".
 9. **Logout stops push.** Log out, then (web) message `elvin` from Mesajlar: no push arrives, the icon has no badge, and the database check from section B shows no row for the phone (an empty result, or only a row with `disabled_at` set).
 10. **Switching users on one phone.** With `elvin` signed in, turn on airplane mode and log out: the removal fails and logout still finishes within about 3 s. Airplane mode off, sign in as `nigar`. (web) Send one message to `elvin` and one to `nigar` from Mesajlar: only `nigar`'s arrives. A push from `elvin`'s session still on the lock screen opens only the inbox while `nigar` is signed in.
