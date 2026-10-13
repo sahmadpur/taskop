@@ -1,5 +1,6 @@
 import { ApiError } from '@taskop/api-client';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
+import { formatDateTime } from '@taskop/i18n';
 import { StyleSheet } from 'react-native';
 import '@/lib/i18n';
 import { ME, NOTIFICATION, NOTIFICATION2, NOTIFICATION3, notificationItem, OCC, syncResponse, syncTask, T, TASK, versionOf } from '@/offline/testing/fixtures';
@@ -9,10 +10,16 @@ import { readUnreadNotifications } from '@/offline/unread';
 import { InboxScreen } from './inbox-screen';
 
 const mockPush = jest.fn();
+const mockFocus = { set: (_focused: boolean) => undefined as void };
 jest.mock('expo-router', () => ({
   router: { push: (...a: unknown[]) => mockPush(...a), back: jest.fn() },
-  // The screen is focused while rendered in a test.
-  useFocusEffect: (effect: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(effect, [effect]),
+  // The screen is focused while rendered in a test, until mockFocus.set(false) blurs it.
+  useFocusEffect: (effect: () => void | (() => void)) => {
+    const react = jest.requireActual<typeof import('react')>('react');
+    const [focused, setFocused] = react.useState(true);
+    mockFocus.set = setFocused;
+    react.useEffect(() => (focused ? effect() : undefined), [effect, focused]);
+  },
 }));
 const mockList = jest.fn();
 const mockMarkRead = jest.fn();
@@ -56,6 +63,7 @@ async function world(o: { online?: boolean } = {}) {
 
 beforeEach(() => {
   mockPush.mockReset();
+  mockFocus.set = () => undefined;
   mockList.mockReset();
   mockList.mockResolvedValue({ items: [A, B], nextCursor: null });
   mockMarkRead.mockReset();
@@ -78,8 +86,8 @@ describe('Bildirişlər inbox', () => {
     mockList.mockImplementation(async (q: { cursor?: string }) => (q.cursor ? { items: [C], nextCursor: null } : { items: [A, B], nextCursor: CURSOR }));
     const t = await world();
     await renderWithServices(t.services, <InboxScreen />);
-    expect(await screen.findByRole('button', { name: 'Oxunmamış: Açılış yoxlaması açıldı' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Yeni tapşırıq' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /^Oxunmamış: Açılış yoxlaması açıldı\./ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Yeni tapşırıq\./ })).toBeTruthy();
     expect(StyleSheet.flatten(screen.getByText('Açılış yoxlaması açıldı').props.style).fontWeight).toBe('700');
     expect(StyleSheet.flatten(screen.getByText('Yeni tapşırıq').props.style).fontWeight).toBe('500');
     await fireEvent(screen.getByTestId('notification-list'), 'endReached');
@@ -115,18 +123,64 @@ describe('Bildirişlər inbox', () => {
     expect(await readUnreadNotifications(t.db)).toBe(2);
   });
 
+  it('a next page asked for while the list is being refreshed is not requested, and the rows end up as the fresh page', async () => {
+    const refresh = gate();
+    let fresh = false;
+    mockList.mockImplementation(async (q: { cursor?: string }) => {
+      if (q.cursor) return { items: [C], nextCursor: null }; // the old cursor's page: must never be asked for
+      if (fresh) {
+        await refresh.opened;
+        return { items: [C, A, B], nextCursor: null };
+      }
+      return { items: [A, B], nextCursor: CURSOR };
+    });
+    const t = await world();
+    await renderWithServices(t.services, <InboxScreen />);
+    await screen.findByText('Açılış yoxlaması açıldı');
+    fresh = true;
+    await fireEvent(screen.getByTestId('notification-list'), 'refresh');
+    await eventually(async () => expect(mockList).toHaveBeenCalledTimes(2));
+    await fireEvent(screen.getByTestId('notification-list'), 'endReached');
+    expect(mockList.mock.calls.filter(([q]) => (q as { cursor?: string }).cursor)).toHaveLength(0);
+    await act(async () => refresh.open());
+    await eventually(async () => expect(rowIds()).toEqual([`notification-${C.id}`, `notification-${A.id}`, `notification-${B.id}`]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(rowIds()).toEqual([`notification-${C.id}`, `notification-${A.id}`, `notification-${B.id}`]);
+    expect(mockList.mock.calls.filter(([q]) => (q as { cursor?: string }).cursor)).toHaveLength(0);
+  });
+
+  it('does not navigate when the screen lost focus while the tap waited for the sync', async () => {
+    const sync = gate();
+    const t = await world();
+    jest.spyOn(t.services, 'syncNow').mockImplementation(async () => sync.opened);
+    await renderWithServices(t.services, <InboxScreen />);
+    await fireEvent.press(await screen.findByRole('button', { name: /^Yeni tapşırıq/ }));
+    await act(async () => mockFocus.set(false));
+    await act(async () => sync.open());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('reads each row out with its state, title, text and time', async () => {
+    const t = await world();
+    await renderWithServices(t.services, <InboxScreen />);
+    const when = formatDateTime(A.createdAt, { locale: 'az', timeZone: t.services.timeZone });
+    expect(await screen.findByRole('button', { name: `Oxunmamış: ${A.title}. ${A.body}. ${when}` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `${B.title}. ${B.body}. ${formatDateTime(B.createdAt, { locale: 'az', timeZone: t.services.timeZone })}` })).toBeTruthy();
+  });
+
   it('a tap marks the row read, re-reads the count from the server and opens the started checklist', async () => {
     mockUnreadCount.mockResolvedValue({ count: 1 });
     const t = await world();
     await renderWithServices(t.services, <InboxScreen />);
-    await screen.findByRole('button', { name: 'Oxunmamış: Açılış yoxlaması açıldı' });
+    await screen.findByRole('button', { name: /^Oxunmamış: Açılış yoxlaması açıldı\./ });
     // The screen stored the server's 1 when it opened; the count only drops to 0 because it is read again after the mark.
     await eventually(async () => expect(await readUnreadNotifications(t.db)).toBe(1));
     mockUnreadCount.mockResolvedValue({ count: 0 });
-    await fireEvent.press(await screen.findByRole('button', { name: 'Oxunmamış: Açılış yoxlaması açıldı' }));
+    await fireEvent.press(await screen.findByRole('button', { name: /^Oxunmamış: Açılış yoxlaması açıldı\./ }));
     await eventually(async () => expect(mockPush).toHaveBeenCalledWith({ pathname: '/execution/[id]', params: { id: OCC } }));
     expect(mockMarkRead).toHaveBeenCalledWith(A.id);
-    expect(screen.getByRole('button', { name: 'Açılış yoxlaması açıldı' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Açılış yoxlaması açıldı\./ })).toBeTruthy();
     await eventually(async () => expect(await readUnreadNotifications(t.db)).toBe(0));
     expect(mockUnreadCount.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -135,10 +189,10 @@ describe('Bildirişlər inbox', () => {
     mockList.mockResolvedValue({ items: [B, C], nextCursor: null });
     const t = await world();
     await renderWithServices(t.services, <InboxScreen />);
-    await fireEvent.press(await screen.findByRole('button', { name: 'Yeni tapşırıq' }));
+    await fireEvent.press(await screen.findByRole('button', { name: /^Yeni tapşırıq\./ }));
     await eventually(async () => expect(mockPush).toHaveBeenCalledWith({ pathname: '/task/[id]', params: { id: TASK } }));
     expect(mockMarkRead).not.toHaveBeenCalled(); // already read
-    await fireEvent.press(screen.getByRole('button', { name: 'Oxunmamış: Admin mesajı' }));
+    await fireEvent.press(screen.getByRole('button', { name: /^Oxunmamış: Admin mesajı\./ }));
     await eventually(async () => expect(mockMarkRead).toHaveBeenCalledWith(C.id));
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
@@ -151,7 +205,7 @@ describe('Bildirişlər inbox', () => {
     await eventually(async () => expect(await readUnreadNotifications(t.db)).toBe(1));
     mockUnreadCount.mockResolvedValue({ count: 0 });
     await fireEvent.press(markAll);
-    await eventually(async () => expect(screen.getByRole('button', { name: 'Açılış yoxlaması açıldı' })).toBeTruthy());
+    await eventually(async () => expect(screen.getByRole('button', { name: /^Açılış yoxlaması açıldı\./ })).toBeTruthy());
     expect(mockMarkAllRead).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Hamısını oxunmuş et' }).props.accessibilityState.disabled).toBe(true);
     await eventually(async () => expect(await readUnreadNotifications(t.db)).toBe(0));

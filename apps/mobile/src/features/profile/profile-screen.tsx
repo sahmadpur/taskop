@@ -41,10 +41,11 @@ export function ProfileScreen() {
     setSaving(true);
     setEmailError(null);
     setPending(next);
+    const userId = me.user.id; // the answer may arrive after another user signed in
     try {
       const saved = await api.preferences.update({ emailNotifications: next });
       // The session now holds the server's answer, so dropping the override below keeps it; on failure it reverts.
-      await session.patchUser({ emailNotifications: saved.emailNotifications });
+      await session.patchUser({ emailNotifications: saved.emailNotifications }, userId);
     } catch (e) {
       setEmailError(mobileErrorText(t, e));
     } finally {

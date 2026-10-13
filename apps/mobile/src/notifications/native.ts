@@ -69,12 +69,24 @@ export const notificationEvents: NotificationEvents = {
   },
 };
 
-/** Spec §7.1, called once when the app starts: the foreground handler and Android's 'default' channel. */
-export function configureNotifications(currentUserId: () => string | null): void {
+/**
+ * Spec §7.1, called once when the app starts: the foreground handler and Android's 'default' channel. With `subscribe` (the
+ * session's), the app badge is also cleared whenever the session becomes anonymous, so an expired session (which never goes
+ * through logout) does not leave the last user's count on the icon.
+ */
+export function configureNotifications(currentUserId: () => string | null, subscribe?: (listener: () => void) => () => void): void {
   Notifications.setNotificationHandler({
     handleNotification: async (n) => foregroundBehavior(n.request.content.data, currentUserId()),
   });
   nativePush.ensureChannel().catch((e: unknown) => console.warn('[push] Could not create the notification channel', message(e)));
+  let cleared = false;
+  subscribe?.(() => {
+    if (currentUserId() !== null) cleared = false;
+    else if (!cleared) {
+      cleared = true;
+      setAppBadge(0);
+    }
+  });
 }
 
 /** The app-icon badge (spec §7.3); best effort, since Android launchers may not support badges. */

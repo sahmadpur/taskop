@@ -67,6 +67,30 @@ describe('native push port', () => {
     expect(N.setNotificationChannelAsync).toHaveBeenCalledWith('default', { name: 'Taskop bildirişləri', importance: 6, sound: 'default' });
   });
 
+  it('clears the app badge whenever the session becomes anonymous, including a session that expired', () => {
+    let current: string | null = ME;
+    const listeners = new Set<() => void>();
+    const change = (next: string | null) => {
+      current = next;
+      listeners.forEach((l) => l());
+    };
+    configureNotifications(() => current, (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    });
+    N.setBadgeCountAsync.mockClear();
+    change(ME); // e.g. a token refresh: still signed in
+    expect(N.setBadgeCountAsync).not.toHaveBeenCalled();
+    change(null);
+    expect(N.setBadgeCountAsync).toHaveBeenCalledTimes(1);
+    expect(N.setBadgeCountAsync).toHaveBeenCalledWith(0);
+    change(null); // already cleared
+    expect(N.setBadgeCountAsync).toHaveBeenCalledTimes(1);
+    change(OTHER);
+    change(null);
+    expect(N.setBadgeCountAsync).toHaveBeenCalledTimes(2);
+  });
+
   it('creates no channel on iOS', async () => {
     await nativePush.ensureChannel();
     expect(N.setNotificationChannelAsync).not.toHaveBeenCalled();

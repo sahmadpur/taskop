@@ -35,6 +35,9 @@ export function InboxScreen() {
   /** Bumped by every reload: a page requested before it is dropped when it arrives. */
   const generation = useRef(0);
   const moreInFlight = useRef(false);
+  /** True from the start of a reload until its page arrives: the cursor in state is the old list's, so no page is asked for. */
+  const reloading = useRef(false);
+  const focused = useRef(false);
   const opening = useRef(false);
   const canManageTasks = useRef(false);
   canManageTasks.current = session.status === 'authenticated' && session.me.permissions.includes('tasks.manage');
@@ -51,6 +54,7 @@ export function InboxScreen() {
 
   const reload = useCallback(async () => {
     const gen = ++generation.current;
+    reloading.current = true;
     moreInFlight.current = false;
     setLoadingMore(false);
     setError(null);
@@ -61,12 +65,18 @@ export function InboxScreen() {
       setCursor(page.nextCursor);
     } catch (e) {
       if (gen === generation.current) setError(mobileErrorText(t, e));
+    } finally {
+      if (gen === generation.current) reloading.current = false;
     }
   }, [t]);
 
   useFocusEffect(
     useCallback(() => {
+      focused.current = true;
       if (online) void Promise.all([reload(), refreshUnread()]);
+      return () => {
+        focused.current = false;
+      };
     }, [online, reload, refreshUnread]),
   );
 
@@ -77,7 +87,7 @@ export function InboxScreen() {
   };
 
   const loadMore = async () => {
-    if (!online || cursor === null || moreInFlight.current) return;
+    if (!online || cursor === null || moreInFlight.current || reloading.current) return;
     const gen = generation.current;
     moreInFlight.current = true;
     setLoadingMore(true);
@@ -129,7 +139,8 @@ export function InboxScreen() {
         );
       }
       const route = await routeForTarget(item, createRouteContext(services, () => canManageTasks.current));
-      if (route.pathname !== INBOX.pathname) router.push(route);
+      // Syncing can take up to 5 s: the worker may have left the screen (or the app) meanwhile.
+      if (focused.current && route.pathname !== INBOX.pathname) router.push(route);
     } catch (e) {
       console.error('[notifications] Could not open a notification', message(e));
     } finally {
@@ -182,10 +193,12 @@ export function InboxScreen() {
 function InboxRow({ item, timeZone, opening, onPress }: { item: NotificationItem; timeZone: string; opening: boolean; onPress: () => void }) {
   const { t } = useTranslation();
   const unread = item.readAt === null;
+  const when = formatDateTime(item.createdAt, { locale: 'az', timeZone });
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={unread ? `${t('mobile.notifications.unread')}: ${item.title}` : item.title}
+      // The label replaces the children for a screen reader, so it carries all of them.
+      accessibilityLabel={`${unread ? `${t('mobile.notifications.unread')}: ${item.title}` : item.title}. ${item.body}. ${when}`}
       testID={`notification-${item.id}`}
       onPress={onPress}
       style={[styles.row, unread && styles.unreadRow]}
@@ -196,7 +209,7 @@ function InboxRow({ item, timeZone, opening, onPress }: { item: NotificationItem
         {opening ? <ActivityIndicator size="small" color={colors.primary} /> : null}
       </View>
       <Text style={styles.body}>{item.body}</Text>
-      <Text style={styles.muted}>{formatDateTime(item.createdAt, { locale: 'az', timeZone })}</Text>
+      <Text style={styles.muted}>{when}</Text>
     </Pressable>
   );
 }

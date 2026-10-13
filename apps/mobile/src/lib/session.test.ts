@@ -30,16 +30,26 @@ beforeEach(() => {
 describe('mobile session', () => {
   it('applies a preference the server confirmed to the profile and its offline copy', async () => {
     await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
-    await session.patchUser({ emailNotifications: false });
+    await session.patchUser({ emailNotifications: false }, id);
     expect(session.get()).toMatchObject({ status: 'authenticated', me: { user: { username: 'elvin', emailNotifications: false } } });
     expect(JSON.parse(mockStore.get('taskop.me')!).user.emailNotifications).toBe(false);
   });
 
   it('ignores a profile change when nobody is signed in', async () => {
     await session.bootstrap();
-    await session.patchUser({ emailNotifications: false });
+    await session.patchUser({ emailNotifications: false }, id);
     expect(session.get()).toEqual({ status: 'anonymous' });
     expect(mockStore.has('taskop.me')).toBe(false);
+  });
+
+  it("does not hand one user's confirmed preference to the next user who signed in while the request was out", async () => {
+    const other = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e60';
+    const next = { ...me, user: { ...me.user, id: other, username: 'aysel' } };
+    await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
+    await session.signedIn({ accessToken: 'b', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r2', me: next } as never);
+    await session.patchUser({ emailNotifications: false }, id);
+    expect(session.get()).toMatchObject({ status: 'authenticated', me: { user: { id: other, emailNotifications: true } } });
+    expect(JSON.parse(mockStore.get('taskop.me')!).user).toMatchObject({ id: other, emailNotifications: true });
   });
 
   it('is anonymous without a stored refresh token', async () => {
