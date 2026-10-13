@@ -39,15 +39,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer pnpm --filter @taskop/m
 pnpm --filter @taskop/mobile android -- --device
 ```
 
+Expected: both phones install the development build. `expo prebuild --clean` regenerates `ios/` and `android/` with the notifications plugin, the `aps-environment` entitlement and the Firebase file.
+
+Seed accounts: manager `manager@demo.taskop.az` / `DemoPassword123`; workers `elvin` and `nigar`, org code `demo`, PIN `482915`. Mailpit: `http://localhost:8025`. The web app (Part 3) sends messages and changes rules; without it use the API endpoints directly.
+
 Database check used in items 1 and 9 (run from the repo root; the compose `postgres` service, owner role `taskop_owner`, database `taskop`; if the stack was started under another compose project name, add `-p <name>` after `docker compose`, for example `-p foundation`):
 
 ```bash
 docker compose exec postgres psql -U taskop_owner taskop -c "select platform, disabled_at, last_seen_at from push_devices order by last_seen_at desc"
 ```
-
-Expected: both phones install the development build. `expo prebuild --clean` regenerates `ios/` and `android/` with the notifications plugin, the `aps-environment` entitlement and the Firebase file.
-
-Seed accounts: manager `manager@demo.taskop.az` / `DemoPassword123`; workers `elvin` and `nigar`, org code `demo`, PIN `482915`. Mailpit: `http://localhost:8025`. The web app (Part 3) sends messages and changes rules; without it use the API endpoints directly.
 
 ## C. Checklist (spec section 9)
 
