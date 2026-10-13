@@ -1,24 +1,29 @@
-import type {
-  ClaimCommand,
-  ClaimRejectionReason,
-  ClaimResult,
-  CompleteCommand,
-  CompleteResult,
-  MediaUploadTicket,
-  RegisterMediaCommand,
-  SaveAnswersCommand,
-  SaveAnswersResult,
-  SyncResponse,
+import {
+  type ClaimCommand,
+  type ClaimRejectionReason,
+  type ClaimResult,
+  type CompleteCommand,
+  type CompleteResult,
+  type MediaUploadTicket,
+  type RegisterMediaCommand,
+  type SaveAnswersCommand,
+  type SaveAnswersResult,
+  type SubmissionInput,
+  type SyncResponse,
+  syncTaskSchema,
+  type TaskActionCommand,
+  type TaskMediaRegisterInput,
 } from '@taskop/contracts';
 import type { ChangeFeed } from './change-feed';
-import { clampOffset, type Clock, measureOffset, readOffset } from './clock';
+import { clampOffset, type Clock, measureOffset, readOffset, serverTime } from './clock';
 import { type Db, getMeta } from './db';
 import { type ExecutionRow, iso, normIso, toExecution } from './local-model';
 import type { MediaQueue } from './media-queue';
-import { ackCommand, appendCommand, failCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
-import { discardFailedCommand, dropMedium, reopenRefusedCompletion, requeueRevision, resolveTerminalRefusal } from './refusals';
+import { ackCommand, appendCommand, nextCommand, noteAttempt, type OutboxCommand, outboxCounts, retryFailedCommands } from './outbox';
+import { discardFailedCommand, requeueRevision, resolveExecutionRefusal, resolveTaskRefusal } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
 import { knownVersionIds, mergePull } from './sync-pull';
+import { knownTaskIds, mergeTask, type TaskRemoved } from './task-records';
 import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export type SyncTrigger = 'start' | 'reconnect' | 'foreground' | 'interval' | 'local' | 'claim' | 'manual' | 'retry';
@@ -73,6 +78,8 @@ export interface SyncEngineDeps {
   files: FileRemover;
   isOnline: () => boolean;
   onClaimRejected: (r: ClaimRejection) => void;
+  /** A task left the phone because a teammate took it or it was reassigned away ("Bu tapşırığı artıq başqası qəbul edib"). */
+  onTaskRemoved: (r: TaskRemoved) => void;
   /** Runs at the start of every run, online or not: the local closes_at lock. */
   beforeRun?: () => Promise<unknown>;
 }
@@ -99,7 +106,7 @@ export async function markFinishedSynced(db: Db, now: number): Promise<void> {
   await db.run(
     `UPDATE executions SET finished_synced_at = ?
      WHERE state <> 'active' AND finished_synced_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM outbox WHERE outbox.execution_id = executions.id)`,
+       AND NOT EXISTS (SELECT 1 FROM outbox WHERE outbox.entity_type = 'execution' AND outbox.entity_id = executions.id)`,
     [iso(now)],
   );
 }
@@ -114,14 +121,14 @@ async function adoptExecution(tx: Db, from: string, to: string, now: number): Pr
   const pulled = await tx.first<{ rev: number }>('SELECT rev FROM executions WHERE id = ?', [to]);
   await tx.run('DELETE FROM executions WHERE id = ?', [to]);
   await tx.run(`UPDATE executions SET id = ?, claim = 'accepted', updated_at = ? WHERE id = ?`, [to, iso(now), from]);
-  await tx.run('UPDATE media SET execution_id = ? WHERE execution_id = ?', [to, from]);
-  await tx.run('UPDATE outbox SET execution_id = ? WHERE execution_id = ?', [to, from]);
-  await tx.run('UPDATE media_refusals SET execution_id = ? WHERE execution_id = ?', [to, from]);
+  await tx.run(`UPDATE media SET owner_id = ? WHERE owner_type = 'execution' AND owner_id = ?`, [to, from]);
+  await tx.run(`UPDATE outbox SET entity_id = ? WHERE entity_type = 'execution' AND entity_id = ?`, [to, from]);
+  await tx.run(`UPDATE media_refusals SET owner_id = ? WHERE owner_type = 'execution' AND owner_id = ?`, [to, from]);
   const shift = pulled?.rev ?? 0;
   if (shift === 0) return;
   await tx.run('UPDATE executions SET rev = rev + ?, synced_rev = ? WHERE id = ?', [shift, shift, to]);
   const queued = await tx.all<{ seq: number; rev: number; payload: string }>(
-    `SELECT seq, rev, payload FROM outbox WHERE execution_id = ? AND kind IN ('answers', 'complete')`,
+    `SELECT seq, rev, payload FROM outbox WHERE entity_type = 'execution' AND entity_id = ? AND kind IN ('answers', 'complete')`,
     [to],
   );
   for (const q of queued) {
@@ -135,7 +142,7 @@ async function adoptExecution(tx: Db, from: string, to: string, now: number): Pr
  * answers are sent again above the server's revision instead of being marked synced, so the next pull cannot overwrite them.
  */
 async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number): Promise<void> {
-  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.executionId]);
+  const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [cmd.entityId]);
   if (!row) return void (await ackCommand(tx, cmd.seq));
   const e = toExecution(row);
   // A newer local revision above the server's is already queued: it carries these answers.
@@ -144,12 +151,12 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
   await tx.run('UPDATE executions SET rev = ? WHERE id = ?', [rev, e.id]);
   // The command stays where it is (its action time and its place before a completion), now with the new revision.
   if ((await requeueRevision(tx, e.id, rev, e.answers)) === 0) {
-    await appendCommand(tx, { executionId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
+    await appendCommand(tx, { entityType: 'execution', entityId: e.id, kind: 'answers', rev, payload: { rev, answers: e.answers }, createdAt: cmd.createdAt });
   }
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
-  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, beforeRun } = deps;
+  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, onTaskRemoved, beforeRun } = deps;
   let status: SyncStatus = { pending: 0, failed: 0, running: false, online: isOnline(), lastSyncedAt: null, clockOffsetMs: 0, blockedByAuth: false };
   const listeners = new Set<() => void>();
   let running: Promise<void> | null = null;
@@ -198,18 +205,34 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     }, backoffDelay(failures));
   }
 
-  /** `deviceTime` is the worker's action time (the API refuses answers stamped at or after closes_at); the offset is the latest measured. */
+  /**
+   * Execution commands carry the worker's action time as `deviceTime` plus the latest offset (the API refuses answers stamped
+   * at or after closes_at). Task commands carry no offset (Part 1 decision 1): their times move onto the server's clock here.
+   */
   async function send(cmd: OutboxCommand): Promise<unknown> {
-    const body = { ...cmd.payload, deviceTime: cmd.createdAt, clientOffsetMs: clampOffset(await readOffset(db)) };
+    const offset = clampOffset(await readOffset(db));
+    const body = { ...cmd.payload, deviceTime: cmd.createdAt, clientOffsetMs: offset };
     switch (cmd.kind) {
       case 'claim':
         return api.executions.claim(body as ClaimCommand);
       case 'media':
-        return api.executions.registerMedia(cmd.executionId, body as RegisterMediaCommand);
+        return api.executions.registerMedia(cmd.entityId, body as RegisterMediaCommand);
       case 'answers':
-        return api.executions.saveAnswers(cmd.executionId, body as SaveAnswersCommand);
+        return api.executions.saveAnswers(cmd.entityId, body as SaveAnswersCommand);
       case 'complete':
-        return api.executions.complete(cmd.executionId, body as CompleteCommand);
+        return api.executions.complete(cmd.entityId, body as CompleteCommand);
+      case 'task.accept':
+        return api.tasks.accept(cmd.entityId, { at: serverTime((cmd.payload as TaskActionCommand).at, offset) });
+      case 'task.start':
+        return api.tasks.start(cmd.entityId, { at: serverTime((cmd.payload as TaskActionCommand).at, offset) });
+      case 'task.media': {
+        const b = cmd.payload as TaskMediaRegisterInput;
+        return api.tasks.registerMedia(cmd.entityId, { ...b, capturedAt: serverTime(b.capturedAt, offset) });
+      }
+      case 'task.submit': {
+        const b = cmd.payload as SubmissionInput;
+        return api.tasks.submit(cmd.entityId, { ...b, submittedAt: serverTime(b.submittedAt, offset) });
+      }
     }
   }
 
@@ -218,7 +241,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     switch (cmd.kind) {
       case 'claim': {
         const r = result as ClaimResult;
-        const e = await tx.first<{ occurrence_id: string }>('SELECT occurrence_id FROM executions WHERE id = ?', [cmd.executionId]);
+        const e = await tx.first<{ occurrence_id: string }>('SELECT occurrence_id FROM executions WHERE id = ?', [cmd.entityId]);
         if (!e) return null;
         if (r.claim) {
           await tx.run('UPDATE occurrences SET claim_execution_id = ?, claim_user_id = ?, claim_name = ? WHERE id = ?', [
@@ -226,20 +249,21 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
           ]);
         }
         const heldByMe = r.claim !== null && r.claim.executorUserId === (await getMeta(tx, 'userId'));
-        if (r.state === 'rejected' && r.reason === 'ALREADY_CLAIMED' && heldByMe && r.claim!.executionId !== cmd.executionId) {
-          await adoptExecution(tx, cmd.executionId, r.claim!.executionId, now);
+        if (r.state === 'rejected' && r.reason === 'ALREADY_CLAIMED' && heldByMe && r.claim!.executionId !== cmd.entityId) {
+          await adoptExecution(tx, cmd.entityId, r.claim!.executionId, now);
         } else if (r.state === 'rejected') {
           await tx.run(`UPDATE executions SET state = 'rejected', claim = 'rejected', rejected_reason = ?, rejected_by = ?, updated_at = ? WHERE id = ?`, [
-            r.reason, r.claim?.executorName ?? null, iso(now), cmd.executionId,
+            r.reason, r.claim?.executorName ?? null, iso(now), cmd.entityId,
           ]);
-          return { executionId: cmd.executionId, occurrenceId: e.occurrence_id, reason: r.reason ?? 'ALREADY_CLAIMED', byName: r.claim?.executorName ?? null };
+          return { executionId: cmd.entityId, occurrenceId: e.occurrence_id, reason: r.reason ?? 'ALREADY_CLAIMED', byName: r.claim?.executorName ?? null };
         } else {
-          await tx.run(`UPDATE executions SET claim = 'accepted', started_at = ?, updated_at = ? WHERE id = ?`, [normIso(r.startedAt), iso(now), cmd.executionId]);
+          await tx.run(`UPDATE executions SET claim = 'accepted', started_at = ?, updated_at = ? WHERE id = ?`, [normIso(r.startedAt), iso(now), cmd.entityId]);
         }
         await tx.run(`UPDATE occurrences SET status = 'started' WHERE id = ? AND status IN ('pending', 'overdue', 'missed')`, [e.occurrence_id]);
         return null;
       }
-      case 'media': {
+      case 'media':
+      case 'task.media': {
         const ticket = result as MediaUploadTicket;
         await tx.run('UPDATE media SET registered_at = ? WHERE id = ?', [iso(now), cmd.refId]);
         // The server already holds the file (uploadUrl is null then): nothing is left for the media queue.
@@ -248,14 +272,26 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       }
       case 'answers':
         // max(): a late success for an older revision must never lower what is known to be synced.
-        await tx.run('UPDATE executions SET synced_rev = max(synced_rev, ?) WHERE id = ?', [cmd.rev, cmd.executionId]);
+        await tx.run('UPDATE executions SET synced_rev = max(synced_rev, ?) WHERE id = ?', [cmd.rev, cmd.entityId]);
         return null;
       case 'complete': {
         const r = result as CompleteResult;
         await tx.run(
           'UPDATE executions SET state = ?, completed_at = coalesce(?, completed_at), synced_rev = max(synced_rev, ?), updated_at = ? WHERE id = ?',
-          [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.executionId],
+          [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.entityId],
         );
+        return null;
+      }
+      case 'task.accept':
+      case 'task.start':
+      case 'task.submit': {
+        // The task may have left the phone while the command was in flight.
+        if (!(await tx.first('SELECT 1 AS one FROM tasks WHERE id = ?', [cmd.entityId]))) return null;
+        if (cmd.kind === 'task.submit') await tx.run('DELETE FROM task_drafts WHERE task_id = ? AND submission_id = ?', [cmd.entityId, cmd.refId]);
+        // An answer the phone cannot read must not jam the outbox: the command is acked without merging, and the next pull brings the server's copy.
+        const parsed = syncTaskSchema.safeParse(result);
+        if (parsed.success) await mergeTask(tx, parsed.data, now, cmd.seq);
+        else console.warn(`[sync] The answer to ${cmd.kind} was not a task; the next pull brings the server's copy`);
         return null;
       }
     }
@@ -273,21 +309,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         const f = classifyError(e);
         if (f.kind === 'permanent') {
           const now = clock.now();
-          const uris = await ownedTransaction(db, userId, async (tx): Promise<string[]> => {
-            if (cmd.kind === 'media') {
-              await ackCommand(tx, cmd.seq);
-              const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, f.messageKey) : null;
-              return uri ? [uri] : [];
-            }
-            if (cmd.kind === 'complete' && f.code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, now))) return [];
-            const resolved = await resolveTerminalRefusal(tx, cmd, f.code, f.messageKey, now);
-            if (resolved) return resolved;
-            await failCommand(tx, cmd.seq, f.code, f.messageKey);
-            return [];
-          });
-          if (uris === NOT_OWNER) return 'ok';
-          uris.forEach(removeFile);
+          const outcome = await ownedTransaction(db, userId, async (tx): Promise<{ files: string[]; removed: TaskRemoved | null }> =>
+            cmd.entityType === 'task'
+              ? resolveTaskRefusal(tx, cmd, f.code, f.messageKey, now)
+              : { files: await resolveExecutionRefusal(tx, cmd, f.code, f.messageKey, now), removed: null },
+          );
+          if (outcome === NOT_OWNER) return 'ok';
+          outcome.files.forEach(removeFile);
           feed.emit();
+          if (outcome.removed) onTaskRemoved(outcome.removed);
           continue;
         }
         if (f.kind === 'retry') await ownedTransaction(db, userId, (tx) => noteAttempt(tx, cmd.seq));
@@ -312,16 +342,19 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
 
   async function pull(): Promise<Outcome> {
     const known = await knownVersionIds(db);
+    const taskIds = await knownTaskIds(db);
     const sentAt = clock.now();
     let res: SyncResponse;
     try {
-      res = await api.sync.pull(known);
+      res = await api.sync.pull(known, taskIds);
     } catch (e) {
       return classifyError(e).kind === 'auth' ? 'auth' : 'retry';
     }
     const receivedAt = clock.now();
     const offsetMs = clampOffset(measureOffset(res.serverTime, sentAt, receivedAt));
-    if ((await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt))) === NOT_OWNER) return 'ok';
+    const files = await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt));
+    if (files === NOT_OWNER) return 'ok';
+    files.forEach(removeFile);
     feed.emit();
     return 'ok';
   }

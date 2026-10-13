@@ -1,10 +1,10 @@
 import { ApiError } from '@taskop/api-client';
 import type { Db } from './db';
 import { ExecutionLockedError } from './execution-store';
-import { listCommands, outboxCounts } from './outbox';
+import { appendCommand, type CommandKind, listCommands, outboxCounts } from './outbox';
 import { backoffDelay, createSyncEngine, indicatorOf, type SyncStatus } from './sync-engine';
 import { capturedPhoto } from './testing/fake-transport';
-import { ME, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, T, VERSION, versionOf } from './testing/fixtures';
+import { ME, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, syncTask, T, TASK, TASK2, VERSION, versionOf } from './testing/fixtures';
 import { createHarness, type Harness } from './testing/harness';
 
 const methods = (h: Harness) => h.api.calls.map((c) => c.method);
@@ -335,8 +335,8 @@ describe('failures', () => {
     await h.engine.run('manual');
     expect(methods(h)).toEqual(['claim', 'claim', 'pull']);
     expect(await listCommands(h.db)).toMatchObject([
-      { executionId: first, kind: 'claim', status: 'failed', errorCode: 'CLOCK_INVALID', errorKey: 'errors.CLOCK_INVALID' },
-      { executionId: first, kind: 'answers', status: 'pending' },
+      { entityId: first, kind: 'claim', status: 'failed', errorCode: 'CLOCK_INVALID', errorKey: 'errors.CLOCK_INVALID' },
+      { entityId: first, kind: 'answers', status: 'pending' },
     ]);
     expect(await h.store.execution(second)).toMatchObject({ claim: 'accepted' });
     expect(indicatorOf(h.engine.status())).toBe('failed');
@@ -355,6 +355,7 @@ describe('failures', () => {
         db: h.db, userId: ME, api: h.api.api, clock: h.clock, feed: h.feed, mediaQueue: h.mediaQueue, files: h.transport,
         isOnline: () => true,
         onClaimRejected: () => undefined,
+        onTaskRemoved: () => undefined,
         beforeRun: async () => {
           if (++calls <= 2) throw new Error('database is locked');
         },
@@ -598,7 +599,7 @@ describe('claims and the pull', () => {
     expect(await h.store.media(OTHER_EXECUTION)).toMatchObject([{ id: mediaId, uploadedAt: T.open }]);
     expect((await h.store.occurrence(OCC))!.claim).toEqual(mine);
     await h.store.patchAnswer(OTHER_EXECUTION, h.c.temp.id, { number: 6 });
-    expect(await listCommands(h.db)).toMatchObject([{ executionId: OTHER_EXECUTION, kind: 'answers', rev: 3 }]);
+    expect(await listCommands(h.db)).toMatchObject([{ entityId: OTHER_EXECUTION, kind: 'answers', rev: 3 }]);
   });
 
   it('after adopting, answers the server ignores as stale are sent again above its revision and survive the pull', async () => {
@@ -649,7 +650,7 @@ describe('claims and the pull', () => {
       executions: [myExecution({ occurrenceId: OCC2, answersRev: 1, answers: { [h.c.temp.id]: { number: 5 } } })],
     });
     await h.engine.run('start');
-    expect(h.api.calls[0]).toEqual({ method: 'pull', id: null, body: [VERSION] });
+    expect(h.api.calls[0]).toEqual({ method: 'pull', id: null, body: { knownVersionIds: [VERSION], knownTaskIds: [] } });
     const views = await h.store.occurrences();
     expect(views.find((o) => o.id === OCC)!.claim).toEqual(claim);
     expect(views.find((o) => o.id === OCC2)!.execution).toMatchObject({ claim: 'accepted', rev: 1, answers: { [h.c.temp.id]: { number: 5 } } });
@@ -664,5 +665,92 @@ describe('indicatorOf', () => {
     expect(indicatorOf(s({ pending: 2, online: false }))).toBe('pending');
     expect(indicatorOf(s({ online: false }))).toBe('offline');
     expect(indicatorOf(s({}))).toBe('synced');
+  });
+});
+
+describe('pulling tasks', () => {
+  it('sends the ids of the tasks the phone holds, applies the new copies and deletes the removed ones', async () => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ checklistVersions: [versionOf(h.c.content)], tasks: [syncTask(), syncTask({ id: TASK2 })] }));
+    h.api.sync = syncResponse({ tasks: [syncTask({ rev: 2, status: 'cancelled' })], removedTaskIds: [TASK2] });
+    await h.engine.run('manual');
+    const pull = h.api.calls.find((c) => c.method === 'pull')!;
+    expect((pull.body as { knownTaskIds: string[] }).knownTaskIds.sort()).toEqual([TASK, TASK2].sort());
+    expect(await h.db.all('SELECT id, local_status FROM tasks')).toEqual([{ id: TASK, local_status: 'cancelled' }]);
+  });
+});
+
+describe('task commands', () => {
+  const M1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e73';
+  const SUB = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e74';
+  const queueTask = (h: Harness, kind: CommandKind, payload: Record<string, unknown>, refId: string | null = null) =>
+    appendCommand(h.db, { entityType: 'task', entityId: TASK, kind, refId, payload, createdAt: T.open });
+
+  it('sends a task’s start, media registration and submission in outbox order, on the server’s clock, and keeps the server’s answer', async () => {
+    const h = await createHarness();
+    h.api.sync = syncResponse({ serverTime: '2026-11-02T04:08:00.000Z', tasks: [syncTask()] });
+    await h.engine.run('start'); // measures +2 min and stores the task
+    h.api.calls.length = 0;
+    await h.db.run(`UPDATE tasks SET local_status = 'completed'`);
+    // Already uploaded, so this test stays about the outbox (Task 5 covers the upload).
+    await h.db.run(
+      `INSERT INTO media (id, owner_type, owner_id, role, kind, source, mime, bytes, captured_at, local_uri, uploaded_at)
+       VALUES (?, 'task', ?, 'response', 'photo', 'camera', 'image/jpeg', 10, ?, 'file:///doc/media/t.jpg', ?)`,
+      [M1, TASK, T.open, T.open],
+    );
+    await h.db.run('INSERT INTO task_drafts (task_id, submission_id, text, media_ids, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      TASK, SUB, 'Hazırdır', JSON.stringify([M1]), T.open, T.open,
+    ]);
+    await queueTask(h, 'task.start', { at: T.open });
+    await queueTask(h, 'task.media', { id: M1, role: 'response', kind: 'photo', source: 'camera', mime: 'image/jpeg', bytes: 10, width: null, height: null, durationMs: null, capturedAt: T.open }, M1);
+    await queueTask(h, 'task.submit', { id: SUB, text: 'Hazırdır', mediaIds: [M1], submittedAt: T.open }, SUB);
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['taskStart', 'taskRegisterMedia', 'taskSubmit', 'pull']);
+    expect(bodyOf(h, 'taskStart')).toEqual({ at: '2026-11-02T04:08:00.000Z' });
+    expect(bodyOf(h, 'taskRegisterMedia')).toMatchObject({ id: M1, role: 'response', capturedAt: '2026-11-02T04:08:00.000Z' });
+    expect(bodyOf(h, 'taskSubmit')).toEqual({ id: SUB, text: 'Hazırdır', mediaIds: [M1], submittedAt: '2026-11-02T04:08:00.000Z' });
+    expect(await h.db.first('SELECT local_status, rev FROM tasks')).toEqual({ local_status: 'completed', rev: 3 });
+    expect(await h.db.first('SELECT count(*) AS n FROM task_drafts')).toEqual({ n: 0 });
+    expect(await h.db.first('SELECT registered_at FROM media')).toEqual({ registered_at: T.open });
+  });
+
+  it('holds back a task’s later commands while its start is parked, and "Sil" returns the task to the server’s status', async () => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ checklistVersions: [versionOf(h.c.content)], tasks: [syncTask()] }));
+    h.api.sync = syncResponse({ tasks: [syncTask()] });
+    await h.db.run(`UPDATE tasks SET local_status = 'completed'`);
+    await h.db.run('INSERT INTO task_drafts (task_id, submission_id, text, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?)', [TASK, SUB, 'Hazırdır', T.open, T.open]);
+    await queueTask(h, 'task.start', { at: T.open });
+    await queueTask(h, 'task.submit', { id: SUB, text: 'Hazırdır', mediaIds: [], submittedAt: T.open }, SUB);
+    h.api.on('taskStart', async () => {
+      throw new ApiError(422, 'CLOCK_INVALID', 'errors.CLOCK_INVALID');
+    });
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['taskStart', 'pull']);
+    expect((await listCommands(h.db)).map((c) => [c.kind, c.status])).toEqual([['task.start', 'failed'], ['task.submit', 'pending']]);
+    expect(await h.db.first('SELECT local_status FROM tasks')).toEqual({ local_status: 'completed' });
+
+    await h.engine.discardCommand((await listCommands(h.db))[0]!.seq);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await h.db.first('SELECT local_status, sync_note FROM tasks')).toEqual({ local_status: 'new', sync_note: 'errors.CLOCK_INVALID' });
+    expect(await h.db.first('SELECT text, submitted_at FROM task_drafts')).toEqual({ text: 'Hazırdır', submitted_at: null });
+  });
+
+  it('an unreadable answer to a task command is acked without merging, the submitted draft goes, and the queue moves on', async () => {
+    const h = await createHarness();
+    await h.seed(syncResponse({ checklistVersions: [versionOf(h.c.content)], tasks: [syncTask()] }));
+    h.api.sync = syncResponse({ tasks: [syncTask()] });
+    await h.db.run(`UPDATE tasks SET local_status = 'completed'`);
+    await h.db.run('INSERT INTO task_drafts (task_id, submission_id, text, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?)', [TASK, SUB, 'Hazırdır', T.open, T.open]);
+    await queueTask(h, 'task.submit', { id: SUB, text: 'Hazırdır', mediaIds: [], submittedAt: T.open }, SUB);
+    await queueTask(h, 'task.start', { at: T.open });
+    h.api.on('taskSubmit', async () => ({ unexpected: true }) as never);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await h.engine.run('manual');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+    expect(methods(h)).toEqual(['taskSubmit', 'taskStart', 'pull']);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await h.db.first('SELECT count(*) AS n FROM task_drafts')).toEqual({ n: 0 });
   });
 });

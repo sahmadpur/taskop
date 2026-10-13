@@ -1,4 +1,4 @@
-import type { DeviceInfo, ExecutionMediaDto, ExecutionProblem, ExecutionProgress, ExecutionSummary, ScoreResult } from '@taskop/contracts';
+import { type DeviceInfo, type ExecutionMediaDto, type ExecutionProblem, type ExecutionProgress, type ExecutionSummary, type ScoreResult, type TaskStatus, problemResolutionOf } from '@taskop/contracts';
 import { getTableColumns, sql } from 'drizzle-orm';
 import { executionMedia, executionProblems, executions, users } from '../db/schema';
 
@@ -54,7 +54,7 @@ export const toMediaDto = (r: { m: typeof executionMedia.$inferSelect; capturedB
   uploadedAt: r.m.uploadedAt?.toISOString() ?? null,
 });
 
-export const toProblemEntry = (p: typeof executionProblems.$inferSelect): ExecutionProblem => ({
+export const toProblemEntry = (p: typeof executionProblems.$inferSelect, taskId: string | null, taskStatus: TaskStatus | null): ExecutionProblem => ({
   id: p.id,
   itemId: p.itemId,
   source: p.source,
@@ -62,6 +62,8 @@ export const toProblemEntry = (p: typeof executionProblems.$inferSelect): Execut
   note: p.note,
   mediaIds: p.mediaIds,
   createdAt: p.createdAt.toISOString(),
+  resolution: problemResolutionOf(taskStatus),
+  taskId,
 });
 
 export const asDevice = (v: unknown): DeviceInfo => v as DeviceInfo;

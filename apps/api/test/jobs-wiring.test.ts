@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MEDIA_CLEANUP_QUEUE } from '../src/executions/media-jobs';
 import { JobsService, QUEUES } from '../src/scheduling/jobs.service';
+import { TASK_MEDIA_CLEANUP_QUEUE, TASK_SWEEP_QUEUE } from '../src/tasks/task-jobs';
 import { createTestApp } from './app';
 import { liveExecution, mediaRow, registerBytes } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
 import { createAssignment, MONDAY_0800, occurrenceRows, schedulingWorld } from './scheduling-fixtures';
 import { type Seaweed, startSeaweedfs } from './seaweedfs';
+import { createTask, newTaskBody, taskMediaBody, taskRow, taskWorld } from './task-fixtures';
 
 /**
  * Every test that starts an app with JOBS_ENABLED lives in this file. All of them share one Postgres and one
@@ -29,6 +31,20 @@ describe('pg-boss wiring', () => {
           interval: 250,
         })
         .toBe('overdue');
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('runs tasks.sweep through a real queue', async () => {
+    const clock = new FakeClock(MONDAY_0800);
+    const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' }, { clock });
+    try {
+      const w = await taskWorld(t);
+      const task = await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }, { dueAt: '2026-11-02T05:00:00.000Z' }));
+      clock.set('2026-11-02T05:30:00Z');
+      await t.app.get(JobsService).runNow(TASK_SWEEP_QUEUE, [w.s.tenantId]);
+      await expect.poll(async () => (await taskRow(task.id)).overdue_at, { timeout: 20_000, interval: 250 }).not.toBeNull();
     } finally {
       await t.close();
     }
@@ -74,6 +90,26 @@ describe('pg-boss wiring', () => {
         await ownerQuery("update execution_media set created_at = now() - interval '15 days' where id = $1", [m.id]);
         await app.app.get(JobsService).runNow(MEDIA_CLEANUP_QUEUE, [w.s.tenantId]);
         await expect.poll(async () => (await mediaRow(m.id)).purged, { timeout: 20_000, interval: 250 }).toBe(true);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('runs task-media.cleanup through a real pg-boss queue', async () => {
+      const app = await createTestApp({ ...sw.env, JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+      try {
+        const w = await taskWorld(app);
+        const task = await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }));
+        const body = taskMediaBody('instruction', { bytes: 10, capturedAt: new Date().toISOString() });
+        expect((await w.manager.api.post(`/api/v1/tasks/${task.id}/media`, body)).status).toBe(200);
+        await ownerQuery("update task_media set created_at = now() - interval '15 days' where id = $1", [body.id]);
+        await app.app.get(JobsService).runNow(TASK_MEDIA_CLEANUP_QUEUE, [w.s.tenantId]);
+        await expect
+          .poll(async () => (await ownerQuery<{ purged: boolean }>('select storage_purged_at is not null as purged from task_media where id = $1', [body.id])).rows[0]!.purged, {
+            timeout: 20_000,
+            interval: 250,
+          })
+          .toBe(true);
       } finally {
         await app.close();
       }

@@ -1,8 +1,9 @@
 import { ApiError } from '@taskop/api-client';
+import { setMeta } from './db';
 import { iso } from './local-model';
 import { createMediaQueue, LOCAL_FILE_KEEP_DAYS, MEDIA_MAX_ATTEMPTS, mediaErrorKey, UPLOAD_TIMEOUT_MS, UploadTimeoutError, withUploadTimeout } from './media-queue';
 import { capturedPhoto, capturedVideo } from './testing/fake-transport';
-import { ME, OCC, T } from './testing/fixtures';
+import { ME, OCC, T, TASK } from './testing/fixtures';
 import { listCommands } from './outbox';
 import { createHarness, type Harness } from './testing/harness';
 
@@ -76,7 +77,7 @@ describe('media queue', () => {
     expect(await h.mediaQueue.counts()).toEqual({ pending: 1, failed: 0 });
     expect(await h.mediaQueue.drain()).toBe('retry');
     expect(await h.mediaQueue.counts()).toEqual({ pending: 0, failed: 1 });
-    expect((await h.mediaQueue.list())[0]).toMatchObject({ kind: 'photo', failedCode: 'UPLOAD_FAILED', checklistName: 'Açılış yoxlaması' });
+    expect((await h.mediaQueue.list())[0]).toMatchObject({ kind: 'photo', failedCode: 'UPLOAD_FAILED', title: 'Açılış yoxlaması' });
     expect(await h.mediaQueue.drain()).toBe('ok');
     h.api.reset('confirmUploaded');
     await h.mediaQueue.retryFailed();
@@ -280,5 +281,50 @@ describe('withUploadTimeout', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('task media', () => {
+  const M1 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e73';
+  async function taskMedium(h: Harness, role: 'response' | 'instruction' = 'response') {
+    const p = capturedPhoto(h.transport);
+    await h.db.run(
+      `INSERT INTO media (id, owner_type, owner_id, role, kind, source, mime, bytes, width, height, captured_at, local_uri, registered_at)
+       VALUES (?, 'task', ?, ?, 'photo', 'camera', 'image/jpeg', ?, 1600, 1200, ?, ?, ?)`,
+      [M1, TASK, role, p.bytes, T.open, p.localUri, T.open],
+    );
+    return p;
+  }
+
+  it('uploads a task medium through the task endpoints, with its capture time on the server’s clock', async () => {
+    const h = await createHarness();
+    await setMeta(h.db, 'clockOffsetMs', '120000');
+    const p = await taskMedium(h);
+    expect(await h.mediaQueue.drain()).toBe('ok');
+    expect(h.api.calls.map((c) => [c.method, c.id])).toEqual([['taskRegisterMedia', TASK], ['taskConfirmUploaded', M1]]);
+    expect(h.api.calls[0]!.body).toEqual({
+      id: M1, role: 'response', kind: 'photo', source: 'camera', mime: 'image/jpeg', bytes: p.bytes, width: 1600, height: 1200, durationMs: null,
+      capturedAt: '2026-11-02T04:08:00.000Z',
+    });
+    expect(h.transport.uploads.map((u) => u.uri)).toEqual([p.localUri]);
+    expect((await rows(h))[0]).toMatchObject({ uploaded_at: T.open });
+  });
+
+  it('registers an instruction photo again with its role', async () => {
+    const h = await createHarness();
+    await taskMedium(h, 'instruction');
+    await h.mediaQueue.drain();
+    expect(h.api.calls[0]!.body).toMatchObject({ id: M1, role: 'instruction' });
+  });
+
+  it('deletes a task medium’s local file 7 days after its upload', async () => {
+    const h = await createHarness();
+    const p = await taskMedium(h);
+    await h.mediaQueue.drain();
+    h.clock.advance(LOCAL_FILE_KEEP_DAYS * 86_400_000 - 1);
+    expect(await h.mediaQueue.cleanup()).toBe(0);
+    h.clock.advance(1);
+    expect(await h.mediaQueue.cleanup()).toBe(1);
+    expect(h.transport.removed).toEqual([p.localUri]);
   });
 });

@@ -27,3 +27,6 @@ export const isClockSkewed = (offsetMs: number): boolean => Math.abs(offsetMs) >
 
 /** The phone runs ahead of the server by more than the server tolerates in a start time (offset = device − server). */
 export const isClockTooFarAhead = (offsetMs: number): boolean => offsetMs > EXECUTION_LIMITS.clockFutureToleranceMs;
+
+/** A device instant moved onto the server's clock with the offset measured at the last /me/sync (device − server). */
+export const serverTime = (deviceIso: string, offsetMs: number): string => new Date(Date.parse(deviceIso) - offsetMs).toISOString();

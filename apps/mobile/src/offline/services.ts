@@ -2,12 +2,14 @@ import type { DeviceInfo } from '@taskop/contracts';
 import { type ChangeFeed, createChangeFeed } from './change-feed';
 import type { Clock } from './clock';
 import { type Db, migrate } from './db';
-import { createExecutionStore, type ExecutionStore } from './execution-store';
+import { createExecutionStore, type ExecutionStore, type WriteKind } from './execution-store';
 import { createMediaQueue, type MediaQueue, type MediaTransport } from './media-queue';
 import type { SyncApi } from './sync-api';
 import { type ClaimRejection, createSyncEngine, type SyncEngine, type SyncTrigger } from './sync-engine';
+import type { TaskRemoved } from './task-records';
+import { createTaskStore, type TaskStore } from './task-store';
 import { type AppStatePort, type NetworkPort, startSyncTriggers, type SyncTriggers } from './sync-triggers';
-import { clearLocalData, ensureUser } from './user-scope';
+import { clearLocalData, ensureUser, type FileRemover } from './user-scope';
 
 /** How long a logout or a user switch waits for a running sync to end. */
 export const SHUTDOWN_WAIT_MS = 10_000;
@@ -23,6 +25,7 @@ export interface ServiceDeps {
   /** Absent in tests: runs then happen only when a test asks. */
   triggers?: { network: NetworkPort; appState: AppStatePort };
   onClaimRejected: (r: ClaimRejection) => void;
+  onTaskRemoved: (r: TaskRemoved) => void;
 }
 
 export interface OfflineServices {
@@ -32,6 +35,11 @@ export interface OfflineServices {
   readonly clock: Clock;
   readonly feed: ChangeFeed;
   readonly store: ExecutionStore;
+  readonly tasks: TaskStore;
+  /** Client UUIDv7s (a task created online, spec §6.2). */
+  readonly newId: () => string;
+  /** Deletes local files (photos taken for a task that was never created). */
+  readonly files: FileRemover;
   readonly engine: SyncEngine;
   readonly mediaQueue: MediaQueue;
   syncNow(trigger?: SyncTrigger): Promise<void>;
@@ -48,16 +56,10 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
   const feed = createChangeFeed();
   let triggers: SyncTriggers | null = null;
   const mediaQueue = createMediaQueue({ db, userId, api, clock, transport, feed, isOnline: deps.isOnline });
-  const store = createExecutionStore({
-    db,
-    clock,
-    newId: deps.newId,
-    device: deps.device,
-    files: transport,
-    feed,
-    // An online start claims at once (spec §1); other changes wait 2 s for more edits.
-    onWrite: (kind) => (kind === 'claim' ? void engine.run('claim') : triggers?.requestSoon()),
-  });
+  // An online start or accept syncs at once (spec §1, decision 15); other changes wait 2 s for more edits.
+  const onWrite = (kind: WriteKind) => (kind === 'claim' ? void engine.run('claim') : triggers?.requestSoon());
+  const store = createExecutionStore({ db, clock, newId: deps.newId, device: deps.device, files: transport, feed, onWrite });
+  const tasks = createTaskStore({ db, clock, newId: deps.newId, files: transport, feed, onWrite });
   const engine = createSyncEngine({
     db,
     userId,
@@ -68,6 +70,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     files: transport,
     isOnline: deps.isOnline,
     onClaimRejected: deps.onClaimRejected,
+    onTaskRemoved: deps.onTaskRemoved,
     beforeRun: () => store.lockExpired(),
   });
   await store.lockExpired();
@@ -100,6 +103,9 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     clock,
     feed,
     store,
+    tasks,
+    newId: deps.newId,
+    files: transport,
     engine,
     mediaQueue,
     syncNow: (trigger = 'manual') => engine.run(trigger),

@@ -20,4 +20,6 @@ export const UNIQUE_CONSTRAINT_ERRORS: Record<string, { code: ErrorCode; field: 
   tenants_org_code_uq: { code: 'ORG_CODE_TAKEN', field: 'orgCode' },
   users_email_uq: { code: 'EMAIL_TAKEN', field: 'email' },
   users_tenant_username_uq: { code: 'USERNAME_TAKEN', field: 'username' },
+  // Two managers creating a task from the same problem at once (spec §1: one task per problem).
+  tasks_problem_uq: { code: 'PROBLEM_ALREADY_HAS_TASK', field: 'problemId' },
 };

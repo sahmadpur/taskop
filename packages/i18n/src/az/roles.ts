@@ -33,6 +33,7 @@ export default {
     templates: 'Şablonlar',
     assignments: 'Təyinatlar',
     shifts: 'Növbələr',
+    tasks: 'Tapşırıqlar',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -54,5 +55,7 @@ export default {
     assignments_extended_window: '24 saatdan uzun icra müddəti təyin etmək',
     shifts_view: 'Növbələrə baxmaq',
     shifts_manage: 'Növbələri və növbə cədvəlini idarə etmək',
+    tasks_view: 'Tapşırıqlara baxmaq',
+    tasks_manage: 'Tapşırıqları yaratmaq və idarə etmək',
   },
 } as const;

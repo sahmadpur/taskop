@@ -1,11 +1,12 @@
 import type { MediaUploadTicket } from '@taskop/contracts';
 import type { ChangeFeed } from './change-feed';
-import { clampOffset, type Clock, readOffset } from './clock';
+import { clampOffset, type Clock, readOffset, serverTime } from './clock';
 import type { Db } from './db';
 import { mediaRegisterBody } from './execution-store';
 import { iso, type LocalMedia, type MediaRow, toMedia } from './local-model';
 import { dropMedium } from './refusals';
 import { classifyError, type SyncApi } from './sync-api';
+import { taskMediaBody } from './task-records';
 import { type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 export interface MediaTransport extends FileRemover {
@@ -42,7 +43,8 @@ export function withUploadTimeout<T>(upload: Promise<T>, ms: number = UPLOAD_TIM
 export interface MediaQueueEntry {
   id: string;
   kind: LocalMedia['kind'];
-  checklistName: string | null;
+  /** The checklist or task the file belongs to. */
+  title: string | null;
   failedCode: string | null;
   attempts: number;
 }
@@ -53,7 +55,7 @@ export interface MediaQueue {
    * early once `shouldStop` says so (checked between media: the engine stopped for a logout or a user switch).
    */
   drain(shouldStop?: () => boolean): Promise<DrainOutcome>;
-  /** Deletes local files uploaded and finished syncing more than 7 days ago. Returns how many. */
+  /** Deletes local files uploaded more than 7 days ago: an execution's once it finished syncing, a task's counted from the upload. Returns how many. */
   cleanup(): Promise<number>;
   counts(): Promise<{ pending: number; failed: number }>;
   list(): Promise<MediaQueueEntry[]>;
@@ -137,12 +139,12 @@ export function createMediaQueue(deps: {
     if (!transport.exists(m.localUri)) return refuse(m.id, mediaErrorKey('FILE_MISSING'));
     let ticket: MediaUploadTicket;
     try {
-      // Registering a known ID again only returns a fresh presigned URL (Part 1 Task 10, decision 1).
-      ticket = await api.executions.registerMedia(m.executionId, {
-        ...mediaRegisterBody(m),
-        deviceTime: iso(clock.now()),
-        clientOffsetMs: clampOffset(await readOffset(db)),
-      });
+      const offset = clampOffset(await readOffset(db));
+      // Registering a known ID again only returns a fresh presigned URL (SP4 decision 7; tasks: Part 1 decision 9).
+      ticket =
+        m.ownerType === 'task'
+          ? await api.tasks.registerMedia(m.ownerId, { ...taskMediaBody(m, m.role ?? 'response'), capturedAt: serverTime(m.capturedAt, offset) })
+          : await api.executions.registerMedia(m.ownerId, { ...mediaRegisterBody(m), deviceTime: iso(clock.now()), clientOffsetMs: offset });
     } catch (e) {
       const f = classifyError(e);
       return f.kind === 'permanent' ? refuse(m.id, f.messageKey) : f.kind;
@@ -159,7 +161,7 @@ export function createMediaQueue(deps: {
     }
     if (status < 200 || status >= 300) return countAttempt(m.id);
     try {
-      await api.media.confirmUploaded(m.id);
+      await (m.ownerType === 'task' ? api.taskMedia.confirmUploaded(m.id) : api.media.confirmUploaded(m.id));
     } catch (e) {
       const f = classifyError(e);
       if (f.kind === 'permanent' && f.code === 'MEDIA_NOT_FOUND_IN_STORAGE') return countAttempt(m.id);
@@ -181,11 +183,14 @@ export function createMediaQueue(deps: {
     async cleanup() {
       const now = clock.now();
       const removed = await owned(async (tx) => {
+        const cutoff = iso(now - LOCAL_FILE_KEEP_DAYS * DAY_MS);
         const due = await tx.all<{ id: string; local_uri: string }>(
-          `SELECT m.id, m.local_uri FROM media m JOIN executions e ON e.id = m.execution_id
+          `SELECT m.id, m.local_uri FROM media m
+           LEFT JOIN executions e ON m.owner_type = 'execution' AND e.id = m.owner_id
            WHERE m.uploaded_at IS NOT NULL AND m.file_deleted_at IS NULL
-             AND e.finished_synced_at IS NOT NULL AND e.finished_synced_at <= ?`,
-          [iso(now - LOCAL_FILE_KEEP_DAYS * DAY_MS)],
+             AND ((m.owner_type = 'execution' AND e.finished_synced_at IS NOT NULL AND e.finished_synced_at <= ?)
+               OR (m.owner_type = 'task' AND m.uploaded_at <= ?))`,
+          [cutoff, cutoff],
         );
         // The file goes first: a row left unmarked (the transaction failed) is only removed again next time.
         for (const r of due) {
@@ -204,14 +209,15 @@ export function createMediaQueue(deps: {
       return { pending: r?.pending ?? 0, failed: r?.failed ?? 0 };
     },
     async list() {
-      const found = await db.all<{ id: string; kind: LocalMedia['kind']; checklist_name: string | null; failed_code: string | null; attempts: number }>(
-        `SELECT m.id, m.kind, oc.checklist_name, m.failed_code, m.attempts FROM media m
-         JOIN executions e ON e.id = m.execution_id
+      const found = await db.all<{ id: string; kind: LocalMedia['kind']; title: string | null; failed_code: string | null; attempts: number }>(
+        `SELECT m.id, m.kind, coalesce(oc.checklist_name, json_extract(t.data, '$.title')) AS title, m.failed_code, m.attempts FROM media m
+         LEFT JOIN executions e ON m.owner_type = 'execution' AND e.id = m.owner_id
          LEFT JOIN occurrences oc ON oc.id = e.occurrence_id
+         LEFT JOIN tasks t ON m.owner_type = 'task' AND t.id = m.owner_id
          WHERE m.registered_at IS NOT NULL AND m.uploaded_at IS NULL AND m.file_deleted_at IS NULL
          ORDER BY CASE m.kind WHEN 'photo' THEN 0 ELSE 1 END, m.captured_at, m.id`,
       );
-      return found.map((r) => ({ id: r.id, kind: r.kind, checklistName: r.checklist_name, failedCode: r.failed_code, attempts: r.attempts }));
+      return found.map((r) => ({ id: r.id, kind: r.kind, title: r.title, failedCode: r.failed_code, attempts: r.attempts }));
     },
     async retryFailed() {
       const reset = await owned((tx) => tx.run('UPDATE media SET failed_code = NULL, attempts = 0 WHERE failed_code IS NOT NULL AND uploaded_at IS NULL'));

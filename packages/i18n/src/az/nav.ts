@@ -13,6 +13,7 @@ export default {
   shifts: 'Növbələr',
   roster: 'Növbə cədvəli',
   problems: 'Problemlər',
+  tasks: 'Tapşırıqlar',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

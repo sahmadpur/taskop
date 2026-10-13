@@ -92,6 +92,18 @@ import {
   type SaveAnswersCommand,
   saveAnswersResultSchema,
   syncResponseSchema,
+  type CancelTaskInput,
+  type CreateTaskInput,
+  type ReviewTaskInput,
+  type SubmissionInput,
+  type TaskActionCommand,
+  taskAssigneeOptionsSchema,
+  type TaskAssigneeQuery,
+  taskDetailSchema,
+  type TaskListQuery,
+  type TaskMediaRegisterInput,
+  taskSummarySchema,
+  type UpdateTaskInput,
 } from '@taskop/contracts';
 import { z } from 'zod';
 import type { ApiClient, QueryParams } from './client.js';
@@ -163,6 +175,7 @@ export function createTaskopApi(c: ApiClient) {
     templates: createTemplatesApi(c),
     ...createSchedulingApi(c),
     ...createExecutionsApi(c),
+    ...createTasksApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -265,8 +278,11 @@ export type SchedulingApi = ReturnType<typeof createSchedulingApi>;
 export function createExecutionsApi(c: ApiClient) {
   return {
     sync: {
-      pull: (knownVersionIds: string[] = []) =>
-        c.request('GET', '/me/sync', { query: { knownVersionIds: knownVersionIds.join(',') }, schema: syncResponseSchema }),
+      pull: (knownVersionIds: string[] = [], knownTaskIds: string[] = []) =>
+        c.request('GET', '/me/sync', {
+          query: { knownVersionIds: knownVersionIds.join(','), knownTaskIds: knownTaskIds.join(',') },
+          schema: syncResponseSchema,
+        }),
     },
     executions: {
       claim: (body: ClaimCommand) => c.request('POST', '/executions', { body, schema: claimResultSchema }),
@@ -286,3 +302,28 @@ export function createExecutionsApi(c: ApiClient) {
   };
 }
 export type ExecutionsApi = ReturnType<typeof createExecutionsApi>;
+
+/** Sub-project 5: tasks on the web and the phone. */
+export function createTasksApi(c: ApiClient) {
+  return {
+    tasks: {
+      list: (query: TaskListQuery = {}) => c.request('GET', '/tasks', { query: q(query), schema: pageOf(taskSummarySchema) }),
+      get: (id: string) => c.request('GET', `/tasks/${id}`, { schema: taskDetailSchema }),
+      create: (body: CreateTaskInput) => c.request('POST', '/tasks', { body, schema: taskDetailSchema }),
+      update: (id: string, body: UpdateTaskInput) => c.request('PATCH', `/tasks/${id}`, { body, schema: taskDetailSchema }),
+      cancel: (id: string, body: CancelTaskInput) => c.request('POST', `/tasks/${id}/cancel`, { body, schema: taskDetailSchema }),
+      review: (id: string, body: ReviewTaskInput) => c.request('POST', `/tasks/${id}/review`, { body, schema: taskDetailSchema }),
+      accept: (id: string, body: TaskActionCommand) => c.request('POST', `/tasks/${id}/accept`, { body, schema: taskDetailSchema }),
+      start: (id: string, body: TaskActionCommand) => c.request('POST', `/tasks/${id}/start`, { body, schema: taskDetailSchema }),
+      submit: (id: string, body: SubmissionInput) => c.request('POST', `/tasks/${id}/submissions`, { body, schema: taskDetailSchema }),
+      registerMedia: (id: string, body: TaskMediaRegisterInput) => c.request('POST', `/tasks/${id}/media`, { body, schema: mediaUploadTicketSchema }),
+      assignees: (query: TaskAssigneeQuery = {}) => c.request('GET', '/tasks/assignees', { query: q(query), schema: taskAssigneeOptionsSchema }),
+      problemMediaUrl: (taskId: string, mediaId: string) => c.request('GET', `/tasks/${taskId}/problem-media/${mediaId}/url`, { schema: mediaUrlSchema }),
+    },
+    taskMedia: {
+      confirmUploaded: (id: string) => c.request('POST', `/task-media/${id}/uploaded`, { body: {}, schema: mediaConfirmResultSchema }),
+      url: (id: string) => c.request('GET', `/task-media/${id}/url`, { schema: mediaUrlSchema }),
+    },
+  };
+}
+export type TasksApi = ReturnType<typeof createTasksApi>;

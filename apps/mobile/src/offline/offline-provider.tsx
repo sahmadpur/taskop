@@ -22,6 +22,8 @@ export function OfflineProvider({ userId, timeZone, children }: { userId: string
     // Queued behind the previous session's close: the old engine is stopped and its connection closed first.
     const session = openNativeServices(userId, timeZone, {
       onClaimRejected: (r) => Alert.alert(claimRejectionText(i18n.getFixedT(null, 'translation'), r.reason, r.byName)),
+      // Spec §7.1: the task is gone from the phone; its title says which one.
+      onTaskRemoved: (r) => Alert.alert(i18n.t('tasks.alreadyTaken'), r.title ?? undefined),
     });
     session.ready.then(
       (s) => {

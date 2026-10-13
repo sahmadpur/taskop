@@ -318,7 +318,7 @@ describe('execution endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url} ${init.body ?? ''}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [] });
       if (url.endsWith('/answers')) return json(200, { executionId: id, rev: 2, stale: false, state: 'active', progress });
       if (url.endsWith('/complete')) return json(200, { executionId: id, state: 'completed', completedAt: '2026-11-02T05:00:00.000Z', late: false, progress, score: null });
       if (url.endsWith(`/executions/${id}/media`)) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: { 'Content-Type': 'image/jpeg' }, expiresAt: '2026-11-02T04:15:00.000Z' });
@@ -364,5 +364,74 @@ describe('execution endpoints', () => {
       code: 'REQUIREMENTS_UNMET',
       missing: [{ itemId: id, kind: 'photo' }],
     });
+  });
+});
+
+describe('task endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'mobile', store);
+  }
+  const now = '2026-11-02T04:00:00.000Z';
+  const user = { id, fullName: 'Nigar' };
+  const detail = {
+    id, title: 'Qapı', priority: 'normal', status: 'new', site: null, assignee: user, team: null, assigneeInactive: false, createdBy: user,
+    requiresReview: false, source: 'adhoc', problemId: null, dueAt: null, overdueAt: null, rev: 1, createdAt: now, updatedAt: now,
+    instructions: '', evidence: { photo: 'optional', video: 'optional', liveOnly: false }, acceptedAt: null, startedAt: null,
+    submittedAt: null, completedAt: null, cancelledAt: null, cancelReason: null, media: [], submissions: [], problem: null,
+    history: [], canManage: true, canReview: true,
+  };
+
+  it('builds every path, method and body', async () => {
+    const calls: string[] = [];
+    const { api } = await authed((url, init) => {
+      calls.push(`${init.method} ${url}`);
+      if (url.includes('/me/sync')) return json(200, { serverTime: now, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [id] });
+      if (url.includes('/tasks/assignees')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null, kind: 'worker' }], teams: [], sites: [] });
+      if (url.endsWith('/uploaded')) return json(200, { mediaId: id, status: 'uploaded', uploadedAt: now });
+      if (url.endsWith('/url')) return json(200, { url: 'http://files.test/x', expiresAt: now });
+      if (url.endsWith('/media')) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: {}, expiresAt: now });
+      if (init.method === 'GET' && url.includes('/tasks?')) return json(200, { items: [], nextCursor: null });
+      return json(init.method === 'POST' && url.endsWith('/tasks') ? 201 : 200, detail);
+    });
+    const t = createTaskopApi(api);
+    expect((await t.sync.pull([id], [id, id])).removedTaskIds).toEqual([id]);
+    await t.tasks.list({ status: 'new,in_progress', awaitingMyReview: 'true' });
+    await t.tasks.get(id);
+    await t.tasks.create({ id, title: 'Qapı', assignee: { userId: id } });
+    await t.tasks.update(id, { assignee: { teamId: id } });
+    await t.tasks.cancel(id, { reason: 'Lazım deyil' });
+    await t.tasks.review(id, { decision: 'reject', comment: 'Foto yoxdur' });
+    await t.tasks.accept(id, { at: now });
+    await t.tasks.start(id, { at: now });
+    await t.tasks.submit(id, { id, text: 'Hazır', mediaIds: [id], submittedAt: now });
+    await t.tasks.registerMedia(id, { id, role: 'response', kind: 'photo', source: 'camera', mime: 'image/jpeg', bytes: 10, capturedAt: now });
+    await t.tasks.assignees({ q: 'Nig' });
+    await t.tasks.problemMediaUrl(id, id);
+    await t.taskMedia.confirmUploaded(id);
+    await t.taskMedia.url(id);
+    expect(calls).toEqual([
+      `GET /api/v1/me/sync?knownVersionIds=${id}&knownTaskIds=${id}%2C${id}`,
+      'GET /api/v1/tasks?status=new%2Cin_progress&awaitingMyReview=true',
+      `GET /api/v1/tasks/${id}`,
+      'POST /api/v1/tasks',
+      `PATCH /api/v1/tasks/${id}`,
+      `POST /api/v1/tasks/${id}/cancel`,
+      `POST /api/v1/tasks/${id}/review`,
+      `POST /api/v1/tasks/${id}/accept`,
+      `POST /api/v1/tasks/${id}/start`,
+      `POST /api/v1/tasks/${id}/submissions`,
+      `POST /api/v1/tasks/${id}/media`,
+      'GET /api/v1/tasks/assignees?q=Nig',
+      `GET /api/v1/tasks/${id}/problem-media/${id}/url`,
+      `POST /api/v1/task-media/${id}/uploaded`,
+      `GET /api/v1/task-media/${id}/url`,
+    ]);
+  });
+
+  it('exposes TASK_ALREADY_TAKEN as an ApiError', async () => {
+    const { api } = await authed(() => err(409, 'TASK_ALREADY_TAKEN'));
+    await expect(createTaskopApi(api).tasks.accept(id, { at: now })).rejects.toMatchObject({ status: 409, code: 'TASK_ALREADY_TAKEN' });
   });
 });

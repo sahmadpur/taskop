@@ -4,7 +4,7 @@ import { asc, eq, getTableColumns } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
-import { checklistVersions, executionMedia, executionProblems, executions, occurrences, users } from '../db/schema';
+import { checklistVersions, executionMedia, executionProblems, executions, occurrences, tasks, users } from '../db/schema';
 import { toOccurrenceDto } from '../scheduling/mappers';
 import { OccurrenceQueries } from '../scheduling/occurrence-queries';
 import { ExecutionAccess } from './execution-access';
@@ -34,7 +34,12 @@ export class ExecutionQueries {
       .innerJoin(users, eq(users.id, executionMedia.capturedByUserId))
       .where(eq(executionMedia.executionId, id))
       .orderBy(asc(executionMedia.capturedAt), asc(executionMedia.id));
-    const problems = await tx.select().from(executionProblems).where(eq(executionProblems.executionId, id)).orderBy(asc(executionProblems.createdAt), asc(executionProblems.id));
+    const problems = await tx
+      .select({ p: getTableColumns(executionProblems), taskId: tasks.id, taskStatus: tasks.status })
+      .from(executionProblems)
+      .leftJoin(tasks, eq(tasks.problemId, executionProblems.id))
+      .where(eq(executionProblems.executionId, id))
+      .orderBy(asc(executionProblems.createdAt), asc(executionProblems.id));
     return {
       ...toExecutionSummary(row),
       occurrence: toOccurrenceDto(occurrence!),
@@ -48,7 +53,7 @@ export class ExecutionQueries {
       device: asDevice(row.x.device),
       lastSyncedAt: row.x.lastSyncedAt.toISOString(),
       media: media.map(toMediaDto),
-      problems: problems.map(toProblemEntry),
+      problems: problems.map((r) => toProblemEntry(r.p, r.taskId, r.taskStatus)),
     };
   }
 }

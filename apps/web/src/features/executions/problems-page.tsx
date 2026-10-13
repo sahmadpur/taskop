@@ -1,4 +1,12 @@
-import { PROBLEM_SEVERITIES, PROBLEM_SOURCES, type ProblemSeverity, type ProblemSource } from '@taskop/contracts';
+import {
+  PROBLEM_RESOLUTIONS,
+  PROBLEM_SEVERITIES,
+  PROBLEM_SOURCES,
+  type ProblemDto,
+  type ProblemResolution,
+  type ProblemSeverity,
+  type ProblemSource,
+} from '@taskop/contracts';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,15 +19,22 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatLocalDate, useTenantToday } from '@/features/scheduling/labels';
 import { useSites } from '@/features/sites/queries';
+import { resolutionVariant } from '@/features/tasks/labels';
+import { TaskDialog } from '@/features/tasks/task-dialog';
 import { errorText } from '@/lib/errors';
+import { useCan } from '@/lib/session';
 import { defaultProblemRange, problemRangeError, severityVariant } from './labels';
 import { type ProblemFilters, useChecklistOptions, useProblems } from './queries';
 
-/** Recorded problems, read-only (spec §8). Each row opens its occurrence in the schedule drawer on the "İcra" tab. */
+/**
+ * Recorded problems (spec §8 of SP4 and SP5). Each row opens its occurrence in the schedule drawer on the "İcra" tab;
+ * its resolution links to its task, or offers to create one once the run is closed.
+ */
 export function ProblemsPage({ today: fixedToday }: { today?: string }) {
   const { t } = useTranslation();
   const tenantToday = useTenantToday();
   const today = fixedToday ?? tenantToday;
+  const canManageTasks = useCan('tasks.manage');
   const sites = useSites();
   const checklists = useChecklistOptions();
   const [range, setRange] = useState(() => defaultProblemRange(today));
@@ -27,6 +42,8 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
   const [checklistId, setChecklistId] = useState('');
   const [severity, setSeverity] = useState<ProblemSeverity | ''>('');
   const [source, setSource] = useState<ProblemSource | ''>('');
+  const [resolution, setResolution] = useState<ProblemResolution | ''>('');
+  const [creatingFrom, setCreatingFrom] = useState<ProblemDto | null>(null);
   const rangeError = problemRangeError(range.from, range.to);
   const filters: ProblemFilters = {
     from: range.from,
@@ -35,6 +52,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
     checklistId: checklistId || undefined,
     severity: severity || undefined,
     source: source || undefined,
+    resolution: resolution || undefined,
   };
   const problems = useProblems(filters, rangeError === null);
   const items = problems.data?.pages.flatMap((p) => p.items) ?? [];
@@ -94,6 +112,19 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
             </option>
           ))}
         </NativeSelect>
+        <NativeSelect
+          aria-label={t('tasks.problems.resolution')}
+          value={resolution}
+          onChange={(e) => setResolution(e.target.value as ProblemResolution | '')}
+          className="w-44"
+        >
+          <option value="">{t('tasks.problems.allResolutions')}</option>
+          {PROBLEM_RESOLUTIONS.map((r) => (
+            <option key={r} value={r}>
+              {t(`tasks.resolutions.${r}`)}
+            </option>
+          ))}
+        </NativeSelect>
       </div>
       {rangeError && <p className="text-destructive text-sm">{t(rangeError)}</p>}
       {!rangeError && problems.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
@@ -106,6 +137,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
               {['date', 'site', 'checklist', 'item', 'severity', 'source', 'note', 'executor', 'media'].map((k) => (
                 <TableHead key={k}>{c(k)}</TableHead>
               ))}
+              <TableHead>{t('tasks.problems.resolution')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -130,6 +162,9 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
                 <TableCell className="max-w-xs whitespace-pre-line">{p.note ?? '—'}</TableCell>
                 <TableCell>{p.executorName}</TableCell>
                 <TableCell>{p.mediaIds.length ? t('executions.problemsPage.mediaCount', { count: p.mediaIds.length }) : '—'}</TableCell>
+                <TableCell>
+                  <ResolutionCell problem={p} canCreate={canManageTasks} onCreate={() => setCreatingFrom(p)} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -140,6 +175,31 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
           {t('executions.problemsPage.more')}
         </Button>
       )}
+      {/* Saving invalidates ['problems'] (storeTask), so the row then shows its open task. */}
+      {creatingFrom && <TaskDialog problem={creatingFrom} onClose={() => setCreatingFrom(null)} />}
     </div>
+  );
+}
+
+function ResolutionCell({ problem: p, canCreate, onCreate }: { problem: ProblemDto; canCreate: boolean; onCreate: () => void }) {
+  const { t } = useTranslation();
+  if (p.taskId) {
+    return (
+      <Badge asChild variant={resolutionVariant(p.resolution)}>
+        <Link to="/tasks" search={{ task: p.taskId }}>
+          {t(`tasks.resolutions.${p.resolution}`)}
+        </Link>
+      </Badge>
+    );
+  }
+  if (!canCreate) return <Badge variant="outline">{t('tasks.resolutions.none')}</Badge>;
+  // PROBLEM_NOT_CLOSED: only a completed or partial run's problems are frozen and can get a task (spec §1; ruling W5).
+  const runOpen = !(p.executionState === 'completed' || p.executionState === 'partial');
+  return (
+    <span title={runOpen ? t('tasks.problems.runOpen') : undefined} className="inline-block">
+      <Button size="sm" variant="outline" disabled={runOpen} onClick={onCreate}>
+        {t('tasks.problems.create')}
+      </Button>
+    </span>
   );
 }

@@ -1,6 +1,6 @@
 import type { PermissionKey } from '@taskop/contracts';
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
@@ -9,10 +9,11 @@ import { session } from '@/lib/session';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
-  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/shifts' | '/roster';
+  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/shifts' | '/roster';
   labelKey: string;
   icon: LucideIcon;
-  permission?: PermissionKey;
+  /** One key, or a list of which any one suffices. */
+  permission?: PermissionKey | readonly PermissionKey[];
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -22,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/assignments', labelKey: 'nav.assignments', icon: CalendarCheck, permission: 'assignments.view' },
   { to: '/schedule', labelKey: 'nav.schedule', icon: CalendarClock, permission: 'assignments.view' },
   { to: '/problems', labelKey: 'nav.problems', icon: TriangleAlert, permission: 'assignments.view' },
+  { to: '/tasks', labelKey: 'nav.tasks', icon: ClipboardCheck, permission: ['tasks.view', 'tasks.manage'] },
   { to: '/shifts', labelKey: 'nav.shifts', icon: Clock, permission: 'shifts.view' },
   { to: '/roster', labelKey: 'nav.roster', icon: CalendarDays, permission: 'shifts.view' },
   { to: '/users', labelKey: 'nav.users', icon: Users, permission: 'users.view' },
@@ -51,7 +53,8 @@ export function AppShell() {
 
   if (s.status !== 'authenticated') return null;
   const { me } = s;
-  const items = NAV_ITEMS.filter((i) => !i.permission || me.permissions.includes(i.permission));
+  const allowed = (p: NavItem['permission']) => !p || (typeof p === 'string' ? [p] : p).some((k) => me.permissions.includes(k));
+  const items = NAV_ITEMS.filter((i) => allowed(i.permission));
 
   return (
     <div className="flex min-h-screen">

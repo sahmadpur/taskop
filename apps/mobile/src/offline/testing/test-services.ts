@@ -2,6 +2,7 @@ import type { SyncResponse } from '@taskop/contracts';
 import type { Db } from '../db';
 import { createOfflineServices, type OfflineServices } from '../services';
 import type { ClaimRejection } from '../sync-engine';
+import type { TaskRemoved } from '../task-records';
 import { applyPull } from '../sync-pull';
 import { createFakeApi, type FakeApi } from './fake-api';
 import { createFakeTransport, type FakeTransport } from './fake-transport';
@@ -17,6 +18,7 @@ export interface TestServices {
   /** The services' isOnline() reads this. Offline by default, so actions never sync behind a test's back. */
   net: { online: boolean };
   rejections: ClaimRejection[];
+  removedTasks: TaskRemoved[];
   c: Checklist;
   /** Applies a /me/sync response (default: OCC open and its version) and refreshes the sync status. */
   seed(res?: SyncResponse): Promise<void>;
@@ -31,8 +33,9 @@ export async function createTestServices(
   const transport = o.transport ?? createFakeTransport();
   const net = { online: o.online ?? false };
   const rejections: ClaimRejection[] = [];
+  const removedTasks: TaskRemoved[] = [];
   const services = await createOfflineServices(
-    { db, api: api.api, clock, newId: testIds(clock), device: DEVICE, transport, isOnline: () => net.online, onClaimRejected: (r) => rejections.push(r) },
+    { db, api: api.api, clock, newId: testIds(clock), device: DEVICE, transport, isOnline: () => net.online, onClaimRejected: (r) => rejections.push(r), onTaskRemoved: (r) => removedTasks.push(r) },
     o.userId ?? ME,
     'Asia/Baku',
   );
@@ -42,5 +45,5 @@ export async function createTestServices(
     services.feed.emit();
     await services.engine.refresh();
   };
-  return { services, api, clock, transport, db, net, rejections, c, seed };
+  return { services, api, clock, transport, db, net, rejections, removedTasks, c, seed };
 }

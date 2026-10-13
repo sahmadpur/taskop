@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SchedulingModule } from '../scheduling/scheduling.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { ExecutionAccess } from './execution-access';
 import { ExecutionLookups } from './execution-lookups';
 import { ExecutionQueries } from './execution-queries';
@@ -16,7 +17,7 @@ import { SyncService } from './sync.service';
 
 /** Sub-project 4: execution, evidence and problems. Depends on scheduling, never the other way round. */
 @Module({
-  imports: [SchedulingModule],
+  imports: [SchedulingModule, TasksModule],
   controllers: [ExecutionsController, MediaController, ProblemsController, SyncController],
   providers: [ExecutionsService, ExecutionQueries, ExecutionAccess, ExecutionLookups, MediaJobs, MediaService, ProblemWriter, ProblemsService, SyncService],
 })

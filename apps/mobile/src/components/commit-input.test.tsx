@@ -1,3 +1,4 @@
+import { createRef } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { COMMIT_DELAY_MS, CommitInput } from './commit-input';
 
@@ -35,6 +36,17 @@ describe('CommitInput', () => {
     await fireEvent.changeText(screen.getByLabelText('Qeyd'), 'son söz');
     await r.unmount();
     expect(onCommit).toHaveBeenCalledWith('son söz');
+    await act(async () => jest.advanceTimersByTime(COMMIT_DELAY_MS));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits unsaved text at once through flushRef, and only once', async () => {
+    const onCommit = jest.fn();
+    const flushRef = createRef<(() => void) | null>();
+    await render(<CommitInput accessibilityLabel="Qeyd" value="" onCommit={onCommit} flushRef={flushRef} />);
+    await fireEvent.changeText(screen.getByLabelText('Qeyd'), 'tələsik');
+    act(() => flushRef.current?.());
+    expect(onCommit).toHaveBeenCalledWith('tələsik');
     await act(async () => jest.advanceTimersByTime(COMMIT_DELAY_MS));
     expect(onCommit).toHaveBeenCalledTimes(1);
   });

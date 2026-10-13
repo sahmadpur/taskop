@@ -64,6 +64,20 @@
       "when": 1791550493590,
       "tag": "0008_executions_security",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791792519537,
+      "tag": "0009_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791792519903,
+      "tag": "0010_tasks_security",
+      "breakpoints": true
     }
   ]
 }

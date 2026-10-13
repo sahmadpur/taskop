@@ -27,3 +27,7 @@ export const auditListQuerySchema = cursorQuerySchema.extend({
   to: isoDateTimeSchema.optional(),
 });
 export type AuditListQuery = z.input<typeof auditListQuerySchema>;
+
+/** Audited task actions (spec §6.6), entity type `task`. Accept, start and submit go to task_status_history only. */
+export const TASK_AUDIT_ACTIONS = ['task.created', 'task.updated', 'task.reassigned', 'task.cancelled', 'task.approved', 'task.rejected'] as const;
+export type TaskAuditAction = (typeof TASK_AUDIT_ACTIONS)[number];

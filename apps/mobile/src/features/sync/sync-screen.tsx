@@ -34,7 +34,7 @@ export function SyncScreen() {
   const rows: Row[] = [
     ...(queue?.commands ?? []).map((c) => ({
       key: `c${c.seq}`,
-      title: `${t(`mobile.sync.kinds.${c.kind}`)} · ${name(c.checklistName)}`,
+      title: `${t(`mobile.sync.kinds.${c.kind}`)} · ${name(c.title)}`,
       error: c.status === 'failed' ? t(c.errorKey ?? 'errors.INTERNAL', { requestId: '—' }) : null,
       discard:
         c.status === 'failed'
@@ -43,7 +43,7 @@ export function SyncScreen() {
     })),
     ...(queue?.media ?? []).map((m) => ({
       key: `m${m.id}`,
-      title: `${t('mobile.sync.kinds.upload')} · ${name(m.checklistName)}`,
+      title: `${t('mobile.sync.kinds.upload')} · ${name(m.title)}`,
       error: m.failedCode ? t(mediaErrorKey(m.failedCode)) : null,
       discard: m.failedCode
         ? {

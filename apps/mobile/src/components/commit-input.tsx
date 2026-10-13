@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
 
@@ -8,10 +8,12 @@ interface Props extends Omit<TextInputProps, 'value' | 'onChangeText'> {
   value: string;
   /** Called 500 ms after typing stops, on blur, and on unmount with unsaved text. */
   onCommit: (text: string) => void;
+  /** Filled with a function that commits unsaved text at once, for a button that must act on the latest text. */
+  flushRef?: RefObject<(() => void) | null>;
 }
 
 /** A text field that autosaves (spec §7.3) without writing SQLite and the outbox on every keystroke. */
-export function CommitInput({ value, onCommit, onBlur, style, ...rest }: Props) {
+export function CommitInput({ value, onCommit, flushRef, onBlur, style, ...rest }: Props) {
   const [text, setText] = useState(value);
   const pending = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,6 +32,13 @@ export function CommitInput({ value, onCommit, onBlur, style, ...rest }: Props) 
     if (next !== null) commit.current(next);
   }, []);
   useEffect(() => flush, [flush]);
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flush, flushRef]);
   return (
     <TextInput
       {...rest}

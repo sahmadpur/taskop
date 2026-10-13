@@ -11,6 +11,7 @@ import {
   type SyncChecklistVersion,
   type SyncOccurrence,
   type SyncResponse,
+  type SyncTask,
   type YesNoItem,
 } from '@taskop/contracts';
 import type { Clock } from '../clock';
@@ -137,6 +138,8 @@ export const syncResponse = (over: Partial<SyncResponse> = {}): SyncResponse => 
   occurrences: [occurrence()],
   checklistVersions: [],
   executions: [],
+  tasks: [],
+  removedTaskIds: [],
   ...over,
 });
 
@@ -154,5 +157,46 @@ export const myExecution = (over: Partial<MyExecution> = {}): MyExecution => ({
   late: false,
   clockSuspect: false,
   mediaPending: 0,
+  ...over,
+});
+
+export const TASK = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e70';
+export const TASK2 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e71';
+export const TASK3 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e72';
+export const TASK4 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e75';
+export const TASK5 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e76';
+export const TEAM = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e80';
+export const ME_REF = { id: ME, fullName: 'Aysel Əliyeva' };
+
+/** A task assigned to me directly (spec §7): photo required, no review, due tomorrow. */
+export const syncTask = (over: Partial<SyncTask> = {}): SyncTask => ({
+  id: TASK,
+  title: 'Soyuducunun qapısını təmir et',
+  priority: 'normal',
+  status: 'new',
+  site: { id: SITE, name: 'Bakı filialı 1' },
+  assignee: ME_REF,
+  team: null,
+  assigneeInactive: false,
+  createdBy: { id: OTHER, fullName: 'Murad Həsənov' },
+  requiresReview: false,
+  source: 'adhoc',
+  problemId: null,
+  dueAt: '2026-11-03T14:00:00.000Z',
+  overdueAt: null,
+  rev: 1,
+  createdAt: T.starts,
+  updatedAt: T.starts,
+  instructions: 'Qapının rezinini dəyişin.',
+  evidence: { photo: 'required', video: 'optional', liveOnly: false },
+  acceptedAt: null,
+  startedAt: null,
+  submittedAt: null,
+  completedAt: null,
+  cancelledAt: null,
+  cancelReason: null,
+  media: [],
+  submissions: [],
+  problem: null,
   ...over,
 });

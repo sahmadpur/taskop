@@ -48,6 +48,8 @@ describe('execution read models', () => {
       occurrences: [],
       checklistVersions: [{ id: ID, checklistId: ID, number: 3, schemaVersion: 2, content: { schemaVersion: 2, anything: true } }],
       executions: [],
+      tasks: [],
+      removedTaskIds: [],
     });
     expect(r.checklistVersions[0]!.content).toEqual({ schemaVersion: 2, anything: true });
   });

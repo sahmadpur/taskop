@@ -29,6 +29,8 @@ import { RolesPage } from '@/features/roles/roles-page';
 import { AssignmentsPage } from '@/features/scheduling/assignment-pages';
 import { AssignmentDetailRoute, NewAssignmentRoute, ScheduleRoute, scheduleSearch } from '@/features/scheduling/routes';
 import { RosterPage } from '@/features/scheduling/roster-page';
+import { tasksSearch } from '@/features/tasks/routes';
+import { TasksPage } from '@/features/tasks/tasks-page';
 import { ShiftsPage } from '@/features/scheduling/shifts-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { SitesPage } from '@/features/sites/sites-page';
@@ -111,6 +113,7 @@ const rosterRoute = createRoute({
 const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shifts', component: ShiftsPage });
 const scheduleRoute = createRoute({ getParentRoute: () => appLayout, path: '/schedule', component: ScheduleRoute, validateSearch: scheduleSearch });
 const problemsRoute = createRoute({ getParentRoute: () => appLayout, path: '/problems', component: () => <ProblemsPage /> });
+const tasksRoute = createRoute({ getParentRoute: () => appLayout, path: '/tasks', component: TasksPage, validateSearch: tasksSearch });
 const assignmentsRoute = createRoute({ getParentRoute: () => appLayout, path: '/assignments', component: AssignmentsPage });
 const newAssignmentRoute = createRoute({
   getParentRoute: () => appLayout,
@@ -233,6 +236,7 @@ export const routeTree = rootRoute.addChildren([
     assignmentDetailRoute,
     scheduleRoute,
     problemsRoute,
+    tasksRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,

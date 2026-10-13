@@ -1,11 +1,16 @@
 import type { Db } from './db';
 
-export const COMMAND_KINDS = ['claim', 'media', 'answers', 'complete'] as const;
+export const COMMAND_KINDS = ['claim', 'media', 'answers', 'complete', 'task.accept', 'task.start', 'task.media', 'task.submit'] as const;
 export type CommandKind = (typeof COMMAND_KINDS)[number];
+
+/** What a command or a medium belongs to (local database version 3). */
+export const ENTITY_TYPES = ['execution', 'task'] as const;
+export type EntityType = (typeof ENTITY_TYPES)[number];
 
 interface OutboxRow {
   seq: number;
-  execution_id: string;
+  entity_type: EntityType;
+  entity_id: string;
   kind: CommandKind;
   ref_id: string | null;
   rev: number | null;
@@ -19,24 +24,27 @@ interface OutboxRow {
 
 export interface OutboxCommand {
   seq: number;
-  executionId: string;
+  entityType: EntityType;
+  /** The execution or task the command belongs to. */
+  entityId: string;
   kind: CommandKind;
-  /** The medium ID for `media` commands. */
+  /** The medium ID of a media registration; the submission ID of a task submission. */
   refId: string | null;
   rev: number | null;
-  /** The command body without `deviceTime` and `clientOffsetMs`. `clientOffsetMs` is stamped when it is sent; `deviceTime` is `createdAt`. */
+  /** The command body. Execution commands get `deviceTime` (= `createdAt`) and `clientOffsetMs` stamped when sent. */
   payload: Record<string, unknown>;
   status: 'pending' | 'failed';
   attempts: number;
   errorCode: string | null;
   errorKey: string | null;
-  /** The device time of the worker's action. It is the command's `deviceTime`; a newer answers revision carries its own action time. */
+  /** The device time of the worker's action. A newer answers revision carries its own action time. */
   createdAt: string;
 }
 
 const toCommand = (r: OutboxRow): OutboxCommand => ({
   seq: r.seq,
-  executionId: r.execution_id,
+  entityType: r.entity_type,
+  entityId: r.entity_id,
   kind: r.kind,
   refId: r.ref_id,
   rev: r.rev,
@@ -49,7 +57,8 @@ const toCommand = (r: OutboxRow): OutboxCommand => ({
 });
 
 export interface AppendInput {
-  executionId: string;
+  entityType: EntityType;
+  entityId: string;
   kind: CommandKind;
   refId?: string | null;
   rev?: number | null;
@@ -58,11 +67,12 @@ export interface AppendInput {
   createdAt: string;
 }
 
-/** Called inside the action's transaction. Only the newest answers revision is ever sent (spec §7.2). */
+/** Called inside the action's transaction. Only the newest answers revision is ever sent (SP4 spec §7.2). */
 export async function appendCommand(tx: Db, c: AppendInput): Promise<void> {
-  if (c.kind === 'answers') await tx.run(`DELETE FROM outbox WHERE execution_id = ? AND kind = 'answers'`, [c.executionId]);
-  await tx.run('INSERT INTO outbox (execution_id, kind, ref_id, rev, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
-    c.executionId,
+  if (c.kind === 'answers') await tx.run(`DELETE FROM outbox WHERE entity_type = ? AND entity_id = ? AND kind = 'answers'`, [c.entityType, c.entityId]);
+  await tx.run('INSERT INTO outbox (entity_type, entity_id, kind, ref_id, rev, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+    c.entityType,
+    c.entityId,
     c.kind,
     c.refId ?? null,
     c.rev ?? null,
@@ -71,12 +81,17 @@ export async function appendCommand(tx: Db, c: AppendInput): Promise<void> {
   ]);
 }
 
-/** The oldest pending command. Commands of an execution whose claim failed wait: without the claim they could only fail. */
+/**
+ * The oldest pending command, so each execution's and each task's commands go in order (a medium's registration before
+ * the submission that lists it). A failed claim, task accept or task start holds back the later commands of its entity:
+ * without it they could only fail. So does a parked task photo registration for the task's submission, which would name an unknown medium.
+ */
 export async function nextCommand(db: Db): Promise<OutboxCommand | null> {
   const row = await db.first<OutboxRow>(
     `SELECT * FROM outbox o
      WHERE o.status = 'pending'
-       AND NOT EXISTS (SELECT 1 FROM outbox c WHERE c.execution_id = o.execution_id AND c.kind = 'claim' AND c.status = 'failed')
+       AND NOT EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = o.entity_type AND c.entity_id = o.entity_id AND c.kind IN ('claim', 'task.accept', 'task.start') AND c.status = 'failed' AND c.seq < o.seq)
+       AND NOT (o.kind = 'task.submit' AND EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = 'task' AND c.entity_id = o.entity_id AND c.kind = 'task.media' AND c.status = 'failed' AND c.seq < o.seq))
      ORDER BY o.seq LIMIT 1`,
   );
   return row ? toCommand(row) : null;
@@ -103,15 +118,17 @@ export async function outboxCounts(db: Db): Promise<OutboxCounts> {
 }
 
 export interface QueueEntry extends OutboxCommand {
-  checklistName: string | null;
+  /** The checklist or task the command belongs to, for the sync queue; null once it is gone from the phone. */
+  title: string | null;
 }
 
 export async function listCommands(db: Db): Promise<QueueEntry[]> {
-  const rows = await db.all<OutboxRow & { checklist_name: string | null }>(
-    `SELECT o.*, oc.checklist_name FROM outbox o
-     LEFT JOIN executions e ON e.id = o.execution_id
+  const rows = await db.all<OutboxRow & { title: string | null }>(
+    `SELECT o.*, coalesce(oc.checklist_name, json_extract(t.data, '$.title')) AS title FROM outbox o
+     LEFT JOIN executions e ON o.entity_type = 'execution' AND e.id = o.entity_id
      LEFT JOIN occurrences oc ON oc.id = e.occurrence_id
+     LEFT JOIN tasks t ON o.entity_type = 'task' AND t.id = o.entity_id
      ORDER BY o.seq`,
   );
-  return rows.map((r) => ({ ...toCommand(r), checklistName: r.checklist_name }));
+  return rows.map((r) => ({ ...toCommand(r), title: r.title }));
 }

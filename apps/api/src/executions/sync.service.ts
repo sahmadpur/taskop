@@ -7,6 +7,7 @@ import { DbService } from '../db/db.service';
 import { checklistVersions, executions, occurrenceAssignees, occurrences } from '../db/schema';
 import { OccurrenceQueries } from '../scheduling/occurrence-queries';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
+import { TaskSync } from '../tasks/task-sync';
 import type { SyncQueryDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
 import { mediaPendingSql } from './mappers';
@@ -23,6 +24,7 @@ export class SyncService {
     private readonly queries: OccurrenceQueries,
     private readonly writer: OccurrenceWriter,
     private readonly lookups: ExecutionLookups,
+    private readonly taskSync: TaskSync,
   ) {}
 
   async pull(p: Principal, q: SyncQueryDto): Promise<SyncResponse> {
@@ -117,6 +119,7 @@ export class SyncService {
         clockSuspect: x.clockSuspect,
         mediaPending,
       })),
+      ...(await this.taskSync.forUser(p, q.knownTaskIds, now)),
     };
   }
 }

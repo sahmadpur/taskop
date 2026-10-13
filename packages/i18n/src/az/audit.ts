@@ -16,5 +16,6 @@ export default {
     team: 'Komanda',
     tenant: 'Təşkilat',
     session: 'Sessiya',
+    task: 'Tapşırıq',
   },
 } as const;

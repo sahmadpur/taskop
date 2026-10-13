@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import '@/lib/i18n';
-import { ME, OCC, OCC2, OCC3, OCC4, OCC5, occurrence, OTHER, OTHER_EXECUTION, syncResponse, VERSION2, versionOf } from '@/offline/testing/fixtures';
+import { ME, OCC, OCC2, OCC3, OCC4, OCC5, occurrence, OTHER, OTHER_EXECUTION, syncResponse, syncTask, T, TASK2, TASK3, TEAM, VERSION2, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices, type TestServices } from '@/offline/testing/test-services';
 import { HomeScreen } from './home-screen';
@@ -88,5 +88,27 @@ describe('My checklists', () => {
     await t.db.run(`UPDATE executions SET state = 'partial', sync_note = 'errors.EXECUTION_NOT_ACTIVE' WHERE id = ?`, [id]);
     await renderWithServices(t.services, <HomeScreen />);
     expect(await within(await screen.findByTestId(`occurrence-${OCC}`)).findByText('Server qəbul etmədi: Bu icra artıq bağlanıb və dəyişdirilə bilməz.')).toBeTruthy();
+  });
+});
+
+describe('Home task card', () => {
+  it('counts my open and overdue tasks, not my team’s offers, and opens the tasks tab', async () => {
+    const t = await createTestServices();
+    await t.seed(
+      syncResponse({
+        checklistVersions: [versionOf(t.c.content)],
+        tasks: [
+          syncTask({ dueAt: T.before }),
+          syncTask({ id: TASK2, dueAt: null }),
+          syncTask({ id: TASK3, assignee: null, team: { id: TEAM, name: 'Texniki xidmət' } }),
+        ],
+      }),
+    );
+    await renderWithServices(t.services, <HomeScreen />);
+    const card = await screen.findByTestId('home-tasks');
+    expect(await within(card).findByText('Açıq: 2')).toBeTruthy();
+    expect(within(card).getByText('Gecikmiş: 1')).toBeTruthy();
+    await fireEvent.press(card);
+    expect(mockPush).toHaveBeenCalledWith('/tasks');
   });
 });

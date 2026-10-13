@@ -1,7 +1,9 @@
 import { type Answer, type Answers, type ChecklistContent, type ExecutionMediaDto, type ExecutionProblem, type Item, visibleItems } from '@taskop/contracts';
+import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
+import { resolutionVariant } from '@/features/tasks/labels';
 import { useFormatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { answerValue, severityVariant } from './labels';
@@ -86,6 +88,15 @@ function AnswerRow(props: {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={severityVariant(p.severity)}>{t(`executions.severities.${p.severity}`)}</Badge>
             <span className="text-muted-foreground text-xs">{t(`executions.problemSources.${p.source}`)}</span>
+            {p.taskId ? (
+              <Badge asChild variant={resolutionVariant(p.resolution)}>
+                <Link to="/tasks" search={{ task: p.taskId }}>
+                  {t(`tasks.resolutions.${p.resolution}`)}
+                </Link>
+              </Badge>
+            ) : (
+              <Badge variant="outline">{t('tasks.resolutions.none')}</Badge>
+            )}
           </div>
           {p.source === 'manual' && p.note && <p className="whitespace-pre-line">{p.note}</p>}
           {/* A manual problem may attach the item's own evidence: show only what is not already shown above. */}

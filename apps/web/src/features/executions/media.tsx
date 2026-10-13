@@ -1,17 +1,31 @@
 import type { ExecutionMediaDto } from '@taskop/contracts';
 import { Play } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useFormatDateTime } from '@/lib/format';
-import { useMediaUrl } from './queries';
+import { EXECUTION_MEDIA_SOURCE, type MediaUrlSource, useMediaUrl } from './queries';
+
+/**
+ * What the thumbnails and the lightbox need. Execution and task media have all of it; a task's source-problem
+ * media are known by id, kind and status only (`ProblemDto.media`), so the capture details are optional.
+ */
+export type ViewableMedia = Pick<ExecutionMediaDto, 'id' | 'kind' | 'status' | 'durationMs'> &
+  Partial<Pick<ExecutionMediaDto, 'source' | 'capturedAt' | 'capturedBy'>>;
+
+const MediaUrlSourceContext = createContext<MediaUrlSource>(EXECUTION_MEDIA_SOURCE);
+
+/** Thumbnails and lightboxes below sign their media through `source` (execution media by default). */
+export function MediaUrlSourceProvider({ source, children }: { source: MediaUrlSource; children: ReactNode }) {
+  return <MediaUrlSourceContext.Provider value={source}>{children}</MediaUrlSourceContext.Provider>;
+}
 
 /**
  * A presigned URL for an uploaded medium. It lives 5 minutes, so when the element fails to load it (the URL
  * expired while the page stayed open) a new one is fetched once. A second failure in a row is reported.
  */
 export function useViewableUrl(id: string) {
-  const query = useMediaUrl(id);
+  const query = useMediaUrl(id, useContext(MediaUrlSourceContext));
   const [retried, setRetried] = useState(false);
   const [failed, setFailed] = useState(false);
   return {
@@ -30,7 +44,7 @@ export function useViewableUrl(id: string) {
   };
 }
 
-export function MediaThumb({ media, onOpen }: { media: ExecutionMediaDto; onOpen: (m: ExecutionMediaDto) => void }) {
+export function MediaThumb<M extends ViewableMedia>({ media, onOpen }: { media: M; onOpen: (m: M) => void }) {
   const { t } = useTranslation();
   const kind = t(`executions.mediaKinds.${media.kind}`);
   if (media.status === 'pending') {
@@ -71,8 +85,8 @@ function PhotoPreview({ id }: { id: string }) {
   return v.url ? <img key={v.url} src={v.url} alt="" loading="lazy" className="size-full object-cover" onError={v.onError} onLoad={v.onLoad} /> : null;
 }
 
-export function MediaStrip(props: { ids: string[]; media: ReadonlyMap<string, ExecutionMediaDto>; onOpen: (m: ExecutionMediaDto) => void }) {
-  const items = props.ids.map((id) => props.media.get(id)).filter((m): m is ExecutionMediaDto => m !== undefined);
+export function MediaStrip<M extends ViewableMedia>(props: { ids: string[]; media: ReadonlyMap<string, M>; onOpen: (m: M) => void }) {
+  const items = props.ids.map((id) => props.media.get(id)).filter((m): m is M => m !== undefined);
   if (!items.length) return null;
   return (
     <div className="flex flex-wrap gap-2">
@@ -83,23 +97,24 @@ export function MediaStrip(props: { ids: string[]; media: ReadonlyMap<string, Ex
   );
 }
 
-export function MediaLightbox({ media, onClose }: { media: ExecutionMediaDto; onClose: () => void }) {
+export function MediaLightbox({ media, onClose }: { media: ViewableMedia; onClose: () => void }) {
   const { t } = useTranslation();
   const formatDateTime = useFormatDateTime();
   const v = useViewableUrl(media.id);
   const video = useRef<HTMLVideoElement>(null);
   const resumeAt = useRef(0);
   const kind = t(`executions.mediaKinds.${media.kind}`);
+  const caption =
+    media.capturedAt && media.capturedBy
+      ? [t('executions.media.captured', { time: formatDateTime(media.capturedAt), name: media.capturedBy.fullName }), ...(media.source ? [t(`executions.mediaSources.${media.source}`)] : [])].join(' · ')
+      : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{kind}</DialogTitle>
-          <DialogDescription>
-            {t('executions.media.captured', { time: formatDateTime(media.capturedAt), name: media.capturedBy.fullName })} ·{' '}
-            {t(`executions.mediaSources.${media.source}`)}
-          </DialogDescription>
+          <DialogDescription className={caption ? undefined : 'sr-only'}>{caption ?? kind}</DialogDescription>
         </DialogHeader>
         {v.failed ? (
           <p className="text-destructive">{t('executions.media.failed')}</p>

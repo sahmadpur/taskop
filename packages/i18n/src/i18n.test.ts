@@ -5,6 +5,7 @@ import {
   CLAIM_REJECTION_REASONS,
   describeSchedule,
   EXECUTION_ISSUE_CODES,
+  EVIDENCE_LEVELS,
   EXECUTION_STATES,
   ErrorCode,
   ISSUE_CODES,
@@ -15,9 +16,17 @@ import {
   OCCURRENCE_STATUSES,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
+  PROBLEM_RESOLUTIONS,
   PROBLEM_SEVERITIES,
   PROBLEM_SOURCES,
   SCHEDULING_ISSUE_CODES,
+  TASK_HISTORY_REASONS,
+  TASK_ISSUE_CODES,
+  TASK_MEDIA_ROLES,
+  TASK_PRIORITIES,
+  TASK_REVIEW_DECISIONS,
+  TASK_SOURCES,
+  TASK_STATUSES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
 import { az, formatDate, formatDateTime } from './index.js';
@@ -146,5 +155,87 @@ describe('mobile execution translations', () => {
 
   it('has the discard confirmation texts', () => {
     for (const k of ['discardTitle', 'discardBody', 'discardClaimBody'] as const) expect(az.mobile.sync[k], k).toBeTypeOf('string');
+  });
+});
+
+describe('task translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('translates statuses, priorities, sources, resolutions, evidence, roles, decisions, reasons and issues', () => {
+    for (const s of TASK_STATUSES) expect(az.tasks.statuses[s], s).toBeTypeOf('string');
+    for (const p of TASK_PRIORITIES) expect(az.tasks.priorities[p], p).toBeTypeOf('string');
+    for (const s of TASK_SOURCES) expect(az.tasks.sources[s], s).toBeTypeOf('string');
+    for (const r of PROBLEM_RESOLUTIONS) expect(az.tasks.resolutions[r], r).toBeTypeOf('string');
+    for (const l of EVIDENCE_LEVELS) expect(az.tasks.evidenceLevels[l], l).toBeTypeOf('string');
+    for (const r of TASK_MEDIA_ROLES) expect(az.tasks.mediaRoles[r], r).toBeTypeOf('string');
+    for (const d of TASK_REVIEW_DECISIONS) expect(az.tasks.reviewDecisions[d], d).toBeTypeOf('string');
+    for (const r of TASK_HISTORY_REASONS) expect(az.tasks.historyReasons[r], r).toBeTypeOf('string');
+    for (const code of TASK_ISSUE_CODES) expect(lookup(code), code).toBeTypeOf('string');
+  });
+
+  it('uses the spec wording and registers the task nav, audit and role labels', () => {
+    expect(az.errors.TASK_ALREADY_TAKEN).toBe('Bu tapşırığı artıq başqası qəbul edib.');
+    expect(az.tasks.alreadyTaken).toBe('Bu tapşırığı artıq başqası qəbul edib');
+    expect(az.tasks.statuses.accepted).toBe('Qəbul edilib');
+    expect(az.tasks.statuses.in_progress).toBe('İcradadır');
+    expect(az.tasks.flags.overdue).toBe('Gecikib');
+    expect(az.nav.tasks).toBe('Tapşırıqlar');
+    expect(az.audit.entityTypes.task).toBe('Tapşırıq');
+  });
+});
+
+describe('mobile task translations', () => {
+  it('labels the tasks tab, its sections, the task commands and every task screen', () => {
+    expect(az.mobile.tabs.tasks).toBe('Tapşırıqlar');
+    for (const k of ['accept', 'start', 'media', 'submit'] as const) expect(az.mobile.sync.kinds.task[k], k).toBeTypeOf('string');
+    for (const k of ['open', 'overdue', 'title'] as const) expect(az.mobile.tasks.home[k], k).toBeTypeOf('string');
+    for (const k of [
+      'instructions', 'noInstructions', 'problem', 'accept', 'start', 'response', 'responsePlaceholder', 'complete', 'submitted',
+      'readOnly', 'rejected', 'cancelled', 'mediaOffline', 'mediaFailed', 'notFound',
+    ] as const) {
+      expect(az.mobile.tasks.detail[k], k).toBeTypeOf('string');
+    }
+    for (const k of [
+      'open', 'title', 'name', 'instructions', 'priority', 'assignee', 'search', 'teams', 'people', 'teamOption', 'site', 'noSite',
+      'due', 'review', 'evidence', 'photos', 'save', 'created', 'titleRequired', 'assigneeRequired',
+    ] as const) {
+      expect(az.mobile.tasks.create[k], k).toBeTypeOf('string');
+    }
+    for (const k of ['title', 'approve', 'reject', 'comment', 'approved', 'rejected', 'submission', 'empty', 'notReviewable'] as const) {
+      expect(az.mobile.tasks.review[k], k).toBeTypeOf('string');
+    }
+  });
+
+  it('uses the spec wording', () => {
+    expect(az.mobile.tasks.sections).toEqual({ team: 'Komanda üçün', mine: 'Mənim', inReview: 'Yoxlamada', done: 'Tamamlanıb', review: 'Yoxlama' });
+    expect(az.mobile.tasks.detail.accept).toBe('Qəbul et');
+    expect(az.mobile.tasks.detail.start).toBe('Başla');
+    expect(az.mobile.tasks.detail.complete).toBe('Tamamla');
+    expect(az.mobile.tasks.online).toBe('İnternet bağlantısı tələb olunur');
+    expect(az.mobile.tasks.home.open.replace('{{count}}', '2')).toBe('Açıq: 2');
+    expect(az.mobile.tasks.create.teamOption.replace('{{name}}', 'Texniki xidmət').replace('{{count}}', '3')).toBe('Texniki xidmət (3 nəfər)');
+  });
+});
+
+describe('task web translations', () => {
+  it('has the strings the tasks page, the dialog, the drawer and the problems page use', () => {
+    expect(az.tasks.page.tabs).toEqual({ all: 'Hamısı', review: 'Yoxlamamı gözləyir', overdue: 'Gecikmiş', mine: 'Mənim yaratdıqlarım' });
+    expect(az.tasks.page.new).toBe('Yeni tapşırıq');
+    for (const k of ['title', 'status', 'assignee', 'site', 'due', 'source'] as const) expect(az.tasks.page.columns[k], k).toBeTypeOf('string');
+    expect(az.tasks.page.teamWaiting).toContain('{{team}}');
+    expect(az.tasks.picker.members).toContain('{{count}}');
+    expect(az.tasks.dialog.dueHint).toContain('{{timeZone}}');
+    expect(az.tasks.dialog.siteFromProblem).toContain('{{site}}');
+    expect(az.tasks.dialog.uploadFailed).toContain('{{count}}');
+    expect(az.tasks.dialog.mediaLimit).toContain('{{count}}');
+    for (const s of ['waiting', 'uploading', 'done', 'failed', 'refused'] as const) expect(az.tasks.dialog.fileStates[s], s).toBeTypeOf('string');
+    expect(az.tasks.dialog.uploadClock).toBe('Kompüterin saatını yoxlayın.');
+    expect(az.tasks.dialog.uploadLimit).toBe('Təlimat faylları limiti dolub ({{count}}).');
+    expect(az.tasks.drawer.submission).toContain('{{n}}');
+    expect(az.tasks.drawer.evidenceValue).toContain('{{photo}}');
+    expect(az.tasks.problems.create).toBe('Tapşırıq yarat');
+    // Part 1's keys are untouched.
+    expect(az.tasks.flags.overdue).toBe('Gecikib');
+    expect(az.tasks.statuses.awaiting_review).toBe('Yoxlamada');
   });
 });

@@ -1,6 +1,7 @@
 import type { MyExecution, SyncResponse } from '@taskop/contracts';
 import { type Db, setMeta } from './db';
 import { type ExecutionRow, iso, normIso } from './local-model';
+import { mergeTask, removeTasks } from './task-records';
 
 const PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -19,21 +20,24 @@ async function pruneOld(tx: Db, returnedIds: string[], now: number): Promise<voi
         SELECT 1 FROM executions e
         WHERE e.occurrence_id = o.id
           AND (e.rev > e.synced_rev OR e.claim = 'pending'
-            OR EXISTS (SELECT 1 FROM outbox x WHERE x.execution_id = e.id)
-            OR EXISTS (SELECT 1 FROM media m WHERE m.execution_id = e.id AND (m.uploaded_at IS NULL OR m.file_deleted_at IS NULL))))`;
-  await tx.run(`DELETE FROM media WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
-  await tx.run(`DELETE FROM media_refusals WHERE execution_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
+            OR EXISTS (SELECT 1 FROM outbox x WHERE x.entity_type = 'execution' AND x.entity_id = e.id)
+            OR EXISTS (SELECT 1 FROM media m WHERE m.owner_type = 'execution' AND m.owner_id = e.id AND (m.uploaded_at IS NULL OR m.file_deleted_at IS NULL))))`;
+  await tx.run(`DELETE FROM media WHERE owner_type = 'execution' AND owner_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
+  await tx.run(`DELETE FROM media_refusals WHERE owner_type = 'execution' AND owner_id IN (SELECT id FROM executions WHERE occurrence_id IN (${prunable}))`, params);
   await tx.run(`DELETE FROM executions WHERE occurrence_id IN (${prunable})`, params);
   await tx.run(`DELETE FROM occurrences WHERE id IN (${prunable})`, params);
 }
 
-/** Spec §6.1, applied in one transaction. Occurrences missing from the response were cancelled or reassigned (Part 1 #14). */
-export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
-  await db.transaction((tx) => mergePull(tx, res, offsetMs, now));
+/**
+ * Spec §6.1, applied in one transaction. Occurrences missing from the response were cancelled or reassigned (Part 1 #14).
+ * Returns the local files of removed tasks, to delete once it commits.
+ */
+export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now: number): Promise<string[]> {
+  return db.transaction((tx) => mergePull(tx, res, offsetMs, now));
 }
 
 /** `applyPull` inside the caller's transaction. */
-export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<void> {
+export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<string[]> {
   await setMeta(tx, 'clockOffsetMs', String(offsetMs));
   await setMeta(tx, 'lastSyncedAt', iso(now));
   for (const v of res.checklistVersions) {
@@ -68,7 +72,9 @@ export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now
     [JSON.stringify(res.occurrences.map((o) => o.id))],
   );
   for (const x of res.executions) await mergeExecution(tx, x, now);
- }
+  for (const task of res.tasks) await mergeTask(tx, task, now);
+  return removeTasks(tx, res.removedTaskIds);
+}
 
 async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void> {
   const claim = x.state === 'rejected' ? 'rejected' : 'accepted';
@@ -82,7 +88,7 @@ async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void
     );
     return;
   }
-  const queued = (await tx.first<{ n: number }>('SELECT count(*) AS n FROM outbox WHERE execution_id = ?', [x.id]))?.n ?? 0;
+  const queued = (await tx.first<{ n: number }>(`SELECT count(*) AS n FROM outbox WHERE entity_type = 'execution' AND entity_id = ?`, [x.id]))?.n ?? 0;
   if (queued > 0) return; // Local changes not sent yet win; the next pull sees their result.
   // The local lock at closes_at is sticky even before the server's sweep has run (decision 15).
   const state = local.state === 'partial' && x.state === 'active' ? 'partial' : x.state;

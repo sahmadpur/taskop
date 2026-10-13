@@ -1,4 +1,6 @@
-import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { type CORSConfiguration, CreateBucketCommand, PutBucketCorsCommand, S3Client } from '@aws-sdk/client-s3';
 import { GenericContainer, Wait } from 'testcontainers';
 
 const ACCESS_KEY = 'taskop-test';
@@ -8,13 +10,16 @@ const S3_JSON = JSON.stringify({
   identities: [{ name: 'taskop', credentials: [{ accessKey: ACCESS_KEY, secretKey: SECRET_KEY }], actions: ['Admin', 'Read', 'Write', 'List', 'Tagging'] }],
 });
 
+/** The bucket CORS rule of local dev (docker-compose's seaweedfs-init applies the same file). */
+const CORS = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docker/seaweedfs/cors.json'), 'utf8')) as CORSConfiguration;
+
 export interface Seaweed {
   /** The S3_* overrides for createTestApp / testEnv. */
   env: Record<string, string>;
   stop: () => Promise<void>;
 }
 
-/** One SeaweedFS (master + volume + filer + S3 gateway) with the private bucket created. Only storage tests use it. */
+/** One SeaweedFS (master + volume + filer + S3 gateway) with the private bucket and its dev CORS rule. Only storage tests use it. */
 export async function startSeaweedfs(): Promise<Seaweed> {
   const container = await new GenericContainer('chrislusf/seaweedfs:latest')
     .withCopyContentToContainer([{ content: S3_JSON, target: '/etc/seaweedfs/s3.json' }])
@@ -38,6 +43,7 @@ export async function startSeaweedfs(): Promise<Seaweed> {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
+  await s3.send(new PutBucketCorsCommand({ Bucket: BUCKET, CORSConfiguration: CORS }));
   s3.destroy();
   return {
     env: { S3_ENDPOINT: endpoint, S3_PUBLIC_ENDPOINT: endpoint, S3_BUCKET: BUCKET, S3_ACCESS_KEY: ACCESS_KEY, S3_SECRET_KEY: SECRET_KEY, S3_FORCE_PATH_STYLE: 'true' },

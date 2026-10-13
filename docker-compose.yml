@@ -22,7 +22,7 @@ services:
     volumes:
       - seaweedfsdata:/data
       - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
-  # One-off: creates the private bucket; exits once it exists (restarts until SeaweedFS answers).
+  # One-off: creates the private bucket and sets its CORS rule for the web dev origins; restarts until SeaweedFS answers.
   seaweedfs-init:
     image: amazon/aws-cli:latest
     depends_on: [seaweedfs]
@@ -31,10 +31,15 @@ services:
       AWS_ACCESS_KEY_ID: taskop
       AWS_SECRET_ACCESS_KEY: taskop_dev_password
       AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./docker/seaweedfs/cors.json:/etc/seaweedfs/cors.json:ro
     entrypoint:
       - sh
       - -c
-      - aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket taskop-media || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket taskop-media
+      - >-
+        (aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket taskop-media
+        || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket taskop-media)
+        && aws --endpoint-url http://seaweedfs:8333 s3api put-bucket-cors --bucket taskop-media --cors-configuration file:///etc/seaweedfs/cors.json
 volumes:
   pgdata: {}
   seaweedfsdata: {}
