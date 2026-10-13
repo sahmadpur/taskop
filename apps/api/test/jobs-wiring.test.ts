@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config/config';
 import { MEDIA_CLEANUP_QUEUE } from '../src/executions/media-jobs';
+import type { OccurrenceJobs } from '../src/scheduling/occurrence-jobs';
 import { JobsService, QUEUES } from '../src/scheduling/jobs.service';
 import { TASK_MEDIA_CLEANUP_QUEUE, TASK_SWEEP_QUEUE } from '../src/tasks/task-jobs';
-import { createTestApp } from './app';
+import { createTestApp, testEnv } from './app';
 import { liveExecution, mediaRow, registerBytes } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
@@ -73,6 +76,82 @@ describe('pg-boss wiring', () => {
     } finally {
       await off.close();
     }
+  });
+
+  describe('JobsService workers', () => {
+    // Completes stray scheduling jobs harmlessly; this JobsService has no Nest app around it.
+    const idle = { materializeAll: async () => 0, sweepAll: async () => 0 } as unknown as OccurrenceJobs;
+
+    it('runs a defined worker for every sent job, retries a failing one and then dead-letters it', async () => {
+      const jobs = new JobsService(loadConfig(testEnv({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' })), idle);
+      const queue = `test.echo.${randomUUID()}`;
+      const dead = `test.dead.${randomUUID()}`;
+      const seen: string[] = [];
+      jobs.defineWorker<{ v: string }>(
+        queue,
+        async (d) => {
+          seen.push(d.v);
+          if (d.v === 'bad') throw new Error('boom');
+        },
+        { retryLimit: 1, deadLetter: dead },
+      );
+      await jobs.onApplicationBootstrap();
+      try {
+        expect(await jobs.send(queue, { v: 'a' })).toBe(true);
+        expect(await jobs.send(queue, { v: 'b' })).toBe(true);
+        await expect.poll(() => [...seen].sort(), { timeout: 20_000, interval: 250 }).toEqual(['a', 'b']);
+        await jobs.send(queue, { v: 'bad' });
+        // One try and one retry (retryLimit 1), then the job moves to the dead-letter queue.
+        await expect.poll(() => seen.filter((v) => v === 'bad').length, { timeout: 20_000, interval: 250 }).toBe(2);
+        await expect
+          .poll(async () => (await ownerQuery<{ n: number }>('select count(*)::int as n from pgboss.job where name = $1', [dead])).rows[0]!.n, { timeout: 20_000, interval: 250 })
+          .toBe(1);
+        const policy = await ownerQuery<{ policy: string }>('select policy from pgboss.queue where name = $1', [queue]);
+        expect(policy.rows[0]!.policy).toBe('standard');
+      } finally {
+        await jobs.onModuleDestroy();
+      }
+    });
+
+    it('a send made while startup is still creating the queues waits for them instead of throwing', async () => {
+      const jobs = new JobsService(loadConfig(testEnv({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' })), idle);
+      const queue = `test.early.${randomUUID()}`;
+      const seen: string[] = [];
+      jobs.defineWorker<{ v: string }>(queue, async (d) => void seen.push(d.v), { retryLimit: 1, deadLetter: `test.dead.${randomUUID()}` });
+      // Sent before bootstrap has even begun: pg-boss 12 would throw for a queue that does not exist yet.
+      const early = jobs.send(queue, { v: 'early' });
+      const bootstrap = jobs.onApplicationBootstrap();
+      try {
+        expect(await early).toBe(true);
+        await bootstrap;
+        await expect.poll(() => seen, { timeout: 20_000, interval: 250 }).toEqual(['early']);
+      } finally {
+        await bootstrap.catch(() => undefined);
+        await jobs.onModuleDestroy();
+      }
+    });
+
+    it('send rejects with the startup error instead of hanging when pg-boss cannot start', async () => {
+      // Nothing listens on port 1, so boss.start() fails.
+      const env = testEnv({ JOBS_ENABLED: 'true', JOBS_CRON: 'false', DATABASE_APP_URL: 'postgres://nobody:nope@127.0.0.1:1/none' });
+      const jobs = new JobsService(loadConfig(env), idle);
+      jobs.defineWorker('never', async () => undefined, { retryLimit: 1, deadLetter: 'never.dead' });
+      const pending = jobs.send('never', { v: 1 });
+      const assertion = expect(pending).rejects.toBeInstanceOf(Error);
+      await expect(jobs.onApplicationBootstrap()).rejects.toBeInstanceOf(Error);
+      await assertion;
+      // A send after the failed startup rejects too.
+      await expect(jobs.send('never', { v: 2 })).rejects.toBeInstanceOf(Error);
+    });
+
+    it('send does nothing while background jobs are disabled', async () => {
+      const jobs = new JobsService(loadConfig(testEnv()), idle);
+      // Returns at once, even before bootstrap: it must not wait on a startup that never happens.
+      expect(await jobs.send('anything', { v: 1 })).toBe(false);
+      await jobs.onApplicationBootstrap();
+      expect(await jobs.send('anything', { v: 1 })).toBe(false);
+      expect(() => jobs.defineWorker('late', async () => undefined, { retryLimit: 1, deadLetter: 'late.dead' })).not.toThrow();
+    });
   });
 
   describe('media cleanup', () => {
