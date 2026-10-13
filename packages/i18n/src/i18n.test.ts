@@ -303,3 +303,57 @@ describe('mobile notification translations', () => {
     expect(az.notifications.empty).toBe('Bildiriş yoxdur');
   });
 });
+
+describe('notification web translations', () => {
+  const n = () => az.notifications;
+
+  it('has the strings the bell, the inbox, the rules tab, the messages page and the preferences dialog use', () => {
+    for (const k of ['unread', 'viewAll'] as const) expect(n().bell[k], `bell.${k}`).toBeTypeOf('string');
+    for (const k of ['unread', 'unreadOnly', 'emptyUnread', 'more'] as const) expect(n().inbox[k], `inbox.${k}`).toBeTypeOf('string');
+    for (const k of ['intro', 'control', 'customized', 'reset', 'resetDone', 'noRoles', 'rolesCount', 'rolesUnavailable'] as const) {
+      expect(n().rules[k], `rules.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['type', 'enabled', 'roles', 'leadTime'] as const) expect(n().rules.columns[k], `rules.columns.${k}`).toBeTypeOf('string');
+    for (const k of [
+      'compose', 'recipients', 'recipientsPlaceholder', 'people', 'teams', 'sites', 'members', 'chosen', 'remove', 'targetLimit',
+      'titleLabel', 'bodyLabel', 'counter', 'email', 'send', 'confirmTitle', 'confirm', 'sent', 'history', 'emptyHistory', 'more',
+      'processing', 'notRequested', 'detailTitle', 'sentBy', 'targets', 'totals', 'recipient', 'notRead', 'devices', 'noDevice',
+      'noRecipientsYet',
+    ] as const) {
+      expect(n().messages[k], `messages.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['sentAt', 'sender', 'title', 'recipients', 'read', 'push', 'email'] as const) {
+      expect(n().messages.columns[k], `messages.columns.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['menu', 'title', 'description', 'email', 'noEmail', 'saved'] as const) {
+      expect(n().preferences[k], `preferences.${k}`).toBeTypeOf('string');
+    }
+  });
+
+  it('keeps the interpolation placeholders the components pass', () => {
+    expect(n().bell.unread).toContain('{{count}}');
+    expect(n().rules.control).toContain('{{type}}');
+    expect(n().rules.control).toContain('{{control}}');
+    expect(n().rules.rolesCount).toContain('{{count}}');
+    expect(n().messages.members).toContain('{{count}}');
+    expect(n().messages.remove).toContain('{{name}}');
+    expect(n().messages.targetLimit).toContain('{{count}}');
+    expect(n().messages.counter).toContain('{{count}}');
+    expect(n().messages.counter).toContain('{{max}}');
+    expect(n().messages.confirm).toContain('{{count}}');
+    expect(n().messages.sentBy).toContain('{{name}}');
+    expect(n().messages.sentBy).toContain('{{time}}');
+    expect(n().messages.totals).toContain('{{recipients}}');
+    expect(n().messages.totals).toContain('{{read}}');
+    expect(n().messages.devices).toContain('{{count}}');
+  });
+
+  it('leaves the existing notification and nav keys untouched', () => {
+    expect(n().title).toBe('Bildirişlər');
+    expect(n().markAllRead).toBe('Hamısını oxunmuş et');
+    expect(n().empty).toBe('Bildiriş yoxdur');
+    expect(n().deliveryStatuses.delivered).toBe('Çatdırıldı');
+    expect(n().deliveryStatuses.failed).toBe('Alınmadı');
+    expect(az.nav.messages).toBe('Mesajlar');
+  });
+});
