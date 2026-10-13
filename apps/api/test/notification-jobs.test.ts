@@ -187,4 +187,17 @@ describe('notification crons', () => {
     const devices = await ownerQuery<{ id: string; disabled: boolean }>('select id, disabled_at is not null as disabled from push_devices where id = any($1) order by id', [[idle.id, fresh.id]]);
     expect(devices.rows).toEqual([{ id: idle.id, disabled: true }, { id: fresh.id, disabled: false }]);
   });
+
+  it('also deletes events that gave up after 5 attempts, never other unprocessed ones', async () => {
+    const w = await taskWorld(t);
+    const [gaveUp, retrying] = [uuidv7(), uuidv7()];
+    for (const [id, attempts] of [[gaveUp, 5], [retrying, 4]] as const) {
+      await ownerQuery(
+        "insert into notification_events (id, tenant_id, type, payload, attempts, created_at) values ($1, $2, 'task.overdue', '{}'::jsonb, $3, '2026-01-01T00:00:00Z')",
+        [id, w.s.tenantId, attempts],
+      );
+    }
+    await jobs.cleanupAll([w.s.tenantId]);
+    expect((await eventRows(w.s.tenantId)).map((e) => e.id)).toEqual([retrying]);
+  });
 });

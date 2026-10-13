@@ -90,7 +90,7 @@ export class InboxService {
       .tx()
       .insert(pushDevices)
       .values({ tenantId: p.tenantId, userId: p.userId, expoToken: input.expoToken, platform: input.platform, createdAt: now, lastSeenAt: now })
-      .onConflictDoUpdate({ target: pushDevices.expoToken, set: { platform: input.platform, lastSeenAt: now, disabledAt: null } });
+      .onConflictDoUpdate({ target: pushDevices.expoToken, set: { userId: p.userId, platform: input.platform, lastSeenAt: now, disabledAt: null } });
   }
 
   /** The caller's own row only; 204 whether or not it existed. */

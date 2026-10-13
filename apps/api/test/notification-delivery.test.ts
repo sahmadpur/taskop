@@ -1,5 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NotificationDelivery } from '../src/notifications/notification-delivery';
+import { NotificationDelivery, ticketErrorText } from '../src/notifications/notification-delivery';
 import { NOTIFICATION_QUEUES } from '../src/notifications/queues';
 import { JobsService } from '../src/scheduling/jobs.service';
 import { TaskJobs } from '../src/tasks/task-jobs';
@@ -85,6 +86,20 @@ describe('notification delivery', () => {
     expect(disabled.rows.map((r) => r.id)).toEqual([gone!.id]);
   });
 
+  it('keeps a push token out of the stored error', async () => {
+    expect(ticketErrorText({ ok: false, error: 'DeviceNotRegistered', message: 'The recipient device is not registered: "ExpoPushToken[abc-123_X]" is gone' })).toBe(
+      'DeviceNotRegistered: The recipient device is not registered: "ExpoPushToken[…]" is gone',
+    );
+    expect(ticketErrorText({ ok: false, error: 'DeviceNotRegistered', message: 'ExponentPushToken[xyz] and ExpoPushToken[q]' })).toBe('DeviceNotRegistered: ExpoPushToken[…] and ExpoPushToken[…]');
+    // End to end: a row's last_error, which message senders can read, never carries the token.
+    const { w, phones } = await assigned(1);
+    pushSender(t).ticketFor = (m) => ({ ok: false, error: 'DeviceNotRegistered', message: `"${m.to}" is not a registered push notification recipient` });
+    await deliverAll(t, w.s.tenantId);
+    const [row] = await deliveriesOf(w.workers[0].id);
+    expect(row!.last_error).toBe('DeviceNotRegistered: "ExpoPushToken[…]" is not a registered push notification recipient');
+    expect(row!.last_error).not.toContain(phones[0]!.token);
+  });
+
   it('retries a failed Expo request four times and fails the rows on the fifth', async () => {
     const { w } = await assigned(1);
     pushSender(t).failWith = new Error('Expo is down');
@@ -136,6 +151,21 @@ describe('notification delivery', () => {
     await first;
     expect(pushSender(t).sent).toHaveLength(1);
     expect((await deliveriesOf(w.workers[0].id))[0]).toMatchObject({ status: 'sent', attempts: 1 });
+  });
+
+  it('warns with the delivery ids when the result of an attempt finds the claim lost', async () => {
+    const { w } = await assigned(1);
+    const [d] = await deliveriesOf(w.workers[0].id);
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { reached, release } = pushSender(t).hold();
+    const run = t.app.get(NotificationDelivery).run({ tenantId: w.s.tenantId, deliveryIds: [d!.id] });
+    await reached;
+    // Another run took the row over (its claim expired) while this one waited on Expo.
+    await ownerQuery("update notification_deliveries set claimed_at = claimed_at + interval '1 second' where id = $1", [d!.id]);
+    release();
+    await run;
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(d!.id));
+    expect((await deliveriesOf(w.workers[0].id))[0]).toMatchObject({ status: 'queued', attempts: 0 });
   });
 
   it('takes over a claim older than 5 minutes, as after a crashed run', async () => {

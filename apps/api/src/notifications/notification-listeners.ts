@@ -11,6 +11,11 @@ import { NotificationEvents } from './notification-events';
 /** task.* events that become notifications of the same name (spec §6.1 step 2). task.accepted is not notified. */
 const TASK_TYPES = ['task.assigned', 'task.rejected', 'task.completed', 'task.overdue', 'task.cancelled'] as const satisfies readonly (TaskEventName & NotificationType)[];
 
+/** The occurrence statuses that become notifications. */
+function isNotifiedStatus(status: OccurrenceStatus): status is 'overdue' | 'missed' {
+  return status === 'overdue' || status === 'missed';
+}
+
 /** Maps domain events to notification events. Handlers run in the caller's transaction and never throw (NFR-11.01). */
 @Injectable()
 export class NotificationListeners implements OnModuleInit {
@@ -24,7 +29,12 @@ export class NotificationListeners implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.events.on('occurrence.status_changed', (e) => this.guarded('occurrence.status_changed', () => this.onOccurrence(e.occurrenceId, e.to)));
+    this.events.on('occurrence.status_changed', (e) => {
+      // Most status changes are not notified; skip the savepoint round-trip for them.
+      const to = e.to;
+      if (!isNotifiedStatus(to)) return Promise.resolve();
+      return this.guarded('occurrence.status_changed', () => this.onOccurrence(e.occurrenceId, to));
+    });
     this.events.on('assignment.assignees_changed', (e) =>
       this.guarded('assignment.assignees_changed', () => this.notifications.record('checklist.assigned', { assignmentId: e.assignmentId, addedUserIds: e.addedUserIds }, e.actorUserId)),
     );
@@ -51,8 +61,7 @@ export class NotificationListeners implements OnModuleInit {
   }
 
   /** The sweep has no user, so its overdue and missed events have no actor (Spec decision 5). */
-  private async onOccurrence(occurrenceId: string, to: OccurrenceStatus): Promise<void> {
-    if (to !== 'overdue' && to !== 'missed') return;
+  private async onOccurrence(occurrenceId: string, to: 'overdue' | 'missed'): Promise<void> {
     const type = to === 'overdue' ? 'checklist.overdue' : 'checklist.missed';
     await this.notifications.record(type, { occurrenceId }, this.db.context().userId, `${type}:${occurrenceId}`);
   }

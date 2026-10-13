@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
 import { sanitiseForLog } from '../common/error.filter';
 import { eachTenant, perTenant, tenantsWith } from '../common/per-tenant';
@@ -233,7 +233,7 @@ export class NotificationJobs implements OnModuleInit {
     }
   }
 
-  /** notifications.cleanup: 90-day retention of the inbox and processed events; 180-day idle devices are disabled. */
+  /** notifications.cleanup: 90-day retention of the inbox, processed events and events that gave up; 180-day idle devices are disabled. */
   async cleanupAll(only?: string[]): Promise<number> {
     const now = this.clock.now();
     const retention = new Date(+now - NOTIFICATION_LIMITS.retentionDays * DAY);
@@ -245,7 +245,13 @@ export class NotificationJobs implements OnModuleInit {
       const inbox = await tx.delete(notifications).where(lt(notifications.createdAt, retention)).returning({ id: notifications.id });
       const events = await tx
         .delete(notificationEvents)
-        .where(and(isNotNull(notificationEvents.processedAt), lt(notificationEvents.createdAt, retention)))
+        .where(
+          and(
+            // Processed, or given up on after the last attempt; any other unprocessed event is still being retried.
+            or(isNotNull(notificationEvents.processedAt), gte(notificationEvents.attempts, NOTIFICATION_LIMITS.maxAttempts)),
+            lt(notificationEvents.createdAt, retention),
+          ),
+        )
         .returning({ id: notificationEvents.id });
       const devices = await tx
         .update(pushDevices)

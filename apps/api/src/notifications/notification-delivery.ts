@@ -18,9 +18,12 @@ export const HIGH_PRIORITY_TYPES: ReadonlySet<NotificationType> = new Set(['chec
 /** Errors worth an operator's attention (tickets and receipts); every such error fails the row without retry (Spec decision 9). */
 export const LOUD_TICKET_ERRORS: ReadonlySet<string> = new Set(['InvalidCredentials', 'MessageTooBig']);
 
-/** The last_error of a refused push ticket or receipt, e.g. "DeviceNotRegistered: …". At most 500 characters. */
+/**
+ * The last_error of a refused push ticket or receipt, e.g. "DeviceNotRegistered: …". At most 500 characters. Expo's
+ * message can quote the device token, and message senders can read last_error, so tokens are replaced.
+ */
 export function ticketErrorText(failure: Extract<PushTicket | PushReceipt, { ok: false }>): string {
-  return `${failure.error ?? 'Error'}: ${failure.message}`.slice(0, 500);
+  return `${failure.error ?? 'Error'}: ${failure.message}`.replace(/Expo(nent)?PushToken\[[^\]]*\]/g, 'ExpoPushToken[…]').slice(0, 500);
 }
 
 /** Stops pushing to a device Expo reports as gone (DeviceNotRegistered); a later token claim re-enables it. */
@@ -288,10 +291,16 @@ export class NotificationDelivery implements OnModuleInit {
                 lastError: result.error,
                 status: sql`case when ${d.attempts} + 1 >= ${NOTIFICATION_LIMITS.maxAttempts} then 'failed'::notification_delivery_status else ${d.status} end`,
               };
-    return tx
+    const rows = await tx
       .update(d)
       .set(set)
       .where(and(inArray(d.id, ids), eq(d.status, 'queued'), eq(d.claimedAt, claimedAt)))
       .returning({ id: d.id, status: d.status });
+    if (rows.length < ids.length) {
+      // The claim was lost (it expired and another run took the rows over), so the same notification may have gone out twice.
+      const recorded = new Set(rows.map((r) => r.id));
+      this.logger.warn(`Recorded ${rows.length} of ${ids.length} deliveries as ${result.status}; the claim was lost for ${ids.filter((id) => !recorded.has(id)).join(', ')}, which may have been sent twice`);
+    }
+    return rows;
   }
 }
