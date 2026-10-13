@@ -5,6 +5,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/features/notifications/notification-bell';
 import { session } from '@/lib/session';
 import { VerifyEmailBanner } from './verify-email-banner';
 
@@ -82,6 +83,7 @@ export function AppShell() {
         <header className="flex items-center justify-between border-b px-6 py-3">
           <span className="text-muted-foreground text-sm">{me.tenant.name}</span>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <div className="text-right text-sm">
               <div className="font-medium">{me.user.fullName}</div>
               <div className="text-muted-foreground text-xs">{me.role.systemKey ? t(`roles.systemNames.${me.role.systemKey}`) : me.role.name}</div>

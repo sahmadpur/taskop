@@ -17,7 +17,10 @@ vi.mock('@/lib/session', () => ({
   useMe: () => state.current.me,
   useCan: (...keys: string[]) => keys.every((k) => (state.current.me as { permissions: string[] }).permissions.includes(k)),
   session: { signOut: vi.fn(), subscribe: (l: () => void) => (listeners.add(l), () => listeners.delete(l)), get: () => state.current },
-  api: { auth: { resendVerification: vi.fn() } },
+  api: {
+    auth: { resendVerification: vi.fn() },
+    notifications: { unreadCount: vi.fn(async () => ({ count: 2 })), list: vi.fn(async () => ({ items: [], nextCursor: null })) },
+  },
 }));
 
 const { AppShell } = await import('./app-shell');
@@ -56,6 +59,12 @@ describe('AppShell', () => {
     state.current = { status: 'authenticated', me: me(['tasks.manage']) };
     renderShell();
     expect(await screen.findByRole('link', { name: 'Tapşırıqlar' })).toHaveAttribute('href', '/tasks');
+  });
+
+  it('shows the notification bell with the unread count in the header', async () => {
+    state.current = { status: 'authenticated', me: me([]) };
+    renderShell();
+    expect(await screen.findByRole('button', { name: 'Bildirişlər: 2 oxunmamış' })).toHaveTextContent('2');
   });
 
   it('AppShell redirects to login when the session ends', async () => {
