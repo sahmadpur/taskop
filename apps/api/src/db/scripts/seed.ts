@@ -1,6 +1,6 @@
 import { hash } from '@node-rs/argon2';
 import { addDays, type Answers, type ChecklistContent, computeScore, countItems, deriveProblems, localDateOf, progress, regenerateIds, zonedTimeToUtc } from '@taskop/contracts';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { uuidv7 } from 'uuidv7';
 import { siteLabel } from '../../tenancy/sites.service';
@@ -261,6 +261,39 @@ async function seedDemoTasks(tx: Tx, tenantId: string): Promise<void> {
   await tx.insert(schema.taskStatusHistory).values(history);
 }
 
+/** Idempotent: a processed manual message from the owner in elvin's and Leyla's inboxes (no deliveries). */
+async function seedDemoNotifications(tx: Tx, tenantId: string, ownerId: string): Promise<void> {
+  const existing = await tx
+    .select({ id: schema.notificationEvents.id })
+    .from(schema.notificationEvents)
+    .where(and(eq(schema.notificationEvents.tenantId, tenantId), eq(schema.notificationEvents.type, 'manual')))
+    .limit(1);
+  if (existing.length) return;
+  const people = await tx
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.tenantId, tenantId), or(eq(schema.users.username, 'elvin'), eq(schema.users.email, 'manager@demo.taskop.az'))));
+  if (!people.length) return;
+  const title = 'Xoş gəlmisiniz';
+  const body = 'Yeni işlər, gecikmələr və problemlər haqqında bildirişləri burada görəcəksiniz.';
+  const now = new Date();
+  const eventId = uuidv7();
+  await tx.insert(schema.notificationEvents).values({
+    id: eventId,
+    tenantId,
+    type: 'manual',
+    payload: { title, body, userIds: people.map((p) => p.id), teamIds: [], siteIds: [], email: false },
+    actorUserId: ownerId,
+    createdAt: now,
+    processedAt: now,
+    outcome: 'fanned_out',
+    attempts: 1,
+  });
+  await tx
+    .insert(schema.notifications)
+    .values(people.map((p) => ({ id: uuidv7(), tenantId, eventId, userId: p.id, type: 'manual', title, body, targetKind: 'none' as const, createdAt: now })));
+}
+
 export async function seed(url: string): Promise<void> {
   const db = drizzle(url, { schema });
   await seedGlobalTemplates(db);
@@ -273,6 +306,7 @@ export async function seed(url: string): Promise<void> {
         await seedDemoScheduling(tx, existing.id, owner.id);
         await seedDemoExecution(tx, existing.id);
         await seedDemoTasks(tx, existing.id);
+        await seedDemoNotifications(tx, existing.id, owner.id);
       });
     }
     console.log('Demo tenant already exists');
@@ -323,6 +357,7 @@ export async function seed(url: string): Promise<void> {
     await seedDemoScheduling(tx, tenantId, ownerId);
     await seedDemoExecution(tx, tenantId);
     await seedDemoTasks(tx, tenantId);
+    await seedDemoNotifications(tx, tenantId, ownerId);
   });
   await db.$client.end();
   console.log('Demo tenant "demo" created.');
@@ -332,6 +367,7 @@ export async function seed(url: string): Promise<void> {
   console.log('  Scheduling: shift "Səhər", daily "Səhər təmizliyi" at Anbar №1 (occurrences appear once the API has started)');
   console.log('  Execution: yesterday\'s "Səhər təmizliyi" by elvin, partial, with two problems (web schedule drawer and /problems)');
   console.log('  Tasks: team "Texniki xidmət" (elvin, nigar); a task for elvin and a team task from the run\'s manual problem (web /tasks, phone Tapşırıqlar)');
+  console.log('  Notifications: a welcome message in elvin\'s and Leyla\'s inboxes (phone bell, web bell)');
 }
 
 async function main(): Promise<void> {

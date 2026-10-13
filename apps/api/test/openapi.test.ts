@@ -35,4 +35,25 @@ describe('OpenAPI', () => {
       ]),
     );
   });
+
+  it('documents the notification paths', async () => {
+    const res = await t.http().get('/api/docs-json');
+    expect(Object.keys(res.body.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/v1/me/notifications',
+        '/api/v1/me/notifications/unread-count',
+        '/api/v1/me/notifications/read-all',
+        '/api/v1/me/notifications/{id}/read',
+        '/api/v1/me/push-devices',
+        '/api/v1/me/push-devices/{token}',
+        '/api/v1/me/preferences',
+        '/api/v1/notification-rules',
+        '/api/v1/notification-rules/{type}',
+        '/api/v1/notifications/messages',
+        '/api/v1/notifications/messages/options',
+        '/api/v1/notifications/messages/preview',
+        '/api/v1/notifications/messages/{id}',
+      ]),
+    );
+  });
 });

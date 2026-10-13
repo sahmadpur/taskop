@@ -8,6 +8,7 @@ import { TASK_MEDIA_CLEANUP_QUEUE, TASK_SWEEP_QUEUE } from '../src/tasks/task-jo
 import { createTestApp, testEnv } from './app';
 import { liveExecution, mediaRow, registerBytes } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
+import { addDevice, deliveriesOf, inboxOf } from './notification-fixtures';
 import { ownerQuery } from './owner-db';
 import { createAssignment, MONDAY_0800, occurrenceRows, schedulingWorld } from './scheduling-fixtures';
 import { type Seaweed, startSeaweedfs } from './seaweedfs';
@@ -53,6 +54,19 @@ describe('pg-boss wiring', () => {
     }
   });
 
+  it('fans out and delivers a notification through real queues', async () => {
+    const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+    try {
+      const w = await taskWorld(t);
+      await addDevice(w.s.tenantId, w.workers[0].id);
+      await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }));
+      await expect.poll(async () => (await inboxOf(w.workers[0].id)).map((n) => n.type), { timeout: 20_000, interval: 250 }).toEqual(['task.assigned']);
+      await expect.poll(async () => (await deliveriesOf(w.workers[0].id)).map((d) => d.status), { timeout: 20_000, interval: 250 }).toEqual(['sent']);
+    } finally {
+      await t.close();
+    }
+  });
+
   it('registers cron schedules only while JOBS_CRON is on and uses stately queues', async () => {
     const schedules = async () =>
       (await ownerQuery<{ name: string }>("select name from pgboss.schedule where name like 'occurrences.%' order by name")).rows.map((r) => r.name);
@@ -67,12 +81,21 @@ describe('pg-boss wiring', () => {
         QUEUES.sweep,
       ]);
       expect(policies.rows.map((r) => r.policy)).toEqual(['stately', 'stately']);
+      const notificationSchedules = await ownerQuery<{ name: string }>("select name from pgboss.schedule where name like 'notifications.%' order by name");
+      expect(notificationSchedules.rows.map((r) => r.name)).toEqual(['notifications.cleanup', 'notifications.receipts', 'notifications.scan', 'notifications.sweep']);
+      const workers = await ownerQuery<{ name: string; policy: string }>("select name, policy from pgboss.queue where name in ('notifications.fanout', 'notifications.deliver', 'notifications.dead') order by name");
+      expect(workers.rows).toEqual([
+        { name: 'notifications.dead', policy: 'standard' },
+        { name: 'notifications.deliver', policy: 'standard' },
+        { name: 'notifications.fanout', policy: 'standard' },
+      ]);
     } finally {
       await on.close();
     }
     const off = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' }, { clock: past });
     try {
       expect(await schedules()).toEqual([]);
+      expect((await ownerQuery("select 1 from pgboss.schedule where name like 'notifications.%'")).rowCount).toBe(0);
     } finally {
       await off.close();
     }
