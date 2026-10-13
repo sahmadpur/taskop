@@ -28,6 +28,20 @@ beforeEach(() => {
 });
 
 describe('mobile session', () => {
+  it('applies a preference the server confirmed to the profile and its offline copy', async () => {
+    await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
+    await session.patchUser({ emailNotifications: false });
+    expect(session.get()).toMatchObject({ status: 'authenticated', me: { user: { username: 'elvin', emailNotifications: false } } });
+    expect(JSON.parse(mockStore.get('taskop.me')!).user.emailNotifications).toBe(false);
+  });
+
+  it('ignores a profile change when nobody is signed in', async () => {
+    await session.bootstrap();
+    await session.patchUser({ emailNotifications: false });
+    expect(session.get()).toEqual({ status: 'anonymous' });
+    expect(mockStore.has('taskop.me')).toBe(false);
+  });
+
   it('is anonymous without a stored refresh token', async () => {
     await session.bootstrap();
     expect(session.get()).toEqual({ status: 'anonymous' });

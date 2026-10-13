@@ -1,5 +1,6 @@
+import { ApiError } from '@taskop/api-client';
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { Alert, type AlertButton } from 'react-native';
+import { Alert, type AlertButton, AppState } from 'react-native';
 import '@/lib/i18n';
 import type { FakePush, FakeTokens } from '@/notifications/testing/fakes';
 import { PUSH_TOKEN } from '@/notifications/testing/fakes';
@@ -11,20 +12,21 @@ import { ProfileScreen } from './profile-screen';
 const mockSignOut = jest.fn();
 const mockForceSignedOut = jest.fn();
 const mockRemove = jest.fn();
+const mockUpdate = jest.fn();
+const mockPatchUser = jest.fn();
 const mockEvents: string[] = [];
+let mockUser = { fullName: 'Aysel Əliyeva', jobTitle: null as string | null, username: 'aysel', email: null as string | null, emailNotifications: true };
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/lib/session', () => ({
-  api: { pushDevices: { remove: (...a: unknown[]) => mockRemove(...a) } },
-  session: { signOut: () => mockSignOut(), forceSignedOut: () => mockForceSignedOut() },
+  api: {
+    pushDevices: { remove: (...a: unknown[]) => mockRemove(...a) },
+    preferences: { update: (...a: unknown[]) => mockUpdate(...a) },
+  },
+  session: { signOut: () => mockSignOut(), forceSignedOut: () => mockForceSignedOut(), patchUser: (...a: unknown[]) => mockPatchUser(...a) },
   useSession: () => ({
     status: 'authenticated',
     offline: false,
-    me: {
-      user: { fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true },
-      role: { name: 'Worker', systemKey: 'worker' },
-      tenant: { name: 'Acme' },
-      permissions: [],
-    },
+    me: { user: mockUser, role: { name: 'Worker', systemKey: 'worker' }, tenant: { name: 'Acme' }, permissions: [] },
   }),
 }));
 jest.mock('@/notifications/native', () => {
@@ -34,6 +36,7 @@ jest.mock('@/notifications/native', () => {
 const native = jest.requireMock<{ nativePush: FakePush; pushTokenStore: FakeTokens; openSettings: jest.Mock }>('@/notifications/native');
 
 const press = (buttons: AlertButton[] | undefined, text: string) => act(async () => buttons!.find((b) => b.text === text)!.onPress?.());
+const emailSwitch = () => screen.getByRole('switch', { name: 'E-poçt bildirişləri' });
 
 beforeEach(() => {
   mockEvents.length = 0;
@@ -42,9 +45,17 @@ beforeEach(() => {
   mockForceSignedOut.mockReset();
   mockRemove.mockReset();
   mockRemove.mockImplementation(async () => void mockEvents.push('remove'));
+  mockUpdate.mockReset();
+  mockPatchUser.mockReset();
+  mockPatchUser.mockResolvedValue(undefined);
+  mockUser = { fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true };
   native.pushTokenStore.value = null;
   native.nativePush.setBadge.mockReset();
   native.nativePush.setBadge.mockImplementation(async (n: number) => void mockEvents.push(`badge:${n}`));
+  native.nativePush.isDevice = true;
+  native.nativePush.permission.mockReset();
+  native.nativePush.permission.mockResolvedValue('granted');
+  native.openSettings.mockClear();
 });
 
 describe('logout', () => {
@@ -238,5 +249,60 @@ describe('logout', () => {
     expect(mockForceSignedOut).not.toHaveBeenCalled();
     alert.mockRestore();
     error.mockRestore();
+  });
+});
+
+describe('notification settings', () => {
+  it('turns email notifications off and keeps what the server answered', async () => {
+    mockUpdate.mockResolvedValue({ emailNotifications: false });
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <ProfileScreen />);
+    expect(emailSwitch().props.value).toBe(true);
+    expect(screen.getByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeTruthy();
+    await fireEvent(emailSwitch(), 'valueChange', false);
+    await eventually(async () => expect(mockPatchUser).toHaveBeenCalledWith({ emailNotifications: false }));
+    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: false });
+    expect(emailSwitch().props.value).toBe(false);
+  });
+
+  it('puts the switch back and shows the error when saving fails', async () => {
+    mockUser = { ...mockUser, email: 'aysel@demo.taskop.az' };
+    mockUpdate.mockRejectedValue(new ApiError(500, 'INTERNAL', 'errors.INTERNAL'));
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <ProfileScreen />);
+    expect(screen.queryByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeNull();
+    await fireEvent(emailSwitch(), 'valueChange', false);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(emailSwitch().props.value).toBe(true);
+    expect(mockPatchUser).not.toHaveBeenCalled();
+  });
+
+  it('offline the switch is disabled and says a connection is needed', async () => {
+    const t = await createTestServices();
+    await renderWithServices(t.services, <ProfileScreen />);
+    expect(await screen.findByText('Dəyişmək üçün internet bağlantısı tələb olunur.')).toBeTruthy();
+    expect(emailSwitch().props.disabled).toBe(true);
+  });
+
+  it('shows the push permission, opens the settings when it is denied, and reads it again on return', async () => {
+    native.nativePush.permission.mockResolvedValue('denied');
+    const t = await createTestServices();
+    await renderWithServices(t.services, <ProfileScreen />);
+    expect(await screen.findByText('Bağlıdır')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ayarları aç' }));
+    expect(native.openSettings).toHaveBeenCalledTimes(1);
+    native.nativePush.permission.mockResolvedValue('granted');
+    const onChange = (AppState.addEventListener as jest.Mock).mock.calls.at(-1)![1] as (state: string) => void;
+    await act(async () => onChange('active'));
+    expect(await screen.findByText('Açıqdır')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ayarları aç' })).toBeNull();
+  });
+
+  it('says push is not available on a simulator', async () => {
+    native.nativePush.isDevice = false;
+    const t = await createTestServices();
+    await renderWithServices(t.services, <ProfileScreen />);
+    expect(await screen.findByText('Bu cihazda dəstəklənmir')).toBeTruthy();
+    expect(native.nativePush.permission).not.toHaveBeenCalled();
   });
 });

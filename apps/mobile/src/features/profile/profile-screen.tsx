@@ -1,21 +1,30 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { FormError, mobileErrorText } from '@/components/form-error';
 import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
 import { api, session, useSession } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
-import { nativePush, pushTokenStore } from '@/notifications/native';
+import { nativePush, openSettings, pushTokenStore } from '@/notifications/native';
 import { clearAppBadge, endPushSignOut, unregisterPush } from '@/notifications/push-registration';
+import { usePushPermission } from '@/notifications/use-push-permission';
 import { useOffline } from '@/offline/context';
+import { useSyncStatus } from '@/offline/hooks';
 
 export function ProfileScreen() {
   const { t } = useTranslation();
   const s = useSession();
   const services = useOffline();
+  const { online } = useSyncStatus();
+  const permission = usePushPermission(nativePush);
   const busy = useRef(false);
   const [isBusy, setBusy] = useState(false);
+  const [email, setEmail] = useState(s.status === 'authenticated' ? s.me.user.emailNotifications : true);
+  const saving = useRef(false);
+  const [isSaving, setSaving] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   if (s.status !== 'authenticated') return null;
   const { me } = s;
   const rows: [string, string][] = [
@@ -23,6 +32,26 @@ export function ProfileScreen() {
     [t('mobile.profile.organization'), me.tenant.name],
     [t('mobile.profile.login'), me.user.username ?? me.user.email ?? ''],
   ];
+
+  /** Spec §7.4 + decision 13: online only, optimistic, reverted when the server refuses. */
+  const changeEmail = async (next: boolean) => {
+    if (saving.current) return;
+    saving.current = true;
+    setSaving(true);
+    setEmailError(null);
+    setEmail(next);
+    try {
+      const saved = await api.preferences.update({ emailNotifications: next });
+      setEmail(saved.emailNotifications);
+      await session.patchUser({ emailNotifications: saved.emailNotifications });
+    } catch (e) {
+      setEmail(!next);
+      setEmailError(mobileErrorText(t, e));
+    } finally {
+      saving.current = false;
+      setSaving(false);
+    }
+  };
 
   /** Spec §7.4: unsynced data blocks logout until the worker confirms twice; local data never outlives the session. */
   const logout = async () => {
@@ -106,6 +135,33 @@ export function ProfileScreen() {
           </View>
         ))}
       </View>
+      <View style={styles.card}>
+        <Text style={styles.section}>{t('notifications.title')}</Text>
+        <View style={styles.switchRow}>
+          <Text style={styles.value}>{t('mobile.notifications.profile.email')}</Text>
+          <Switch
+            accessibilityLabel={t('mobile.notifications.profile.email')}
+            value={email}
+            disabled={!online || isSaving}
+            onValueChange={(next) => void changeEmail(next)}
+          />
+        </View>
+        {me.user.email ? null : <Text style={styles.muted}>{t('mobile.notifications.profile.noEmail')}</Text>}
+        {online ? null : <Text style={styles.muted}>{t('mobile.notifications.profile.online')}</Text>}
+        <FormError message={emailError} />
+        <View style={styles.row}>
+          <Text style={styles.muted}>{t('mobile.notifications.profile.push')}</Text>
+          <Text testID="push-permission" style={styles.value}>
+            {permission ? t(`mobile.notifications.profile.pushStates.${permission}`) : '—'}
+          </Text>
+        </View>
+        {permission === 'denied' ? (
+          <>
+            <Text style={styles.muted}>{t('mobile.notifications.profile.deniedHint')}</Text>
+            <PrimaryButton variant="outline" title={t('mobile.notifications.profile.openSettings')} onPress={() => void openSettings()} />
+          </>
+        ) : null}
+      </View>
       <PrimaryButton variant="outline" title={t('mobile.profile.changeSecret')} onPress={() => router.push('/change-secret')} />
       <PrimaryButton title={t('mobile.profile.logout')} disabled={isBusy} onPress={() => void logout()} />
     </Screen>
@@ -117,5 +173,7 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted },
   card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: spacing.md },
+  section: { fontSize: 16, fontWeight: '600', color: colors.text },
   value: { color: colors.text, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
 });

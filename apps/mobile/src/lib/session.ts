@@ -91,6 +91,13 @@ export const session = {
     await cacheMe(me);
     set({ status: 'authenticated', me, offline: false });
   },
+  /** Applies a change the server confirmed (PATCH /me/preferences) to the signed-in profile and its offline copy. */
+  async patchUser(patch: Partial<Me['user']>): Promise<void> {
+    if (state.status !== 'authenticated') return;
+    const me: Me = { ...state.me, user: { ...state.me.user, ...patch } };
+    set({ ...state, me });
+    await cacheMe(me).catch((e: unknown) => console.warn('[session] Could not cache the profile', e instanceof Error ? e.message : 'unknown error'));
+  },
   async signOut(): Promise<void> {
     try {
       await api.auth.logout();
