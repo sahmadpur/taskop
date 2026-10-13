@@ -20,6 +20,10 @@ export interface JobDefinition {
 export interface WorkerOptions {
   /** pg-boss retries after the first try. */
   retryLimit: number;
+  /** Seconds before the first retry; with backoff it doubles each time. pg-boss defaults to 0, which burns all retries within seconds. */
+  retryDelay?: number;
+  /** Cap, in seconds, on the backed-off delay between two retries. */
+  retryDelayMax?: number;
   /** Receives the job once the retries are exhausted; every job there is logged at error level. */
   deadLetter: string;
 }
@@ -128,7 +132,14 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     for (const dl of deadLetters) await this.ensureQueue(boss, dl);
     for (const w of this.workers) {
       // standard: any number of queued jobs, each retried with backoff and then dead-lettered.
-      await this.ensureQueue(boss, w.name, { policy: 'standard', retryLimit: w.opts.retryLimit, retryBackoff: true, deadLetter: w.opts.deadLetter });
+      await this.ensureQueue(boss, w.name, {
+        policy: 'standard',
+        retryLimit: w.opts.retryLimit,
+        retryBackoff: true,
+        ...(w.opts.retryDelay !== undefined && { retryDelay: w.opts.retryDelay }),
+        ...(w.opts.retryDelayMax !== undefined && { retryDelayMax: w.opts.retryDelayMax }),
+        deadLetter: w.opts.deadLetter,
+      });
       await boss.work<object>(w.name, async ([job]) => {
         if (job) await w.handler(job.data);
       });

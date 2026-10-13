@@ -107,6 +107,8 @@ export class NotificationDelivery implements OnModuleInit {
   onModuleInit(): void {
     this.jobs.defineWorker<DeliverJob>(NOTIFICATION_QUEUES.deliver, (job) => this.run(job), {
       retryLimit: NOTIFICATION_LIMITS.maxAttempts,
+      retryDelay: NOTIFICATION_LIMITS.retryDelaySeconds,
+      retryDelayMax: NOTIFICATION_LIMITS.retryDelayMaxSeconds,
       deadLetter: NOTIFICATION_QUEUES.dead,
     });
   }

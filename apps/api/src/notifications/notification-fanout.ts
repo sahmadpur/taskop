@@ -38,7 +38,12 @@ export class NotificationFanout implements OnModuleInit {
       async (job) => {
         await this.run(job);
       },
-      { retryLimit: NOTIFICATION_LIMITS.maxAttempts, deadLetter: NOTIFICATION_QUEUES.dead },
+      {
+        retryLimit: NOTIFICATION_LIMITS.maxAttempts,
+        retryDelay: NOTIFICATION_LIMITS.retryDelaySeconds,
+        retryDelayMax: NOTIFICATION_LIMITS.retryDelayMaxSeconds,
+        deadLetter: NOTIFICATION_QUEUES.dead,
+      },
     );
   }
 

@@ -15,6 +15,12 @@ export const NOTIFICATION_QUEUES = {
 export const NOTIFICATION_LIMITS = {
   /** Per event and per delivery (spec §6.1, NFR-11.03). */
   maxAttempts: 5,
+  /**
+   * pg-boss retry spacing of the fanout and deliver queues, in seconds: the delay starts at 15, doubles with each retry (with jitter) and is capped at 240. All five
+   * attempts outlast a short Expo or SMTP outage, and every gap stays under the 5-minute deliver claim lease.
+   */
+  retryDelaySeconds: 15,
+  retryDelayMaxSeconds: 240,
   /** Push deliveries per notifications.deliver job (one Expo request). */
   pushBatch: 100,
   /** checklist.available only for occurrences that opened this recently (spec §3.4). */

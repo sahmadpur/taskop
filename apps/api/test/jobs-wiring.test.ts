@@ -54,7 +54,7 @@ describe('pg-boss wiring', () => {
     }
   });
 
-  it('fans out and delivers a notification through real queues', async () => {
+  it('fans out and delivers a notification through real queues', { timeout: 60_000 }, async () => {
     const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
     try {
       const w = await taskWorld(t);
@@ -88,6 +88,15 @@ describe('pg-boss wiring', () => {
         { name: 'notifications.dead', policy: 'standard' },
         { name: 'notifications.deliver', policy: 'standard' },
         { name: 'notifications.fanout', policy: 'standard' },
+      ]);
+      // Retries are spread out (15 s doubling, capped at 240 s) so the 5 attempts outlast a short Expo/SMTP outage and
+      // each gap stays under the 5-minute deliver claim lease.
+      const retry = await ownerQuery<{ name: string; retry_limit: number; retry_backoff: boolean; retry_delay: number; retry_delay_max: number | null }>(
+        "select name, retry_limit, retry_backoff, retry_delay, retry_delay_max from pgboss.queue where name in ('notifications.fanout', 'notifications.deliver') order by name",
+      );
+      expect(retry.rows).toEqual([
+        { name: 'notifications.deliver', retry_limit: 5, retry_backoff: true, retry_delay: 15, retry_delay_max: 240 },
+        { name: 'notifications.fanout', retry_limit: 5, retry_backoff: true, retry_delay: 15, retry_delay_max: 240 },
       ]);
     } finally {
       await on.close();
