@@ -21,7 +21,8 @@ export function ProfileScreen() {
   const permission = usePushPermission(nativePush);
   const busy = useRef(false);
   const [isBusy, setBusy] = useState(false);
-  const [email, setEmail] = useState(s.status === 'authenticated' ? s.me.user.emailNotifications : true);
+  // Only the value being saved; otherwise the switch follows the session profile, which refreshes underneath this screen.
+  const [pending, setPending] = useState<boolean | null>(null);
   const saving = useRef(false);
   const [isSaving, setSaving] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -39,15 +40,15 @@ export function ProfileScreen() {
     saving.current = true;
     setSaving(true);
     setEmailError(null);
-    setEmail(next);
+    setPending(next);
     try {
       const saved = await api.preferences.update({ emailNotifications: next });
-      setEmail(saved.emailNotifications);
+      // The session now holds the server's answer, so dropping the override below keeps it; on failure it reverts.
       await session.patchUser({ emailNotifications: saved.emailNotifications });
     } catch (e) {
-      setEmail(!next);
       setEmailError(mobileErrorText(t, e));
     } finally {
+      setPending(null);
       saving.current = false;
       setSaving(false);
     }
@@ -141,7 +142,7 @@ export function ProfileScreen() {
           <Text style={styles.value}>{t('mobile.notifications.profile.email')}</Text>
           <Switch
             accessibilityLabel={t('mobile.notifications.profile.email')}
-            value={email}
+            value={pending ?? me.user.emailNotifications}
             disabled={!online || isSaving}
             onValueChange={(next) => void changeEmail(next)}
           />

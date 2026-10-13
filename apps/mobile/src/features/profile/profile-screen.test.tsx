@@ -4,6 +4,7 @@ import { Alert, type AlertButton, AppState } from 'react-native';
 import '@/lib/i18n';
 import type { FakePush, FakeTokens } from '@/notifications/testing/fakes';
 import { PUSH_TOKEN } from '@/notifications/testing/fakes';
+import { OfflineServicesProvider } from '@/offline/context';
 import { ME, OCC } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
@@ -47,7 +48,9 @@ beforeEach(() => {
   mockRemove.mockImplementation(async () => void mockEvents.push('remove'));
   mockUpdate.mockReset();
   mockPatchUser.mockReset();
-  mockPatchUser.mockResolvedValue(undefined);
+  mockPatchUser.mockImplementation(async (patch: Partial<typeof mockUser>) => {
+    mockUser = { ...mockUser, ...patch };
+  });
   mockUser = { fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true };
   native.pushTokenStore.value = null;
   native.nativePush.setBadge.mockReset();
@@ -253,16 +256,47 @@ describe('logout', () => {
 });
 
 describe('notification settings', () => {
-  it('turns email notifications off and keeps what the server answered', async () => {
+  it('keeps what the server answered, even when it differs from what was sent', async () => {
+    mockUser = { ...mockUser, emailNotifications: false };
     mockUpdate.mockResolvedValue({ emailNotifications: false });
     const t = await createTestServices({ online: true });
     await renderWithServices(t.services, <ProfileScreen />);
-    expect(emailSwitch().props.value).toBe(true);
-    expect(screen.getByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeTruthy();
-    await fireEvent(emailSwitch(), 'valueChange', false);
-    await eventually(async () => expect(mockPatchUser).toHaveBeenCalledWith({ emailNotifications: false }));
-    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: false });
     expect(emailSwitch().props.value).toBe(false);
+    expect(screen.getByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeTruthy();
+    await fireEvent(emailSwitch(), 'valueChange', true);
+    await eventually(async () => expect(mockPatchUser).toHaveBeenCalledWith({ emailNotifications: false }));
+    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: true });
+    await eventually(async () => expect(emailSwitch().props.disabled).toBe(false));
+    expect(emailSwitch().props.value).toBe(false);
+  });
+
+  it('follows the session profile when it changes underneath the screen', async () => {
+    const t = await createTestServices({ online: true });
+    const view = await renderWithServices(t.services, <ProfileScreen />);
+    expect(emailSwitch().props.value).toBe(true);
+    mockUser = { ...mockUser, emailNotifications: false };
+    await view.rerender(
+      <OfflineServicesProvider services={t.services}>
+        <ProfileScreen />
+      </OfflineServicesProvider>,
+    );
+    expect(emailSwitch().props.value).toBe(false);
+  });
+
+  it('disables the switch while saving and ignores a second change until it settles', async () => {
+    let resolve!: (v: { emailNotifications: boolean }) => void;
+    mockUpdate.mockReturnValue(new Promise((r) => (resolve = r)));
+    const t = await createTestServices({ online: true });
+    await renderWithServices(t.services, <ProfileScreen />);
+    await fireEvent(emailSwitch(), 'valueChange', false);
+    await eventually(async () => expect(emailSwitch().props.disabled).toBe(true));
+    expect(emailSwitch().props.value).toBe(false);
+    await fireEvent(emailSwitch(), 'valueChange', true);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    await act(async () => resolve({ emailNotifications: false }));
+    await eventually(async () => expect(emailSwitch().props.disabled).toBe(false));
+    expect(emailSwitch().props.value).toBe(false);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('puts the switch back and shows the error when saving fails', async () => {
