@@ -11,6 +11,7 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 jest.mock('@/lib/session', () => ({
   useSession: () => ({ status: 'authenticated', offline: false, me: { user: { fullName: 'Aysel Əliyeva' } } }),
 }));
+jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
 beforeEach(() => mockPush.mockClear());
 
@@ -34,6 +35,14 @@ async function world(extra: { version?: string } = {}): Promise<TestServices> {
 }
 
 describe('My checklists', () => {
+  it('shows the notification bell with the unread count next to the sync indicator', async () => {
+    const t = await world();
+    await t.services.setUnreadNotifications(2);
+    await renderWithServices(t.services, <HomeScreen />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Bildirişlər, 2 oxunmamış' }));
+    expect(mockPush).toHaveBeenCalledWith('/notifications');
+  });
+
   it('groups my checklists, marks overdue and claimed ones, and counts the tiles', async () => {
     const t = await world();
     const id = await t.services.store.start(OCC, ME);

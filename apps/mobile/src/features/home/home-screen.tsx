@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 import { Screen } from '@/components/screen';
 import { GROUP_KEYS, groupOccurrences, homeStats, type HomeStats } from '@/features/checklists/group-occurrences';
 import { OccurrenceCard } from '@/features/checklists/occurrence-card';
+import { NotificationBell } from '@/features/notifications/notification-bell';
 import { groupTasks, taskCounts } from '@/features/tasks/group-tasks';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { useSession } from '@/lib/session';
@@ -56,7 +57,10 @@ export function HomeScreen() {
     <Screen>
       <View style={styles.top}>
         <Text style={styles.greeting}>{t('mobile.home.greeting', { name: firstName })}</Text>
-        <SyncIndicator />
+        <View style={styles.tools}>
+          <NotificationBell />
+          <SyncIndicator />
+        </View>
       </View>
       {s.offline ? (
         <View style={styles.offline}>
@@ -114,6 +118,7 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   offline: { backgroundColor: '#FEF3C7', borderRadius: 10, padding: spacing.md },
   offlineText: { color: '#92400E' },
   greeting: { fontSize: 24, fontWeight: '700', color: colors.text, flexShrink: 1 },
