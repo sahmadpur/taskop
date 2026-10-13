@@ -17,5 +17,7 @@ export default {
     tenant: 'Təşkilat',
     session: 'Sessiya',
     task: 'Tapşırıq',
+    notification_rule: 'Bildiriş qaydası',
+    notification_message: 'Bildiriş mesajı',
   },
 } as const;
