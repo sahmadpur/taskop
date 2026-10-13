@@ -78,6 +78,20 @@
       "when": 1791792519903,
       "tag": "0010_tasks_security",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791874764932,
+      "tag": "0011_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791874765268,
+      "tag": "0012_notifications_security",
+      "breakpoints": true
     }
   ]
 }
