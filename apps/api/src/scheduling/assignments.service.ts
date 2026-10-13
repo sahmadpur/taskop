@@ -15,6 +15,7 @@ import { and, between, desc, eq, getTableColumns, ilike, inArray, lt, or, type S
 import { actorColumns } from '../checklists/actor';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
+import { DomainEvents } from '../common/domain-events';
 import { escapeLike } from '../common/sql';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
@@ -48,6 +49,7 @@ export class AssignmentsService {
     protected readonly rules: AssignmentRules,
     protected readonly writer: OccurrenceWriter,
     protected readonly queries: OccurrenceQueries,
+    protected readonly events: DomainEvents,
   ) {}
 
   async list(a: Actor, q: AssignmentListQueryDto): Promise<Page<AssignmentDto>> {
@@ -102,6 +104,7 @@ export class AssignmentsService {
     const id = row!.id;
     await tx.insert(assignmentAssignees).values(assigneeIds.map((userId) => ({ tenantId, assignmentId: id, userId })));
     await this.writer.materialize(id);
+    await this.events.emit('assignment.assignees_changed', { tenantId, assignmentId: id, addedUserIds: assigneeIds, actorUserId: actor.userId });
     const dto = await this.get(a, id);
     await this.audit.record({ action: 'assignment.created', entityType: 'assignment', entityId: id, after: auditView(dto) });
     return dto;
@@ -149,6 +152,9 @@ export class AssignmentsService {
     if (row.status === 'active') {
       if (scheduleChanged || timingChanged) await this.writer.regenerate(id, 'assignment_edited');
       else if (assigneesChanged) await this.writer.refreshSnapshots({ assignmentId: id });
+    }
+    if (addedIds.length) {
+      await this.events.emit('assignment.assignees_changed', { tenantId: row.tenantId, assignmentId: id, addedUserIds: addedIds, actorUserId: actorColumns(this.db).userId });
     }
     const after = await this.get(a, id);
     await this.audit.record({ action: 'assignment.updated', entityType: 'assignment', entityId: id, before: auditView(before), after: auditView(after) });
