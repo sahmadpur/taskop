@@ -1,3 +1,4 @@
+import { NOTIFICATION_TYPES, type NotificationType } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
 import type { AssignmentTarget, ManualTarget, OccurrenceTarget, ProblemTarget, TaskTarget } from './notification-targets';
 import { notificationLink, notificationMail, renderNotification } from './notification-templates';
@@ -56,6 +57,30 @@ describe('renderNotification', () => {
     expect(renderNotification('checklist.due_soon', { ...occurrence, timezone: 'Europe/Istanbul' }).body).toBe('Açılış yoxlaması — Filial 1. 09:00-dək tamamlayın.');
     // 23:30 UTC is already the next day in Baku.
     expect(renderNotification('task.overdue', { ...task, dueAt: new Date('2026-11-02T23:30:00Z') }).body).toBe('Soyuducunun qapısını təmir edin. Son vaxt 03.11.2026 03:30 idi.');
+  });
+});
+
+describe('every notification type', () => {
+  const targetFor = (type: NotificationType) => {
+    if (type === 'manual') return manual;
+    if (type === 'checklist.assigned') return assignment;
+    if (type.startsWith('checklist.')) return occurrence;
+    if (type.startsWith('problem.')) return problem;
+    return task;
+  };
+
+  it.each(NOTIFICATION_TYPES)('%s renders a title and a body', (type) => {
+    const rendered = renderNotification(type, targetFor(type));
+    expect(rendered.title.length).toBeGreaterThan(0);
+    expect(rendered.body.length).toBeGreaterThan(0);
+  });
+
+  it('names the type and the target kind when they do not fit', () => {
+    expect(() => renderNotification('task.completed', occurrence)).toThrow('Notification type task.completed cannot be rendered for a occurrence target');
+    expect(() => renderNotification('checklist.overdue', task)).toThrow('checklist.overdue cannot be rendered for a task target');
+    expect(() => renderNotification('problem.critical', assignment)).toThrow('problem.critical cannot be rendered for a assignment target');
+    expect(() => renderNotification('manual', problem)).toThrow('manual cannot be rendered for a problem target');
+    expect(() => renderNotification('checklist.assigned', manual)).toThrow('checklist.assigned cannot be rendered for a manual target');
   });
 });
 

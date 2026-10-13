@@ -34,44 +34,68 @@ const nowhere = { targetKind: 'none' as const, targetId: null, targetDate: null 
 const place = (o: OccurrenceTarget) => `${o.checklistName} — ${o.siteName}`;
 const problemBody = (p: ProblemTarget) => `${p.occurrence.siteName}, ${p.occurrence.checklistName}${p.note ? `: ${cut(p.note)}` : ''}`;
 
-const OCCURRENCE_TEXTS: Record<'checklist.available' | 'checklist.due_soon' | 'checklist.overdue' | 'checklist.missed', [string, (o: OccurrenceTarget) => string]> = {
+type OccurrenceType = Exclude<Extract<NotificationType, `checklist.${string}`>, 'checklist.assigned'>;
+type ProblemType = Extract<NotificationType, `problem.${string}`>;
+type TaskType = Extract<NotificationType, `task.${string}`>;
+
+// Each table is total over its slice of NotificationType: a new type that fits a slice fails typecheck until it has a text.
+const OCCURRENCE_TEXTS = {
   'checklist.available': ['Checklist başladı', (o) => `${place(o)}. Son vaxt: ${time(o.dueAt, o.timezone)}.`],
   'checklist.due_soon': ['Checklistin vaxtı yaxınlaşır', (o) => `${place(o)}. ${time(o.dueAt, o.timezone)}-dək tamamlayın.`],
   'checklist.overdue': ['Checklist gecikir', (o) => `${place(o)}. Son vaxt ${time(o.dueAt, o.timezone)} idi (${day(o.localDate)}).`],
   'checklist.missed': ['Checklist icra olunmadı', (o) => `${place(o)}, ${day(o.localDate)}.`],
-};
+} satisfies Record<OccurrenceType, [string, (o: OccurrenceTarget) => string]>;
 
-const TASK_TITLES: Record<'task.assigned' | 'task.submitted' | 'task.rejected' | 'task.completed' | 'task.overdue' | 'task.cancelled', string> = {
+const PROBLEM_TITLES = {
+  'problem.recorded': 'Yeni problem',
+  'problem.critical': 'Kritik problem!',
+} satisfies Record<ProblemType, string>;
+
+const TASK_TITLES = {
   'task.assigned': 'Yeni tapşırıq',
   'task.submitted': 'Tapşırıq yoxlamaya göndərildi',
   'task.rejected': 'Tapşırıq geri qaytarıldı',
   'task.completed': 'Tapşırıq tamamlandı',
   'task.overdue': 'Tapşırıq gecikir',
   'task.cancelled': 'Tapşırıq ləğv edildi',
-};
+} satisfies Record<TaskType, string>;
 
-const taskBody = (type: keyof typeof TASK_TITLES, t: TaskTarget) => {
+const taskBody = (type: NotificationType, t: TaskTarget) => {
   if (type === 'task.assigned' && t.dueAt) return `${t.title}. Son vaxt: ${dayTime(t.dueAt, t.timezone)}.`;
   if (type === 'task.overdue' && t.dueAt) return `${t.title}. Son vaxt ${dayTime(t.dueAt, t.timezone)} idi.`;
   return t.title;
 };
 
+/** Looks a type up in a table that covers only some types; undefined when the type does not belong to it. */
+const entry = <V>(table: Partial<Record<NotificationType, V>>, type: NotificationType): V | undefined =>
+  Object.hasOwn(table, type) ? table[type] : undefined;
+
+const mismatch = (type: NotificationType, target: NotificationTarget) =>
+  new Error(`Notification type ${type} cannot be rendered for a ${target.kind} target`);
+
 /** Spec §6.1 step 4: the Azerbaijani title and body, rendered once at fan-out. */
 export function renderNotification(type: NotificationType, target: NotificationTarget): RenderedNotification {
   switch (target.kind) {
     case 'manual':
+      if (type !== 'manual') throw mismatch(type, target);
       return { title: target.title, body: target.body, ...nowhere };
     case 'assignment':
+      if (type !== 'checklist.assigned') throw mismatch(type, target);
       return { title: 'Yeni checklist təyin edildi', body: `${target.checklistName} — ${target.siteName}`, ...nowhere };
     case 'occurrence': {
-      const [title, body] = OCCURRENCE_TEXTS[type as keyof typeof OCCURRENCE_TEXTS];
-      return { title, body: body(target), ...onOccurrence(target) };
+      const texts = entry<[string, (o: OccurrenceTarget) => string]>(OCCURRENCE_TEXTS, type);
+      if (!texts) throw mismatch(type, target);
+      return { title: texts[0], body: texts[1](target), ...onOccurrence(target) };
     }
-    case 'problem':
-      return { title: type === 'problem.critical' ? 'Kritik problem!' : 'Yeni problem', body: problemBody(target), ...onOccurrence(target.occurrence) };
+    case 'problem': {
+      const title = entry<string>(PROBLEM_TITLES, type);
+      if (title === undefined) throw mismatch(type, target);
+      return { title, body: problemBody(target), ...onOccurrence(target.occurrence) };
+    }
     case 'task': {
-      const t = type as keyof typeof TASK_TITLES;
-      return { title: TASK_TITLES[t], body: taskBody(t, target), ...onTask(target) };
+      const title = entry<string>(TASK_TITLES, type);
+      if (title === undefined) throw mismatch(type, target);
+      return { title, body: taskBody(type, target), ...onTask(target) };
     }
     default: {
       const unhandled: never = target;
