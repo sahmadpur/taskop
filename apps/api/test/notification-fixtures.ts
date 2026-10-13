@@ -55,13 +55,13 @@ export async function asApp<T>(tenantId: string, fn: (c: pg.PoolClient) => Promi
   }
 }
 
-/** A staff user with a built-in role, linked to `siteIds`, logged in on the web. */
-export async function staffAt(t: TestApp, tenantId: string, owner: Api, roleKey: SystemRoleKey, siteIds: string[], fullName = `Staff ${roleKey}`) {
+/** A staff user with a built-in role, linked to `siteIds`, logged in (on the web unless `client` says otherwise). */
+export async function staffAt(t: TestApp, tenantId: string, owner: Api, roleKey: SystemRoleKey, siteIds: string[], fullName = `Staff ${roleKey}`, client = 'web') {
   const u = await createUserDirect(t, tenantId, { kind: 'staff', roleKey, fullName, emailVerified: true });
   if (siteIds.length) {
     const res = await owner.put(`/api/v1/users/${u.id}/sites`, { siteIds });
     if (res.status !== 200) throw new Error(`linking sites failed: ${JSON.stringify(res.body)}`);
   }
-  const login = await loginStaff(t, u.email!, u.secret, 'web');
+  const login = await loginStaff(t, u.email!, u.secret, client);
   return { id: u.id, email: u.email!, api: as(t, login.accessToken) };
 }
