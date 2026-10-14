@@ -6,8 +6,10 @@ import {
   newItem,
   newRule,
   newSection,
+  type NotificationItem,
   type NumberItem,
   type PhotoItem,
+  type PushData,
   type SyncChecklistVersion,
   type SyncOccurrence,
   type SyncResponse,
@@ -140,6 +142,7 @@ export const syncResponse = (over: Partial<SyncResponse> = {}): SyncResponse => 
   executions: [],
   tasks: [],
   removedTaskIds: [],
+  unreadNotifications: 0,
   ...over,
 });
 
@@ -198,5 +201,36 @@ export const syncTask = (over: Partial<SyncTask> = {}): SyncTask => ({
   media: [],
   submissions: [],
   problem: null,
+  ...over,
+});
+
+export const NOTIFICATION = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ea0';
+export const NOTIFICATION2 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ea1';
+export const NOTIFICATION3 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ea2';
+export const TENANT = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ea3';
+
+/** The `data` of a push to me about OCC (Part 1 `PushData`). */
+export const pushData = (over: Partial<PushData> = {}): PushData => ({
+  notificationId: NOTIFICATION,
+  userId: ME,
+  tenantId: TENANT,
+  type: 'checklist.available',
+  targetKind: 'occurrence',
+  targetId: OCC,
+  targetDate: '2026-11-02',
+  ...over,
+});
+
+/** An unread inbox row about OCC (Part 1 `NotificationItem`). */
+export const notificationItem = (over: Partial<NotificationItem> = {}): NotificationItem => ({
+  id: NOTIFICATION,
+  type: 'checklist.available',
+  title: 'Açılış yoxlaması açıldı',
+  body: 'Bakı filialı 1 · 08:00–11:00',
+  targetKind: 'occurrence',
+  targetId: OCC,
+  targetDate: '2026-11-02',
+  createdAt: T.starts,
+  readAt: null,
   ...over,
 });

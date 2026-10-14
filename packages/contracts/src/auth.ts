@@ -65,6 +65,8 @@ export const meSchema = z.object({
     username: z.string().nullable(),
     emailVerified: z.boolean(),
     credentialKind: credentialKindSchema.nullable(),
+    /** B-12: the only per-user notification switch. */
+    emailNotifications: z.boolean(),
   }),
   role: z.object({ id: idSchema, name: z.string(), systemKey: systemRoleKeySchema.nullable(), dataScope: dataScopeSchema }),
   permissions: z.array(permissionKeySchema),

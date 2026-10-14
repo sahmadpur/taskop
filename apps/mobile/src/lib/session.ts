@@ -29,11 +29,19 @@ const tokenStore: TokenStore = {
 
 const cacheMe = (me: Me) => secureStorage.set(STORAGE_KEYS.me, JSON.stringify(me));
 
+/** A profile cached before sub-project 6 has no emailNotifications; the server's default (true) stands in until the next refresh. */
+function withPreferenceDefaults(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const user = (raw as { user?: unknown }).user;
+  if (typeof user !== 'object' || user === null || 'emailNotifications' in user) return raw;
+  return { ...raw, user: { ...user, emailNotifications: true } };
+}
+
 async function loadCachedMe(): Promise<Me | null> {
   const raw = await secureStorage.get(STORAGE_KEYS.me);
   if (!raw) return null;
   try {
-    const parsed = meSchema.safeParse(JSON.parse(raw));
+    const parsed = meSchema.safeParse(withPreferenceDefaults(JSON.parse(raw)));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -82,6 +90,16 @@ export const session = {
     const me = await api.me();
     await cacheMe(me);
     set({ status: 'authenticated', me, offline: false });
+  },
+  /**
+   * Applies a change the server confirmed (PATCH /me/preferences) to the signed-in profile and its offline copy. `userId` is
+   * who asked: the request can outlive that session, and the answer must not land on whoever signed in since.
+   */
+  async patchUser(patch: Partial<Me['user']>, userId: string): Promise<void> {
+    if (state.status !== 'authenticated' || state.me.user.id !== userId) return;
+    const me: Me = { ...state.me, user: { ...state.me.user, ...patch } };
+    set({ ...state, me });
+    await cacheMe(me).catch((e: unknown) => console.warn('[session] Could not cache the profile', e instanceof Error ? e.message : 'unknown error'));
   },
   async signOut(): Promise<void> {
     try {

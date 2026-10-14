@@ -7,8 +7,18 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { session, useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
+import { configureNotifications } from '@/notifications/native';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+
+// Spec §7.1: the foreground handler and Android's channel exist before any notification can arrive.
+configureNotifications(
+  () => {
+    const s = session.get();
+    return s.status === 'authenticated' ? s.me.user.id : null;
+  },
+  session.subscribe,
+);
 
 export default function RootLayout() {
   const s = useSession();

@@ -12,6 +12,7 @@ export const PERMISSION_GROUPS = [
   { group: 'assignments', keys: ['assignments.view', 'assignments.manage', 'assignments.extended_window'] },
   { group: 'shifts', keys: ['shifts.view', 'shifts.manage'] },
   { group: 'tasks', keys: ['tasks.view', 'tasks.manage'] },
+  { group: 'notifications', keys: ['notifications.manage', 'notifications.send'] },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_GROUPS)[number]['keys'][number];
@@ -40,7 +41,7 @@ export const SYSTEM_ROLE_DEFAULTS: Record<SystemRoleKey, SystemRoleDefault> = {
   manager: {
     name: 'Manager',
     dataScope: 'site_subtree',
-    permissions: ['sites.view', 'teams.view', 'users.view', 'checklists.view', 'checklists.manage', 'assignments.view', 'assignments.manage', 'shifts.view', 'shifts.manage', 'tasks.view', 'tasks.manage'],
+    permissions: ['sites.view', 'teams.view', 'users.view', 'checklists.view', 'checklists.manage', 'assignments.view', 'assignments.manage', 'shifts.view', 'shifts.manage', 'tasks.view', 'tasks.manage', 'notifications.send'],
     editable: true,
   },
   worker: { name: 'Worker', dataScope: 'own', permissions: [], editable: true },

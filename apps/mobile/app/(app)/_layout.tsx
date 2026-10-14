@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
+import { NotificationsBridge } from '@/notifications/notifications-bridge';
 import { OfflineProvider } from '@/offline/offline-provider';
 
 /** Screens reached from inside the app, not from the tab bar. */
@@ -14,6 +15,7 @@ export default function AppLayout() {
   if (s.status !== 'authenticated') return null;
   return (
     <OfflineProvider userId={s.me.user.id} timeZone={s.me.tenant.timezone}>
+      <NotificationsBridge />
       <Tabs backBehavior="history" screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary }}>
         <Tabs.Screen name="index" options={{ title: t('mobile.tabs.home'), tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} /> }} />
         <Tabs.Screen name="tasks" options={{ title: t('mobile.tabs.tasks'), tabBarIcon: ({ color, size }) => <Ionicons name="clipboard-outline" color={color} size={size} /> }} />
@@ -25,6 +27,7 @@ export default function AppLayout() {
         <Tabs.Screen name="task/[id]" options={HIDDEN} />
         <Tabs.Screen name="task/new" options={HIDDEN} />
         <Tabs.Screen name="review/[id]" options={HIDDEN} />
+        <Tabs.Screen name="notifications" options={HIDDEN} />
       </Tabs>
     </OfflineProvider>
   );

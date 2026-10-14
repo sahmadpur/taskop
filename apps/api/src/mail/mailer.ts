@@ -19,7 +19,13 @@ export class SmtpMailer implements Mailer {
   private readonly transport: Transporter;
 
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
-    this.transport = nodemailer.createTransport(config.SMTP_URL);
+    this.transport = nodemailer.createTransport({
+      url: config.SMTP_URL,
+      // Well under the 5-minute notification claim lease, so a hung SMTP server cannot outlive the claim and be re-sent.
+      connectionTimeout: 30_000,
+      greetingTimeout: 30_000,
+      socketTimeout: 60_000,
+    });
   }
 
   async send(message: MailMessage): Promise<void> {

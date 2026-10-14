@@ -3,7 +3,9 @@ import {
   ALL_PERMISSIONS,
   CANCEL_REASON_CODES,
   CLAIM_REJECTION_REASONS,
+  DELIVERY_STATUSES,
   describeSchedule,
+  DIRECT_AUDIENCES,
   EXECUTION_ISSUE_CODES,
   EVIDENCE_LEVELS,
   EXECUTION_STATES,
@@ -13,6 +15,9 @@ import {
   MEDIA_KINDS,
   MEDIA_SOURCES,
   MISSING_KINDS,
+  NOTIFICATION_GROUPS,
+  NOTIFICATION_ISSUE_CODES,
+  NOTIFICATION_TYPES,
   OCCURRENCE_STATUSES,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
@@ -237,5 +242,119 @@ describe('task web translations', () => {
     // Part 1's keys are untouched.
     expect(az.tasks.flags.overdue).toBe('Gecikib');
     expect(az.tasks.statuses.awaiting_review).toBe('Yoxlamada');
+  });
+});
+
+describe('notification translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('labels every type, group, audience, channel, delivery status and issue', () => {
+    for (const ty of NOTIFICATION_TYPES) expect(az.notifications.types[ty], ty).toBeTypeOf('string');
+    for (const g of NOTIFICATION_GROUPS) expect(az.notifications.groups[g], g).toBeTypeOf('string');
+    for (const a of DIRECT_AUDIENCES) expect(az.notifications.audiences[a], a).toBeTypeOf('string');
+    for (const c of ['inApp', 'push', 'email'] as const) expect(az.notifications.channels[c], c).toBeTypeOf('string');
+    for (const s of DELIVERY_STATUSES) expect(az.notifications.deliveryStatuses[s], s).toBeTypeOf('string');
+    for (const code of NOTIFICATION_ISSUE_CODES) expect(lookup(code), code).toBeTypeOf('string');
+  });
+
+  it('has no labels for types or statuses that do not exist', () => {
+    expect(Object.keys(az.notifications.types).sort()).toEqual([...NOTIFICATION_TYPES].sort());
+    expect(Object.keys(az.notifications.deliveryStatuses).sort()).toEqual([...DELIVERY_STATUSES].sort());
+    expect(Object.keys(az.notifications.issues).sort()).toEqual(NOTIFICATION_ISSUE_CODES.map((c) => c.split('.').pop()).sort());
+  });
+
+  it('keeps the interpolation placeholder in the lead-time label', () => {
+    expect(az.notifications.leadMinutes).toContain('{{count}}');
+    expect(az.notifications.leadMinutes.replace('{{count}}', '15')).toBe('15 dəq əvvəl');
+  });
+
+  it('uses the agreed wording and registers the nav, audit and role labels', () => {
+    expect(az.notifications.types['checklist.due_soon']).toBe('Checklistin vaxtı yaxınlaşır');
+    expect(az.notifications.types.manual).toBe('Admin mesajı');
+    expect(az.notifications.groups).toEqual({ checklist: 'Checklistlər', problem: 'Problemlər', task: 'Tapşırıqlar' });
+    expect(az.notifications.audiences).toEqual({ assignees: 'İcraçılar', creator: 'Yaradan' });
+    expect(az.notifications.channels).toEqual({ inApp: 'Tətbiqdə', push: 'Push', email: 'E-poçt' });
+    expect(az.notifications.title).toBe('Bildirişlər');
+    expect(az.notifications.markAllRead).toBe('Hamısını oxunmuş et');
+    expect(az.notifications.empty).toBe('Bildiriş yoxdur');
+    expect(az.nav.notifications).toBe('Bildirişlər');
+    expect(az.nav.messages).toBe('Mesajlar');
+    expect(az.roles.groups.notifications).toBe('Bildirişlər');
+    expect(az.roles.keys.notifications_manage).toBeTypeOf('string');
+    expect(az.roles.keys.notifications_send).toBeTypeOf('string');
+    expect(az.audit.entityTypes.notification_rule).toBe('Bildiriş qaydası');
+    expect(az.audit.entityTypes.notification_message).toBe('Bildiriş mesajı');
+  });
+});
+
+describe('mobile notification translations', () => {
+  it('labels the bell, the inbox and the profile settings', () => {
+    expect(az.mobile.notifications.bell.replace('{{count}}', '3')).toBe('Bildirişlər, 3 oxunmamış');
+    for (const k of ['channel', 'unread', 'online'] as const) expect(az.mobile.notifications[k], k).toBeTypeOf('string');
+    for (const k of ['email', 'noEmail', 'online', 'push', 'deniedHint', 'openSettings'] as const) {
+      expect(az.mobile.notifications.profile[k], k).toBeTypeOf('string');
+    }
+    expect(Object.keys(az.mobile.notifications.profile.pushStates).sort()).toEqual(['denied', 'granted', 'unavailable', 'undetermined']);
+  });
+
+  it('shares the inbox wording with the web (Part 1)', () => {
+    expect(az.notifications.title).toBe('Bildirişlər');
+    expect(az.notifications.markAllRead).toBe('Hamısını oxunmuş et');
+    expect(az.notifications.empty).toBe('Bildiriş yoxdur');
+  });
+});
+
+describe('notification web translations', () => {
+  const n = () => az.notifications;
+
+  it('has the strings the bell, the inbox, the rules tab, the messages page and the preferences dialog use', () => {
+    for (const k of ['unread', 'viewAll'] as const) expect(n().bell[k], `bell.${k}`).toBeTypeOf('string');
+    for (const k of ['unread', 'unreadOnly', 'emptyUnread', 'more'] as const) expect(n().inbox[k], `inbox.${k}`).toBeTypeOf('string');
+    for (const k of ['intro', 'control', 'customized', 'reset', 'resetDone', 'noRoles', 'rolesCount', 'rolesUnavailable'] as const) {
+      expect(n().rules[k], `rules.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['type', 'enabled', 'roles', 'leadTime'] as const) expect(n().rules.columns[k], `rules.columns.${k}`).toBeTypeOf('string');
+    for (const k of [
+      'compose', 'recipients', 'recipientsPlaceholder', 'people', 'teams', 'sites', 'members', 'chosen', 'remove', 'targetLimit', 'refine', 'sitesCapped',
+      'titleLabel', 'bodyLabel', 'counter', 'email', 'send', 'confirmTitle', 'confirm', 'sent', 'history', 'emptyHistory', 'more',
+      'processing', 'notRequested', 'detailTitle', 'sentBy', 'targets', 'totals', 'recipient', 'notRead', 'devices', 'noDevice',
+      'noRecipientsYet',
+    ] as const) {
+      expect(n().messages[k], `messages.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['sentAt', 'sender', 'title', 'recipients', 'read', 'push', 'email'] as const) {
+      expect(n().messages.columns[k], `messages.columns.${k}`).toBeTypeOf('string');
+    }
+    for (const k of ['menu', 'title', 'description', 'email', 'noEmail', 'saved'] as const) {
+      expect(n().preferences[k], `preferences.${k}`).toBeTypeOf('string');
+    }
+  });
+
+  it('keeps the interpolation placeholders the components pass', () => {
+    expect(n().bell.unread).toContain('{{count}}');
+    expect(n().rules.control).toContain('{{type}}');
+    expect(n().rules.control).toContain('{{control}}');
+    expect(n().rules.rolesCount).toContain('{{count}}');
+    expect(n().messages.members).toContain('{{count}}');
+    expect(n().messages.remove).toContain('{{name}}');
+    expect(n().messages.targetLimit).toContain('{{count}}');
+    expect(n().messages.sitesCapped).toContain('{{count}}');
+    expect(n().messages.counter).toContain('{{count}}');
+    expect(n().messages.counter).toContain('{{max}}');
+    expect(n().messages.confirm).toContain('{{count}}');
+    expect(n().messages.sentBy).toContain('{{name}}');
+    expect(n().messages.sentBy).toContain('{{time}}');
+    expect(n().messages.totals).toContain('{{recipients}}');
+    expect(n().messages.totals).toContain('{{read}}');
+    expect(n().messages.devices).toContain('{{count}}');
+  });
+
+  it('leaves the existing notification and nav keys untouched', () => {
+    expect(n().title).toBe('Bildirişlər');
+    expect(n().markAllRead).toBe('Hamısını oxunmuş et');
+    expect(n().empty).toBe('Bildiriş yoxdur');
+    expect(n().deliveryStatuses.delivered).toBe('Çatdırıldı');
+    expect(n().deliveryStatuses.failed).toBe('Alınmadı');
+    expect(az.nav.messages).toBe('Mesajlar');
   });
 });
