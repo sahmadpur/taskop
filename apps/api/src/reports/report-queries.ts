@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { COMPLETED_STATUSES, completionPercent, IN_PROGRESS_STATUSES, periodDays, type ReportSummary, roundOne, type RunCounts } from '@taskop/contracts';
+import { COMPLETED_STATUSES, completionPercent, type EmployeeReportRow, IN_PROGRESS_STATUSES, periodDays, type ReportSummary, roundOne, type RunCounts, type SiteReportRow } from '@taskop/contracts';
+import { az } from '@taskop/i18n';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { DbService } from '../db/db.service';
@@ -132,5 +133,53 @@ export class ReportQueries {
         return { date, due: d?.due ?? 0, completed: d?.completed ?? 0, completionPercent: d ? completionPercent(d.completed, d.due) : null };
       }),
     };
+  }
+
+  /** Spec §5.3: one row per site with a planned run, in tree order; `path` = ancestor names, root first. */
+  async sites(f: ResolvedFilters, scope: SQL | undefined): Promise<SiteReportRow[]> {
+    const rows = await this.db.tx().execute<CountRow & { site_id: string; name: string; active: boolean; path: string[] }>(sql`
+      with ${runsCte(f, scope)}
+      select s.id as site_id, s.name, s.active,
+             array(select a.name from sites a where a.path @> s.path and a.id <> s.id order by nlevel(a.path)) as path,
+             ${countColumns(f.now)}
+        from runs r
+        join sites s on s.id = r.site_id
+       group by s.id
+      having count(*) filter (where r.status <> 'cancelled') > 0
+       order by s.path`);
+    return rows.rows.map((r) => ({ siteId: r.site_id, name: r.name, path: r.path, active: r.active, ...toCounts(r), ...measuresOf(r) }));
+  }
+
+  /**
+   * Spec §3.3: an executed run counts for its executor only; an unexecuted run for each assignee; one without assignees
+   * for the Unassigned row (user_id null, last). Cancelled runs count for nobody. Executors' scores only.
+   */
+  async employees(f: ResolvedFilters, scope: SQL | undefined): Promise<EmployeeReportRow[]> {
+    const rows = await this.db.tx().execute<CountRow & { user_id: string | null; full_name: string | null; status: string | null }>(sql`
+      with ${runsCte(f, scope)},
+      attributed as (
+        select r.*, r.executor_user_id as user_id from runs r
+         where r.execution_id is not null and r.status <> 'cancelled'
+        union all
+        select r.*, oa.user_id from runs r join occurrence_assignees oa on oa.occurrence_id = r.id
+         where r.execution_id is null and r.status <> 'cancelled'
+        union all
+        select r.*, null::uuid from runs r
+         where r.execution_id is null and r.status <> 'cancelled'
+           and not exists (select 1 from occurrence_assignees oa where oa.occurrence_id = r.id)
+      )
+      select r.user_id, u.full_name, u.status::text as status, ${countColumns(f.now)}
+        from attributed r
+        left join users u on u.id = r.user_id
+       where ${f.userId ? sql`r.user_id = ${f.userId}` : sql`true`}
+       group by r.user_id, u.full_name, u.status
+       order by r.user_id is null, u.full_name, r.user_id`);
+    return rows.rows.map((r) => ({
+      userId: r.user_id,
+      name: r.user_id ? (r.full_name ?? '') : az.reports.employees.unassigned,
+      active: r.user_id ? r.status === 'active' : true,
+      ...toCounts(r),
+      ...measuresOf(r),
+    }));
   }
 }

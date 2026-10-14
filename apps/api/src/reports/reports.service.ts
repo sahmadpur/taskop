@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { ReportFilters, ReportSummary } from '@taskop/contracts';
+import type { EmployeeReportRow, ReportFilters, ReportSummary, SiteReportRow } from '@taskop/contracts';
 import { sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { pgErrorOf } from '../common/pg-errors';
@@ -41,5 +41,13 @@ export class ReportsService {
 
   summary(p: Principal, q: ReportFilters): Promise<ReportSummary> {
     return this.guarded(q, (f) => this.queries.summary(f, this.scheduling.occurrences(p)));
+  }
+
+  sites(p: Principal, q: ReportFilters): Promise<SiteReportRow[]> {
+    return this.guarded(q, (f) => this.queries.sites(f, this.scheduling.occurrences(p)));
+  }
+
+  employees(p: Principal, q: ReportFilters): Promise<EmployeeReportRow[]> {
+    return this.guarded(q, (f) => this.queries.employees(f, this.scheduling.occurrences(p)));
   }
 }

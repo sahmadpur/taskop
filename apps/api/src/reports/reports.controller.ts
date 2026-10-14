@@ -1,9 +1,9 @@
 import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ReportSummary } from '@taskop/contracts';
+import type { EmployeeReportRow, ReportSummary, SiteReportRow } from '@taskop/contracts';
 import { CurrentPrincipal, RequirePermission } from '../common/decorators';
 import type { Principal } from '../common/request';
-import { ReportFiltersDto, ReportSummaryResponse } from './dto';
+import { EmployeeReportRowResponse, ReportFiltersDto, ReportSummaryResponse, SiteReportRowResponse } from './dto';
 import { ReportsService } from './reports.service';
 
 /** Sub-project 7 spec §5.3–§5.4. Every number follows the caller's data scope. */
@@ -18,5 +18,19 @@ export class ReportsController {
   @ApiOkResponse({ type: ReportSummaryResponse })
   summary(@CurrentPrincipal() p: Principal, @Query() q: ReportFiltersDto): Promise<ReportSummary> {
     return this.reports.summary(p, q);
+  }
+
+  @Get('sites')
+  @RequirePermission('reports.view')
+  @ApiOkResponse({ type: SiteReportRowResponse, isArray: true })
+  sites(@CurrentPrincipal() p: Principal, @Query() q: ReportFiltersDto): Promise<SiteReportRow[]> {
+    return this.reports.sites(p, q);
+  }
+
+  @Get('employees')
+  @RequirePermission('reports.view')
+  @ApiOkResponse({ type: EmployeeReportRowResponse, isArray: true })
+  employees(@CurrentPrincipal() p: Principal, @Query() q: ReportFiltersDto): Promise<EmployeeReportRow[]> {
+    return this.reports.employees(p, q);
   }
 }

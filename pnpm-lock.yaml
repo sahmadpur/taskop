@@ -215,6 +215,9 @@ importers:
       '@taskop/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@taskop/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
