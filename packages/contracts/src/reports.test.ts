@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   employeeReportRowSchema,
+  ERROR_HTTP_STATUS,
+  errorBodySchema,
+  PERMISSION_GROUPS,
+  REPORT_AUDIT_ACTIONS,
+  SYSTEM_ROLE_DEFAULTS,
   REPORT_CONTENT_TYPES,
   REPORT_EXPORT_KINDS,
   REPORT_FORMATS,
@@ -122,5 +127,27 @@ describe('report responses', () => {
       nextCursor: ID,
     };
     expect(reportTasksSchema.parse(tasks)).toEqual(tasks);
+  });
+});
+
+describe('report errors, permissions and audit', () => {
+  it('adds the three report error codes with their statuses and the row cap details', () => {
+    expect([ERROR_HTTP_STATUS.REPORT_RANGE_TOO_LONG, ERROR_HTTP_STATUS.REPORT_TOO_LARGE, ERROR_HTTP_STATUS.REPORT_TIMEOUT]).toEqual([400, 422, 503]);
+    const body = errorBodySchema.parse({
+      error: { code: 'REPORT_TOO_LARGE', messageKey: 'errors.REPORT_TOO_LARGE', fields: null, retryAfterSeconds: null, requestId: 'r1', rows: 12000, limit: 10000 },
+    });
+    expect(body.error).toMatchObject({ rows: 12000, limit: 10000 });
+  });
+
+  it('adds the reports permissions last, for Manager and Auditor by default', () => {
+    expect(PERMISSION_GROUPS.at(-1)).toEqual({ group: 'reports', keys: ['reports.view', 'reports.export'] });
+    for (const role of ['owner', 'admin', 'manager', 'auditor'] as const) {
+      expect(SYSTEM_ROLE_DEFAULTS[role].permissions, role).toEqual(expect.arrayContaining(['reports.view', 'reports.export']));
+    }
+    expect(SYSTEM_ROLE_DEFAULTS.worker.permissions).toEqual([]);
+  });
+
+  it('lists the audited report action', () => {
+    expect(REPORT_AUDIT_ACTIONS).toEqual(['reports.exported']);
   });
 });

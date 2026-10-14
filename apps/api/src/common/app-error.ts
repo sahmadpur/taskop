@@ -7,6 +7,9 @@ export interface AppErrorDetails {
   userIds?: string[];
   /** REQUIREMENTS_UNMET: what still blocks completion. */
   missing?: Missing[];
+  /** REPORT_TOO_LARGE: the rows the export would have, and the cap (SP7 spec §5.4). */
+  rows?: number;
+  limit?: number;
 }
 
 export class AppError extends Error {
