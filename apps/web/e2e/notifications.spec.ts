@@ -87,8 +87,9 @@ test('an admin changes the task.assigned rule and messages a team; the member se
   expect(taskNote).toMatchObject({ targetKind: 'task', targetId: taskId, readAt: null });
   expect(messageNote).toMatchObject({ targetKind: 'none', targetId: null, readAt: null });
 
-  // The owner sees who got the message: delivered in-app, unread, no phone registered.
-  await page.reload();
+  // The owner sees who got the message: the history polls while it fans out, then delivered in-app, unread, no phone.
+  await expect(historyRow.getByRole('cell').nth(3)).toHaveText('1', { timeout: 10_000 });
+  await expect(historyRow.getByRole('cell').nth(4)).toHaveText('0');
   await historyRow.getByRole('link', { name: 'Sabah iclas var' }).click();
   const detail = page.getByRole('dialog', { name: 'Sabah iclas var' });
   await expect(detail).toContainText('Alıcılar: 1 · Oxunub: 0');
