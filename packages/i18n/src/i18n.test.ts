@@ -395,3 +395,25 @@ describe('report translations', () => {
     expect(az.reports.pdf.page).toBe('Səhifə {{page}} / {{pages}}');
   });
 });
+
+describe('mobile team translations', () => {
+  it('labels the Team tab, its periods, its offline state, its rows and the run screen', () => {
+    expect(az.mobile.tabs.team).toBe('Komanda');
+    expect(az.mobile.team.title).toBe('Komanda');
+    expect(az.mobile.team.offline).toBe('Komandanı görmək üçün internetə qoşulun');
+    expect(az.mobile.team.periods).toEqual({ today: 'Bu gün', last_7: '7 gün', last_30: '30 gün' });
+    for (const p of Object.keys(az.mobile.team.periods)) expect(PERIOD_PRESETS, p).toContain(p);
+    expect(az.mobile.team.due.replace('{{time}}', '10:00')).toBe('Son vaxt: 10:00');
+    expect(az.mobile.team.problems.replace('{{count}}', '2')).toBe('Problem: 2');
+    expect(az.mobile.team.critical.replace('{{count}}', '1')).toBe('Kritik: 1');
+    expect(az.mobile.team.run.notExecuted).toBe('Hələ icra edilməyib');
+    for (const k of ['title', 'answers', 'cancelReason'] as const) expect(az.mobile.team.run[k], k).toBeTypeOf('string');
+  });
+
+  it('shares the report wording with the web (Part 1)', () => {
+    expect(az.reports.notCompleted).toBe('Tamamlanmayıb');
+    expect(az.reports.buckets).toMatchObject({ all: 'Hamısı', overdue: 'Gecikmiş', partial: 'Yarımçıq', missed: 'Buraxılmış', problems: 'Problemli' });
+    expect(az.reports.measures.completionPercent).toBe('Tamamlanma faizi');
+    expect(az.errors.REPORT_TIMEOUT).toBeTypeOf('string');
+  });
+});

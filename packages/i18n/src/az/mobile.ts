@@ -1,5 +1,5 @@
 export default {
-  tabs: { home: 'Əsas', tasks: 'Tapşırıqlar', profile: 'Profil' },
+  tabs: { home: 'Əsas', tasks: 'Tapşırıqlar', team: 'Komanda', profile: 'Profil' },
   login: {
     title: 'Daxil ol',
     worker: 'İşçi',
@@ -240,6 +240,21 @@ export default {
       pushStates: { granted: 'Açıqdır', denied: 'Bağlıdır', undetermined: 'Hələ soruşulmayıb', unavailable: 'Bu cihazda dəstəklənmir' },
       deniedHint: 'Push bildirişlərini telefonun ayarlarından açın.',
       openSettings: 'Ayarları aç',
+    },
+  },
+  team: {
+    title: 'Komanda',
+    offline: 'Komandanı görmək üçün internetə qoşulun',
+    /** The header's period chips (spec §7.1), keyed by Part 1's period presets. */
+    periods: { today: 'Bu gün', last_7: '7 gün', last_30: '30 gün' },
+    due: 'Son vaxt: {{time}}',
+    problems: 'Problem: {{count}}',
+    critical: 'Kritik: {{count}}',
+    run: {
+      title: 'İcra',
+      answers: 'Cavablar',
+      notExecuted: 'Hələ icra edilməyib',
+      cancelReason: 'Ləğv səbəbi',
     },
   },
 } as const;
