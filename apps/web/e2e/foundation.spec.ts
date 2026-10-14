@@ -13,7 +13,7 @@ test('owner signs up, creates a site and a worker, and finds the worker after lo
   await page.getByLabel('E-poçt', { exact: true }).fill(email);
   await page.getByLabel('Şifrə', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Qeydiyyatdan keç' }).click();
-  await expect(page.getByRole('heading', { name: 'Xoş gəlmisiniz, Elvin!' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'İdarə paneli' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Obyektlər' }).click();
   await page.getByRole('button', { name: 'Əsas obyekt əlavə et' }).click();

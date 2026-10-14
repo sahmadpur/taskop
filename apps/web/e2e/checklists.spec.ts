@@ -11,7 +11,7 @@ test('owner builds a checklist from a template, publishes v1 and v2, and v1 stay
   await page.getByLabel('E-poçt', { exact: true }).fill(`cl-${suffix}@example.az`);
   await page.getByLabel('Şifrə', { exact: true }).fill('e2e owner password');
   await page.getByRole('button', { name: 'Qeydiyyatdan keç' }).click();
-  await expect(page.getByRole('heading', { name: 'Xoş gəlmisiniz, Elvin!' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'İdarə paneli' })).toBeVisible();
 
   // Create from a Taskop template.
   await page.getByRole('link', { name: 'Şablonlar' }).click();

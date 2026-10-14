@@ -29,7 +29,7 @@ import { NotificationsPage } from '@/features/notifications/notifications-page';
 import { MessagesPage } from '@/features/notifications/messages-page';
 import { messagesSearch } from '@/features/notifications/routes';
 import { ReportsPage } from '@/features/reports/reports-page';
-import { reportsPageSearch } from '@/features/reports/search';
+import { reportSearch, reportsPageSearch } from '@/features/reports/search';
 import { RolesPage } from '@/features/roles/roles-page';
 import { AssignmentsPage } from '@/features/scheduling/assignment-pages';
 import { AssignmentDetailRoute, NewAssignmentRoute, ScheduleRoute, scheduleSearch } from '@/features/scheduling/routes';
@@ -102,7 +102,7 @@ const verifyEmailRoute = createRoute({
   validateSearch: tokenSearch,
 });
 
-const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage });
+const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage, validateSearch: reportSearch });
 const settingsRoute = createRoute({
   getParentRoute: () => appLayout,
   path: '/settings',
