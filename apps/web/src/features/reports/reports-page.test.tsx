@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
@@ -15,12 +15,14 @@ const mocks = vi.hoisted(() => ({
     occurrences: { get: vi.fn() },
     tasks: { get: vi.fn() },
   },
+  saveFile: vi.fn(),
 }));
 vi.mock('@/lib/session', () => ({
   api: mocks.api,
   useMe: () => mocks.me.current,
   useCan: (...keys: string[]) => keys.every((k) => (mocks.me.current as { permissions: string[] }).permissions.includes(k)),
 }));
+vi.mock('./download', () => ({ saveFile: mocks.saveFile }));
 vi.mock('recharts', async (original) => fixedSizeCharts(await original<object>()));
 
 beforeEach(() => {
@@ -105,5 +107,23 @@ describe('ReportsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Buraxılmış' }));
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'runs', bucket: 'missed' }));
     await waitFor(() => expect(mocks.api.reports.runs).toHaveBeenLastCalledWith({ from: TODAY, to: TODAY, bucket: 'missed' }));
+  });
+
+  it('exports the open tab with the bucket from the URL', async () => {
+    mocks.me.current = meWith([...VIEWER, 'reports.export']);
+    mocks.api.reports.runs.mockResolvedValue(page([reportRun()]));
+    mocks.api.reports.export.mockResolvedValue({ blob: new Blob(['x']), filename: 'taskop-runs-2026-11-04_2026-11-04.csv' });
+    renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=runs');
+    await screen.findByRole('button', { name: 'Açılış yoxlaması' });
+    await userEvent.click(screen.getByRole('button', { name: 'İxrac et' }));
+    await userEvent.click(within(await screen.findByRole('group', { name: 'Bu cədvəl' })).getByRole('menuitem', { name: 'CSV' }));
+    await waitFor(() => expect(mocks.api.reports.export).toHaveBeenCalledWith('runs', { from: TODAY, to: TODAY, format: 'csv', bucket: 'all' }));
+    expect(mocks.saveFile).toHaveBeenCalledOnce();
+  });
+
+  it('shows no export menu without reports.export', async () => {
+    renderWithRouter(<ReportsPage today={TODAY} />, '/reports');
+    expect(await screen.findByRole('link', { name: 'Gecikib: 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'İxrac et' })).not.toBeInTheDocument();
   });
 });

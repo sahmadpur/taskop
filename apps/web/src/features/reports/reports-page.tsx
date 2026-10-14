@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTenantToday } from '@/features/scheduling/labels';
 import { EmployeesTab } from './employees-tab';
+import { ExportMenu } from './export-menu';
 import { ProblemsTab } from './problems-tab';
 import { ReportFilters } from './report-filters';
 import { RunsTab } from './runs-tab';
@@ -34,7 +35,17 @@ export function ReportsPage({ today: fixedToday }: { today?: string }) {
 
   return (
     <div className="grid gap-4">
-      <PageHeader title={t('reports.title')} />
+      <PageHeader
+        title={t('reports.title')}
+        actions={
+          <ExportMenu
+            kind={tab}
+            filters={filters}
+            bucket={tab === 'runs' ? (search.bucket ?? DEFAULT_BUCKET) : undefined}
+            severity={tab === 'problems' ? search.severity : undefined}
+          />
+        }
+      />
       <ReportFilters value={filterSearch(search)} today={today} onChange={(next) => go({ ...next, ...pageExtras(search) }, true)} />
       <Tabs value={tab} onValueChange={(v) => go({ ...search, tab: v as ReportKind })}>
         <TabsList>
