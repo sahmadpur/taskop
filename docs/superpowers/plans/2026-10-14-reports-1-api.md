@@ -5448,3 +5448,50 @@ git commit -m "test(api): document the report paths and record the report timing
 **Type consistency:** `ResolvedFilters` (Task 8) is what every `ReportQueries` method takes; `runs(f, scope, bucket, { cursor?, limit })`, `problems(f, scope, severity, { cursor?, limit })` and `tasks(f, scope, { cursor?, limit })` have the same shapes in Tasks 10, 11 and 15; `limit: null` means "every row" everywhere. `ReportsService.guarded(q, fn)` (Task 8) is reused by `ReportExporter` (Task 15). `ReportTable` / `ReportDocument` / `CellValue` (Task 13) feed `toCsv`, `toXlsx` and `toPdf` (Tasks 13–14). The fixture names (`reportWorld`, `reportBase`, `addSite`, `addChecklist`, `addRun`, `addProblem`, `addTask`, `counts`, `qs`, `PERIOD`, `REPORT_NOW`, `RunKey`, `TaskKey`) are defined in Task 8 before any later test uses them.
 
 **Review Focus:** each of the five lines has its test in the owning task: lost claims (Tasks 8, 9), DST days (Tasks 1, 8, 11, 13), moved sites (Task 9), spreadsheet-hostile text (Tasks 13, 15), empty periods (Tasks 8, 15).
+
+---
+
+## Performance results
+
+Measured 2026-10-14 (Task 16, `pnpm --filter @taskop/api perf:reports`) on an Apple M5 laptop with 16 GB RAM, PostgreSQL 18 (`postgres:18-alpine` in Docker), the built API (`node dist/main.js`, production-style, not the watch dev server) and PostgreSQL's default JIT setting (on). Data: the `perf` tenant from `db:seed-report-volume` (50 sites, 200 workers, 200 assignments, 73,200 occurrences over 366 days, 63,544 executions, 3,239 problems, 2,000 tasks). Each cell is the median of 5 requests after one warm-up. The target is 500 ms per endpoint at 366 days; every endpoint met it.
+
+| scope        | days | endpoint  | median ms |
+| ------------ | ---- | --------- | --------- |
+| all          | 7    | summary   | 11        |
+| all          | 7    | sites     | 12        |
+| all          | 7    | employees | 11        |
+| all          | 7    | runs      | 11        |
+| all          | 7    | problems  | 12        |
+| all          | 7    | tasks     | 7         |
+| all          | 31   | summary   | 22        |
+| all          | 31   | sites     | 32        |
+| all          | 31   | employees | 34        |
+| all          | 31   | runs      | 14        |
+| all          | 31   | problems  | 18        |
+| all          | 31   | tasks     | 10        |
+| all          | 366  | summary   | 79        |
+| all          | 366  | sites     | 112       |
+| all          | 366  | employees | 146       |
+| all          | 366  | runs      | 48        |
+| all          | 366  | problems  | 41        |
+| all          | 366  | tasks     | 13        |
+| site_subtree | 7    | summary   | 9         |
+| site_subtree | 7    | sites     | 11        |
+| site_subtree | 7    | employees | 12        |
+| site_subtree | 7    | runs      | 14        |
+| site_subtree | 7    | problems  | 17        |
+| site_subtree | 7    | tasks     | 11        |
+| site_subtree | 31   | summary   | 13        |
+| site_subtree | 31   | sites     | 13        |
+| site_subtree | 31   | employees | 14        |
+| site_subtree | 31   | runs      | 20        |
+| site_subtree | 31   | problems  | 19        |
+| site_subtree | 31   | tasks     | 9         |
+| site_subtree | 366  | summary   | 54        |
+| site_subtree | 366  | sites     | 49        |
+| site_subtree | 366  | employees | 61        |
+| site_subtree | 366  | runs      | 58        |
+| site_subtree | 366  | problems  | 42        |
+| site_subtree | 366  | tasks     | 17        |
+
+**The `site_subtree` target was first missed, then met.** On the first run only `site_subtree` at 366 days missed the 500 ms target: summary 589 ms and employees 684 ms (sites 377, runs 416, problems 50, tasks 99). A second run after `analyze` was worse (summary 1041, sites 1078, employees 1158, runs 1473). `explain (analyze, buffers)` showed the cause was not a missing index: the shared `SchedulingScope.inSubtree` helper emitted a correlated `exists (...)` that ran once per occurrence row (SubPlan, loops=73200, about 439k buffer hits), and its inflated cost estimate also triggered about 155 ms of JIT compilation. Commit 136b5e5 rewrote `inSubtree` as an uncorrelated `<site column> in (select target.id from user_sites ... join sites ... on target.path <@ ms.path ...)` subquery, evaluated once (same semantics; a null site never matches). The affected query dropped from 1,100 ms to 36 ms and the table above is the result after that change. No index was added and there is no migration 0015.

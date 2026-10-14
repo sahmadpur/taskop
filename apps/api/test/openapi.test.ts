@@ -56,4 +56,22 @@ describe('OpenAPI', () => {
       ]),
     );
   });
+
+  it('documents the report paths', async () => {
+    const res = await t.http().get('/api/docs-json');
+    expect(Object.keys(res.body.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/v1/reports/summary',
+        '/api/v1/reports/sites',
+        '/api/v1/reports/employees',
+        '/api/v1/reports/runs',
+        '/api/v1/reports/problems',
+        '/api/v1/reports/tasks',
+        '/api/v1/reports/{kind}/export',
+      ]),
+    );
+    expect(Object.keys(res.body.paths['/api/v1/reports/{kind}/export'].get.responses['200'].content)).toEqual(
+      expect.arrayContaining(['text/csv; charset=utf-8', 'application/pdf']),
+    );
+  });
 });
