@@ -8,7 +8,7 @@ export function SortableHead({ label, dir, onSort, numeric }: { label: string; d
   const { t } = useTranslation();
   return (
     <TableHead aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'} className={cn(numeric && 'text-right')}>
-      <button type="button" onClick={onSort} aria-label={t('reports.table.sort', { column: label })} className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
+      <button type="button" onClick={onSort} title={t('reports.table.sort', { column: label })} className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
         {label}
         <ArrowUpDown className="size-3" aria-hidden />
       </button>

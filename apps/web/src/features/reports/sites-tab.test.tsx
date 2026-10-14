@@ -12,6 +12,9 @@ const FILTERS = { from: TODAY, to: TODAY };
 /** The name button of every data row, in order. */
 const names = () => screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('button')[0]!.textContent);
 
+/** The sort button of a column: named by the column's text, found in the header row. */
+const sortButton = (column: string) => within(screen.getAllByRole('row')[0]!).getByRole('button', { name: column });
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.api.reports.sites.mockResolvedValue(SITE_ROWS);
@@ -48,17 +51,17 @@ describe('SitesTab', () => {
   it('sorts by a column with missing percentages last, then reverses', async () => {
     renderWithRouter(<SitesTab filters={FILTERS} onDrill={vi.fn()} />);
     await screen.findAllByRole('row');
-    const sort = screen.getByRole('button', { name: 'Tamamlanma faizi üzrə sırala' });
+    const sort = sortButton('Tamamlanma faizi');
     await userEvent.click(sort);
     expect(names()).toEqual(['Zona A1', 'Filial A', 'Zona B (köhnə)']);
     expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi' })).toHaveAttribute('aria-sort', 'descending');
     await userEvent.click(sort);
     expect(names()).toEqual(['Filial A', 'Zona A1', 'Zona B (köhnə)']);
     expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi' })).toHaveAttribute('aria-sort', 'ascending');
-    await userEvent.click(screen.getByRole('button', { name: 'Obyekt üzrə sırala' }));
+    await userEvent.click(sortButton('Obyekt'));
     expect(names()).toEqual(['Filial A', 'Zona A1', 'Zona B (köhnə)']);
     expect(screen.getByRole('columnheader', { name: 'Obyekt' })).toHaveAttribute('aria-sort', 'ascending');
-    await userEvent.click(screen.getByRole('button', { name: 'Obyekt üzrə sırala' }));
+    await userEvent.click(sortButton('Obyekt'));
     expect(names()).toEqual(['Zona B (köhnə)', 'Zona A1', 'Filial A']);
     expect(screen.getByRole('columnheader', { name: 'Obyekt' })).toHaveAttribute('aria-sort', 'descending');
   });
