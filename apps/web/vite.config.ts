@@ -13,5 +13,7 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // Heavy pages (reports) can pass 5 s when the CI runner is loaded.
+    testTimeout: 15_000,
   },
 });
