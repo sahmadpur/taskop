@@ -51,12 +51,16 @@ describe('SitesTab', () => {
     const sort = screen.getByRole('button', { name: 'Tamamlanma faizi üzrə sırala' });
     await userEvent.click(sort);
     expect(names()).toEqual(['Zona A1', 'Filial A', 'Zona B (köhnə)']);
-    expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi üzrə sırala' })).toHaveAttribute('aria-sort', 'descending');
+    expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi' })).toHaveAttribute('aria-sort', 'descending');
     await userEvent.click(sort);
     expect(names()).toEqual(['Filial A', 'Zona A1', 'Zona B (köhnə)']);
-    expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi üzrə sırala' })).toHaveAttribute('aria-sort', 'ascending');
+    expect(screen.getByRole('columnheader', { name: 'Tamamlanma faizi' })).toHaveAttribute('aria-sort', 'ascending');
     await userEvent.click(screen.getByRole('button', { name: 'Obyekt üzrə sırala' }));
     expect(names()).toEqual(['Filial A', 'Zona A1', 'Zona B (köhnə)']);
+    expect(screen.getByRole('columnheader', { name: 'Obyekt' })).toHaveAttribute('aria-sort', 'ascending');
+    await userEvent.click(screen.getByRole('button', { name: 'Obyekt üzrə sırala' }));
+    expect(names()).toEqual(['Zona B (köhnə)', 'Zona A1', 'Filial A']);
+    expect(screen.getByRole('columnheader', { name: 'Obyekt' })).toHaveAttribute('aria-sort', 'descending');
   });
 
   it('says so when no site had a run in the period', async () => {
