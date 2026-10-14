@@ -16,6 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:setup": "tsx --env-file=.env src/db/scripts/setup.ts",
     "db:seed": "tsx --env-file=.env src/db/scripts/seed.ts",
+    "db:seed-report-volume": "tsx --env-file=.env src/scripts/seed-report-volume.ts",
+    "perf:reports": "tsx test/perf/time-reports.ts",
     "keys:generate": "tsx src/scripts/generate-keys.ts",
     "platform:create-admin": "tsx --env-file=.env src/scripts/create-platform-admin.ts"
   },
