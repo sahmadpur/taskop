@@ -13,7 +13,7 @@ const noop: MethodDecorator = () => undefined;
 export const perm = (mode: RouteMode, ...keys: PermissionKey[]): MethodDecorator => (mode === 'tenant' ? RequirePermission(...keys) : noop);
 
 /** Like `perm`, but one of `keys` is enough. */
-export const permAny = (mode: RouteMode, ...keys: PermissionKey[]): MethodDecorator => (mode === 'tenant' ? RequireAnyPermission(...keys) : noop);
+export const permAny = (mode: RouteMode, ...keys: [PermissionKey, ...PermissionKey[]]): MethodDecorator => (mode === 'tenant' ? RequireAnyPermission(...keys) : noop);
 
 /** `path` is relative: tenant → `/<path>`, platform → `/platform/tenants/:tenantId/<path>`. */
 export function controllerDecorators(mode: RouteMode, path: string, tag: string): ClassDecorator {
