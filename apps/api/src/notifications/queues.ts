@@ -39,6 +39,13 @@ export const NOTIFICATION_LIMITS = {
   deviceIdleDays: 180,
 } as const;
 
+/**
+ * pg-boss worker options of the fanout and deliver queues: four workers per node, each polling every 0.5 s (pg-boss
+ * defaults to one worker polling every 2 s, i.e. one fan-out per 2 s). Running jobs side by side is safe: fan-out locks
+ * the event row and skips a processed one, and deliver claims its rows before sending.
+ */
+export const NOTIFICATION_WORKER = { pollingIntervalSeconds: 0.5, localConcurrency: 4 } as const;
+
 export interface FanoutJob {
   tenantId: string;
   eventId: string;

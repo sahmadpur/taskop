@@ -26,6 +26,10 @@ export interface WorkerOptions {
   retryDelayMax?: number;
   /** Receives the job once the retries are exhausted; every job there is logged at error level. */
   deadLetter: string;
+  /** Seconds between two polls of an idle worker (pg-boss minimum 0.5). Defaults to pg-boss's 2. */
+  pollingIntervalSeconds?: number;
+  /** Workers this node runs for the queue, each taking one job at a time. Defaults to 1. */
+  localConcurrency?: number;
 }
 
 interface WorkerDefinition {
@@ -140,7 +144,12 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
         ...(w.opts.retryDelayMax !== undefined && { retryDelayMax: w.opts.retryDelayMax }),
         deadLetter: w.opts.deadLetter,
       });
-      await boss.work<object>(w.name, async ([job]) => {
+      // batchSize stays 1: the handler takes one job, so a larger batch would complete the others unprocessed.
+      const work = {
+        ...(w.opts.pollingIntervalSeconds !== undefined && { pollingIntervalSeconds: w.opts.pollingIntervalSeconds }),
+        ...(w.opts.localConcurrency !== undefined && { localConcurrency: w.opts.localConcurrency }),
+      };
+      await boss.work<object>(w.name, work, async ([job]) => {
         if (job) await w.handler(job.data);
       });
     }

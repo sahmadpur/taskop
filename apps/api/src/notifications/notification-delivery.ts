@@ -10,7 +10,7 @@ import { MAILER, type Mailer } from '../mail/mailer';
 import { JobsService } from '../scheduling/jobs.service';
 import { notificationMail } from './notification-templates';
 import { PUSH_SENDER, type PushMessage, type PushReceipt, type PushSender, type PushTicket } from './push-sender';
-import { type DeliverJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES } from './queues';
+import { type DeliverJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES, NOTIFICATION_WORKER } from './queues';
 
 /** Spec §6.1 step 5: these push with high priority. */
 export const HIGH_PRIORITY_TYPES: ReadonlySet<NotificationType> = new Set(['checklist.overdue', 'problem.critical', 'task.overdue']);
@@ -113,6 +113,7 @@ export class NotificationDelivery implements OnModuleInit {
       retryDelay: NOTIFICATION_LIMITS.retryDelaySeconds,
       retryDelayMax: NOTIFICATION_LIMITS.retryDelayMaxSeconds,
       deadLetter: NOTIFICATION_QUEUES.dead,
+      ...NOTIFICATION_WORKER,
     });
   }
 

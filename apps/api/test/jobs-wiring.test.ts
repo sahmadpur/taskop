@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config/config';
 import { MEDIA_CLEANUP_QUEUE } from '../src/executions/media-jobs';
+import { NOTIFICATION_QUEUES, NOTIFICATION_WORKER } from '../src/notifications/queues';
 import type { OccurrenceJobs } from '../src/scheduling/occurrence-jobs';
 import { JobsService, QUEUES } from '../src/scheduling/jobs.service';
 import { TASK_MEDIA_CLEANUP_QUEUE, TASK_SWEEP_QUEUE } from '../src/tasks/task-jobs';
@@ -62,6 +64,32 @@ describe('pg-boss wiring', () => {
       await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }));
       await expect.poll(async () => (await inboxOf(w.workers[0].id)).map((n) => n.type), { timeout: 20_000, interval: 250 }).toEqual(['task.assigned']);
       await expect.poll(async () => (await deliveriesOf(w.workers[0].id)).map((d) => d.status), { timeout: 20_000, interval: 250 }).toEqual(['sent']);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('runs the fan-out and delivery workers 4 at a time, polling every 0.5 s, so a burst of events fans out quickly', { timeout: 60_000 }, async () => {
+    const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+    try {
+      const boss = (t.app.get(JobsService) as unknown as { boss: PgBoss }).boss;
+      for (const queue of [NOTIFICATION_QUEUES.fanout, NOTIFICATION_QUEUES.deliver]) {
+        // localConcurrency 4 spawns four pg-boss workers for the queue, each taking one job per fetch.
+        const workers = boss.getWipData().filter((w) => w.name === queue);
+        expect(workers).toHaveLength(4);
+        for (const w of workers) {
+          expect(w.options).toMatchObject({ pollingIntervalSeconds: 0.5, localConcurrency: 4 });
+          expect(w.options.batchSize ?? 1).toBe(1);
+        }
+      }
+      expect(NOTIFICATION_WORKER).toEqual({ pollingIntervalSeconds: 0.5, localConcurrency: 4 });
+      const w = await taskWorld(t);
+      const burst = 8;
+      const started = Date.now();
+      for (let i = 0; i < burst; i++) await createTask(w.manager.api, newTaskBody({ userId: w.workers[0].id }));
+      await expect.poll(async () => (await inboxOf(w.workers[0].id)).length, { timeout: 20_000, interval: 100 }).toBe(burst);
+      // One worker polling every 2 s (pg-boss's defaults) would need about burst × 2 s.
+      expect(Date.now() - started).toBeLessThan(burst * 1_000);
     } finally {
       await t.close();
     }
@@ -140,6 +168,36 @@ describe('pg-boss wiring', () => {
           .toBe(1);
         const policy = await ownerQuery<{ policy: string }>('select policy from pgboss.queue where name = $1', [queue]);
         expect(policy.rows[0]!.policy).toBe('standard');
+      } finally {
+        await jobs.onModuleDestroy();
+      }
+    });
+
+    it("passes a worker's polling interval and local concurrency to pg-boss, so jobs of a burst run side by side", async () => {
+      const jobs = new JobsService(loadConfig(testEnv({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' })), idle);
+      const queue = `test.burst.${randomUUID()}`;
+      let running = 0;
+      let peak = 0;
+      const done: number[] = [];
+      jobs.defineWorker<{ n: number }>(
+        queue,
+        async (d) => {
+          peak = Math.max(peak, ++running);
+          await new Promise((r) => setTimeout(r, 300));
+          running--;
+          done.push(d.n);
+        },
+        { retryLimit: 1, deadLetter: `test.dead.${randomUUID()}`, pollingIntervalSeconds: 0.5, localConcurrency: 4 },
+      );
+      await jobs.onApplicationBootstrap();
+      try {
+        const started = Date.now();
+        for (let n = 0; n < 8; n++) await jobs.send(queue, { n });
+        await expect.poll(() => done.length, { timeout: 20_000, interval: 50 }).toBe(8);
+        expect(peak).toBeGreaterThan(1);
+        expect(peak).toBeLessThanOrEqual(4);
+        // Serially, at pg-boss's default 2 s poll, eight jobs take well over 8 s.
+        expect(Date.now() - started).toBeLessThan(6_000);
       } finally {
         await jobs.onModuleDestroy();
       }

@@ -9,7 +9,7 @@ import { JobsService } from '../scheduling/jobs.service';
 import { NotificationRecipients } from './notification-recipients';
 import { NotificationTargets } from './notification-targets';
 import { renderNotification } from './notification-templates';
-import { type DeliverJob, deliveryJobs, type FanoutJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES } from './queues';
+import { type DeliverJob, deliveryJobs, type FanoutJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES, NOTIFICATION_WORKER } from './queues';
 import { NotificationRules } from './rules.service';
 
 export const NOTIFICATION_OUTCOMES = ['fanned_out', 'disabled', 'no_recipients', 'target_gone'] as const;
@@ -43,6 +43,7 @@ export class NotificationFanout implements OnModuleInit {
         retryDelay: NOTIFICATION_LIMITS.retryDelaySeconds,
         retryDelayMax: NOTIFICATION_LIMITS.retryDelayMaxSeconds,
         deadLetter: NOTIFICATION_QUEUES.dead,
+        ...NOTIFICATION_WORKER,
       },
     );
   }
