@@ -41,4 +41,23 @@ describe('demo seed', () => {
     );
     expect(members.rows.map((m) => m.username)).toEqual(['elvin', 'nigar']);
   }, 60_000);
+
+  it('puts one processed welcome message in elvin’s and Leyla’s inboxes, once', async () => {
+    await seed(inject('db').ownerUrl);
+    await seed(inject('db').ownerUrl);
+    const r = await ownerQuery<{ who: string; title: string; target_kind: string; read: boolean; outcome: string; actor: string }>(
+      `select coalesce(u.username, u.email) as who, n.title, n.target_kind, n.read_at is not null as read, e.outcome, a.email as actor
+         from notifications n
+         join notification_events e on e.id = n.event_id
+         join users u on u.id = n.user_id
+         join users a on a.id = e.actor_user_id
+         join tenants t on t.id = n.tenant_id
+        where t.org_code = 'demo'
+        order by 1`,
+    );
+    expect(r.rows).toEqual([
+      { who: 'elvin', title: 'Xoş gəlmisiniz', target_kind: 'none', read: false, outcome: 'fanned_out', actor: 'owner@demo.taskop.az' },
+      { who: 'manager@demo.taskop.az', title: 'Xoş gəlmisiniz', target_kind: 'none', read: false, outcome: 'fanned_out', actor: 'owner@demo.taskop.az' },
+    ]);
+  }, 60_000);
 });

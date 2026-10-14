@@ -34,6 +34,7 @@ export default {
     assignments: 'Təyinatlar',
     shifts: 'Növbələr',
     tasks: 'Tapşırıqlar',
+    notifications: 'Bildirişlər',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -57,5 +58,7 @@ export default {
     shifts_manage: 'Növbələri və növbə cədvəlini idarə etmək',
     tasks_view: 'Tapşırıqlara baxmaq',
     tasks_manage: 'Tapşırıqları yaratmaq və idarə etmək',
+    notifications_manage: 'Bildiriş qaydalarını idarə etmək',
+    notifications_send: 'Bildiriş mesajları göndərmək',
   },
 } as const;

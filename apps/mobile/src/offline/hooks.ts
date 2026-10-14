@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useOffline } from './context';
 import type { OfflineServices } from './services';
 import type { SyncStatus } from './sync-engine';
+import { readUnreadNotifications } from './unread';
 
 /**
  * Runs `query` now and again after every local change or sync result. `undefined` while the first run is pending.
@@ -52,4 +53,9 @@ export function useNow(intervalMs = 15_000): number {
     };
   }, [clock, feed, intervalMs]);
   return now;
+}
+
+/** The unread notification count for the Home bell (spec §7.4); 0 until the first sync. */
+export function useUnreadNotifications(): number {
+  return useLiveQuery((s) => readUnreadNotifications(s.db), []) ?? 0;
 }

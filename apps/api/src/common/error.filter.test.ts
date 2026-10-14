@@ -21,6 +21,14 @@ describe('toAppError', () => {
     expect(mapped.fields).toEqual({ name: 'errors.validation.tooShort' });
   });
 
+  it('passes notification issue keys through as field keys', () => {
+    const r = z
+      .object({ userIds: z.array(z.string()) })
+      .superRefine((_v, ctx) => ctx.addIssue({ code: 'custom', path: ['userIds'], message: 'notifications.issues.noTargets' }))
+      .safeParse({ userIds: [] });
+    expect(toAppError(new ZodValidationException(r.error!)).fields).toEqual({ userIds: 'notifications.issues.noTargets' });
+  });
+
   it('maps wrapped unique violations by constraint name', () => {
     const mapped = toAppError({ message: 'query failed', cause: { code: '23505', constraint: 'users_email_uq' } });
     expect(mapped.code).toBe('EMAIL_TAKEN');

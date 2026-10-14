@@ -1,12 +1,13 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { act, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/render';
 
 const state: { current: { status: string; me?: unknown } } = { current: { status: 'authenticated' } };
 const listeners = new Set<() => void>();
 const me = (permissions: string[]) => ({
-  user: { id: 'u', fullName: 'Elvin Əhmədov', jobTitle: null, kind: 'staff', email: 'e@a.az', username: null, emailVerified: true, credentialKind: 'password' },
+  user: { id: 'u', fullName: 'Elvin Əhmədov', jobTitle: null, kind: 'staff', email: 'e@a.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
   role: { id: 'r', name: 'Manager', systemKey: 'manager', dataScope: 'site_subtree' },
   permissions,
   tenant: { id: 't', name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -16,11 +17,19 @@ vi.mock('@/lib/session', () => ({
   useSession: () => state.current,
   useMe: () => state.current.me,
   useCan: (...keys: string[]) => keys.every((k) => (state.current.me as { permissions: string[] }).permissions.includes(k)),
-  session: { signOut: vi.fn(), subscribe: (l: () => void) => (listeners.add(l), () => listeners.delete(l)), get: () => state.current },
-  api: { auth: { resendVerification: vi.fn() } },
+  session: { signOut: vi.fn(), setMe: vi.fn(), subscribe: (l: () => void) => (listeners.add(l), () => listeners.delete(l)), get: () => state.current },
+  api: {
+    auth: { resendVerification: vi.fn() },
+    notifications: { unreadCount: vi.fn(async () => ({ count: 2 })), list: vi.fn(async () => ({ items: [], nextCursor: null })) },
+    preferences: { update: vi.fn() },
+  },
 }));
 
 const { AppShell } = await import('./app-shell');
+
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+});
 
 function renderShell(path = '/users') {
   const root = createRootRoute();
@@ -42,6 +51,8 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Audit jurnalı' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Problemlər' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tapşırıqlar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Mesajlar' })).not.toBeInTheDocument();
+
     expect(screen.getByRole('link', { name: 'Parametrlər' })).toBeInTheDocument();
   });
 
@@ -56,6 +67,29 @@ describe('AppShell', () => {
     state.current = { status: 'authenticated', me: me(['tasks.manage']) };
     renderShell();
     expect(await screen.findByRole('link', { name: 'Tapşırıqlar' })).toHaveAttribute('href', '/tasks');
+  });
+
+  it('shows the notification bell with the unread count in the header', async () => {
+    state.current = { status: 'authenticated', me: me([]) };
+    renderShell();
+    expect(await screen.findByRole('button', { name: 'Bildirişlər: 2 oxunmamış' })).toHaveTextContent('2');
+  });
+
+  it('shows Mesajlar to holders of notifications.send', async () => {
+    state.current = { status: 'authenticated', me: me(['notifications.send']) };
+    renderShell();
+    expect(await screen.findByRole('link', { name: 'Mesajlar' })).toHaveAttribute('href', '/messages');
+  });
+
+  it('opens the notification settings from the user menu', async () => {
+    state.current = { status: 'authenticated', me: me([]) };
+    renderShell();
+    // Logging out stays one click away (the open modal dialog hides the page from role queries, so check first).
+    expect(await screen.findByRole('button', { name: 'Çıxış' })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: /Elvin Əhmədov/ }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Bildiriş ayarları' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Bildiriş ayarları' });
+    expect(within(dialog).getByRole('switch', { name: 'E-poçt bildirişləri' })).toBeChecked();
   });
 
   it('AppShell redirects to login when the session ends', async () => {

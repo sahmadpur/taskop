@@ -2,7 +2,8 @@ import type { AssignmentDetail, SystemRoleKey } from '@taskop/contracts';
 import { expect } from 'vitest';
 import type { TestApp } from './app';
 import { sampleContent } from './checklist-fixtures';
-import { as, createUserDirect, loginStaff, signupTenant, siteTypeIdOf, type SignedUpTenant } from './fixtures';
+import { as, createUserDirect, signupTenant, siteTypeIdOf, type SignedUpTenant } from './fixtures';
+import { staffAt } from './notification-fixtures';
 import { ownerQuery } from './owner-db';
 
 /** Monday 2026-11-02 08:00 in Asia/Baku (UTC+4, no DST), the default tenant timezone. */
@@ -47,10 +48,8 @@ export async function schedulingWorld(t: TestApp, workerCount = 2): Promise<Sche
 
 /** A staff user with a built-in role, linked to `siteIds`, logged in. */
 export async function staffWithRole(t: TestApp, w: SchedulingWorld, roleKey: SystemRoleKey, siteIds: string[]) {
-  const u = await createUserDirect(t, w.s.tenantId, { kind: 'staff', roleKey, fullName: `Staff ${roleKey}`, emailVerified: true });
-  if (siteIds.length) await w.api.put(`/api/v1/users/${u.id}/sites`, { siteIds });
-  const login = await loginStaff(t, u.email!, u.secret);
-  return { id: u.id, api: as(t, login.accessToken) };
+  const { id, api } = await staffAt(t, w.s.tenantId, w.api, roleKey, siteIds, `Staff ${roleKey}`, 'mobile');
+  return { id, api };
 }
 
 export const daily = (startDate = TODAY, extra: Record<string, unknown> = {}) => ({ kind: 'daily', every: 1, startDate, endDate: null, skipDates: [], ...extra });

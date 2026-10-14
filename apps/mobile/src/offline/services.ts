@@ -1,7 +1,7 @@
 import type { DeviceInfo } from '@taskop/contracts';
 import { type ChangeFeed, createChangeFeed } from './change-feed';
 import type { Clock } from './clock';
-import { type Db, migrate } from './db';
+import { type Db, migrate, setMeta } from './db';
 import { createExecutionStore, type ExecutionStore, type WriteKind } from './execution-store';
 import { createMediaQueue, type MediaQueue, type MediaTransport } from './media-queue';
 import type { SyncApi } from './sync-api';
@@ -9,7 +9,7 @@ import { type ClaimRejection, createSyncEngine, type SyncEngine, type SyncTrigge
 import type { TaskRemoved } from './task-records';
 import { createTaskStore, type TaskStore } from './task-store';
 import { type AppStatePort, type NetworkPort, startSyncTriggers, type SyncTriggers } from './sync-triggers';
-import { clearLocalData, ensureUser, type FileRemover } from './user-scope';
+import { clearLocalData, ensureUser, type FileRemover, NOT_OWNER, ownedTransaction } from './user-scope';
 
 /** How long a logout or a user switch waits for a running sync to end. */
 export const SHUTDOWN_WAIT_MS = 10_000;
@@ -26,6 +26,8 @@ export interface ServiceDeps {
   triggers?: { network: NetworkPort; appState: AppStatePort };
   onClaimRejected: (r: ClaimRejection) => void;
   onTaskRemoved: (r: TaskRemoved) => void;
+  /** Every unread count the phone learns (a pull or the inbox): the app badge (spec §7.3). */
+  onUnreadNotifications?: (count: number) => void;
 }
 
 export interface OfflineServices {
@@ -43,6 +45,8 @@ export interface OfflineServices {
   readonly engine: SyncEngine;
   readonly mediaQueue: MediaQueue;
   syncNow(trigger?: SyncTrigger): Promise<void>;
+  /** The inbox read a fresh unread count: stored for the bell and handed to the badge. Nothing is written once the user changed or the services were shut down. */
+  setUnreadNotifications(count: number): Promise<void>;
   /** Logout: stop syncing, wait for a running sync, then delete every row and file. */
   clearAll(): Promise<void>;
   dispose(): Promise<void>;
@@ -71,6 +75,7 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     isOnline: deps.isOnline,
     onClaimRejected: deps.onClaimRejected,
     onTaskRemoved: deps.onTaskRemoved,
+    onUnreadNotifications: deps.onUnreadNotifications,
     beforeRun: () => store.lockExpired(),
   });
   await store.lockExpired();
@@ -81,7 +86,9 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     unsubscribe.push(network.subscribe(() => void engine.refresh()));
     triggers = startSyncTriggers({ run: (trigger) => void engine.run(trigger), network, appState });
   }
+  let shutting = false;
   const shutDown = async () => {
+    shutting = true;
     triggers?.stop();
     unsubscribe.splice(0).forEach((off) => off());
     engine.stop();
@@ -109,6 +116,14 @@ export async function createOfflineServices(deps: ServiceDeps, userId: string, t
     engine,
     mediaQueue,
     syncNow: (trigger = 'manual') => engine.run(trigger),
+    async setUnreadNotifications(count) {
+      if (shutting) return;
+      const n = Math.max(0, Math.floor(count));
+      const written = await ownedTransaction(db, userId, (tx) => setMeta(tx, 'unreadNotifications', String(n)));
+      if (written === NOT_OWNER || shutting) return;
+      feed.emit();
+      deps.onUnreadNotifications?.(n);
+    },
     async clearAll() {
       await shutDown();
       await clearLocalData(db, transport);

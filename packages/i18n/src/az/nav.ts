@@ -14,6 +14,8 @@ export default {
   roster: 'Növbə cədvəli',
   problems: 'Problemlər',
   tasks: 'Tapşırıqlar',
+  notifications: 'Bildirişlər',
+  messages: 'Mesajlar',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

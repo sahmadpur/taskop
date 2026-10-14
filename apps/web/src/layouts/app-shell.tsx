@@ -1,15 +1,17 @@
 import type { PermissionKey } from '@taskop/contracts';
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Megaphone, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/features/notifications/notification-bell';
 import { session } from '@/lib/session';
+import { UserMenu } from './user-menu';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
-  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/shifts' | '/roster';
+  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/messages' | '/shifts' | '/roster';
   labelKey: string;
   icon: LucideIcon;
   /** One key, or a list of which any one suffices. */
@@ -24,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/schedule', labelKey: 'nav.schedule', icon: CalendarClock, permission: 'assignments.view' },
   { to: '/problems', labelKey: 'nav.problems', icon: TriangleAlert, permission: 'assignments.view' },
   { to: '/tasks', labelKey: 'nav.tasks', icon: ClipboardCheck, permission: ['tasks.view', 'tasks.manage'] },
+  { to: '/messages', labelKey: 'nav.messages', icon: Megaphone, permission: 'notifications.send' },
   { to: '/shifts', labelKey: 'nav.shifts', icon: Clock, permission: 'shifts.view' },
   { to: '/roster', labelKey: 'nav.roster', icon: CalendarDays, permission: 'shifts.view' },
   { to: '/users', labelKey: 'nav.users', icon: Users, permission: 'users.view' },
@@ -82,10 +85,8 @@ export function AppShell() {
         <header className="flex items-center justify-between border-b px-6 py-3">
           <span className="text-muted-foreground text-sm">{me.tenant.name}</span>
           <div className="flex items-center gap-3">
-            <div className="text-right text-sm">
-              <div className="font-medium">{me.user.fullName}</div>
-              <div className="text-muted-foreground text-xs">{me.role.systemKey ? t(`roles.systemNames.${me.role.systemKey}`) : me.role.name}</div>
-            </div>
+            <NotificationBell />
+            <UserMenu me={me} />
             <Button variant="ghost" size="icon" aria-label={t('nav.logout')} onClick={() => void session.signOut()}>
               <LogOut className="size-4" />
             </Button>

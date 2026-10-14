@@ -42,6 +42,10 @@
         { "photosPermission": "Taskop sübut kimi qalereyadan foto və video seçmək üçün icazə istəyir." }
       ],
       "expo-video",
+      [
+        "expo-notifications",
+        { "icon": "./assets/android-icon-monochrome.png", "color": "#1D5BD8", "defaultChannel": "default" }
+      ],
       "expo-font"
     ],
     "experiments": {

@@ -4,6 +4,8 @@ export const STORAGE_KEYS = {
   refreshToken: 'taskop.refreshToken',
   me: 'taskop.me',
   orgCode: 'taskop.orgCode',
+  /** The Expo push token this phone registered last (decision 7). */
+  pushToken: 'taskop.pushToken',
 } as const;
 
 export const secureStorage = {

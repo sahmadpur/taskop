@@ -1,5 +1,6 @@
 import { getRandomBytes } from 'expo-crypto';
 import { api } from '@/lib/session';
+import { setAppBadge } from '@/notifications/native';
 import { systemClock } from '../clock';
 import { uuidv7 } from '../ids';
 import { createOfflineServices, type OfflineServices } from '../services';
@@ -36,6 +37,8 @@ export function openNativeServices(userId: string, timeZone: string, hooks: { on
           triggers: { network, appState: rnAppState() },
           onClaimRejected: hooks.onClaimRejected,
           onTaskRemoved: hooks.onTaskRemoved,
+          // Spec §7.3: the app icon shows the unread count after every sync.
+          onUnreadNotifications: setAppBadge,
         },
         userId,
         timeZone,

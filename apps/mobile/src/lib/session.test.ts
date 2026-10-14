@@ -10,7 +10,7 @@ jest.mock('./secure-storage', () => ({
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
-  user: { id, fullName: 'Elvin Məmmədov', jobTitle: null, kind: 'worker', email: null, username: 'elvin', emailVerified: false, credentialKind: 'pin' },
+  user: { id, fullName: 'Elvin Məmmədov', jobTitle: null, kind: 'worker', email: null, username: 'elvin', emailVerified: false, credentialKind: 'pin', emailNotifications: true },
   role: { id, name: 'Worker', systemKey: 'worker', dataScope: 'own' },
   permissions: [],
   tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -28,6 +28,30 @@ beforeEach(() => {
 });
 
 describe('mobile session', () => {
+  it('applies a preference the server confirmed to the profile and its offline copy', async () => {
+    await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
+    await session.patchUser({ emailNotifications: false }, id);
+    expect(session.get()).toMatchObject({ status: 'authenticated', me: { user: { username: 'elvin', emailNotifications: false } } });
+    expect(JSON.parse(mockStore.get('taskop.me')!).user.emailNotifications).toBe(false);
+  });
+
+  it('ignores a profile change when nobody is signed in', async () => {
+    await session.bootstrap();
+    await session.patchUser({ emailNotifications: false }, id);
+    expect(session.get()).toEqual({ status: 'anonymous' });
+    expect(mockStore.has('taskop.me')).toBe(false);
+  });
+
+  it("does not hand one user's confirmed preference to the next user who signed in while the request was out", async () => {
+    const other = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e60';
+    const next = { ...me, user: { ...me.user, id: other, username: 'aysel' } };
+    await session.signedIn({ accessToken: 'a', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r1', me } as never);
+    await session.signedIn({ accessToken: 'b', accessTokenExpiresAt: '2026-10-07T10:00:00.000Z', refreshToken: 'r2', me: next } as never);
+    await session.patchUser({ emailNotifications: false }, id);
+    expect(session.get()).toMatchObject({ status: 'authenticated', me: { user: { id: other, emailNotifications: true } } });
+    expect(JSON.parse(mockStore.get('taskop.me')!).user).toMatchObject({ id: other, emailNotifications: true });
+  });
+
   it('is anonymous without a stored refresh token', async () => {
     await session.bootstrap();
     expect(session.get()).toEqual({ status: 'anonymous' });
@@ -50,6 +74,16 @@ describe('mobile session', () => {
     await session.bootstrap();
     expect(session.get()).toMatchObject({ status: 'authenticated', offline: true });
     expect(mockStore.get('taskop.refreshToken')).toBe('r1');
+  });
+
+  it('restores a profile cached by the previous app version when offline', async () => {
+    // Written before sub-project 6: no emailNotifications. The worker must stay signed in offline.
+    const { emailNotifications: _dropped, ...oldUser } = me.user;
+    mockStore.set('taskop.refreshToken', 'r1');
+    mockStore.set('taskop.me', JSON.stringify({ ...me, user: oldUser }));
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await session.bootstrap();
+    expect(session.get()).toMatchObject({ status: 'authenticated', offline: true, me: { user: { username: 'elvin', emailNotifications: true } } });
   });
 
   it('falls back to the cached profile offline when refresh fails with a 5xx', async () => {

@@ -80,6 +80,8 @@ export interface SyncEngineDeps {
   onClaimRejected: (r: ClaimRejection) => void;
   /** A task left the phone because a teammate took it or it was reassigned away ("Bu tapşırığı artıq başqası qəbul edib"). */
   onTaskRemoved: (r: TaskRemoved) => void;
+  /** The unread notification count of every pull this engine applied (spec §7.3: the app badge). Never called once the engine is stopped. */
+  onUnreadNotifications?: (count: number) => void;
   /** Runs at the start of every run, online or not: the local closes_at lock. */
   beforeRun?: () => Promise<unknown>;
 }
@@ -156,7 +158,7 @@ async function requeueStaleAnswers(tx: Db, cmd: OutboxCommand, serverRev: number
 }
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
-  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, onTaskRemoved, beforeRun } = deps;
+  const { db, userId, api, clock, feed, mediaQueue, files, isOnline, onClaimRejected, onTaskRemoved, onUnreadNotifications, beforeRun } = deps;
   let status: SyncStatus = { pending: 0, failed: 0, running: false, online: isOnline(), lastSyncedAt: null, clockOffsetMs: 0, blockedByAuth: false };
   const listeners = new Set<() => void>();
   let running: Promise<void> | null = null;
@@ -350,12 +352,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     } catch (e) {
       return classifyError(e).kind === 'auth' ? 'auth' : 'retry';
     }
+    // A pull that lands after stop() (logout or a user switch) writes nothing and never touches the badge.
+    if (stopped) return 'ok';
     const receivedAt = clock.now();
     const offsetMs = clampOffset(measureOffset(res.serverTime, sentAt, receivedAt));
     const files = await ownedTransaction(db, userId, (tx) => mergePull(tx, res, offsetMs, receivedAt));
     if (files === NOT_OWNER) return 'ok';
     files.forEach(removeFile);
     feed.emit();
+    if (!stopped) onUnreadNotifications?.(res.unreadNotifications);
     return 'ok';
   }
 

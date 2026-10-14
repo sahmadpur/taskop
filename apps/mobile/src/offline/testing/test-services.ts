@@ -19,6 +19,8 @@ export interface TestServices {
   net: { online: boolean };
   rejections: ClaimRejection[];
   removedTasks: TaskRemoved[];
+  /** Every unread count handed to the app badge, in order. */
+  unread: number[];
   c: Checklist;
   /** Applies a /me/sync response (default: OCC open and its version) and refreshes the sync status. */
   seed(res?: SyncResponse): Promise<void>;
@@ -34,8 +36,9 @@ export async function createTestServices(
   const net = { online: o.online ?? false };
   const rejections: ClaimRejection[] = [];
   const removedTasks: TaskRemoved[] = [];
+  const unread: number[] = [];
   const services = await createOfflineServices(
-    { db, api: api.api, clock, newId: testIds(clock), device: DEVICE, transport, isOnline: () => net.online, onClaimRejected: (r) => rejections.push(r), onTaskRemoved: (r) => removedTasks.push(r) },
+    { db, api: api.api, clock, newId: testIds(clock), device: DEVICE, transport, isOnline: () => net.online, onClaimRejected: (r) => rejections.push(r), onTaskRemoved: (r) => removedTasks.push(r), onUnreadNotifications: (n) => unread.push(n) },
     o.userId ?? ME,
     'Asia/Baku',
   );
@@ -45,5 +48,5 @@ export async function createTestServices(
     services.feed.emit();
     await services.engine.refresh();
   };
-  return { services, api, clock, transport, db, net, rejections, removedTasks, c, seed };
+  return { services, api, clock, transport, db, net, rejections, removedTasks, unread, c, seed };
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { AppError } from '../common/app-error';
+import type { ScopeHolder } from '../common/request';
 import { DbService } from '../db/db.service';
 import { assignments, occurrences, shiftRoster, sites, users } from '../db/schema';
 import type { Actor } from './actor';
@@ -28,7 +29,7 @@ const failClosed = (scope: never): never => {
 export class SchedulingScope {
   constructor(private readonly db: DbService) {}
 
-  assignments(a: Actor): SQL | undefined {
+  assignments(a: ScopeHolder | null): SQL | undefined {
     if (!a || a.dataScope === 'all') return undefined;
     switch (a.dataScope) {
       case 'site_subtree':
@@ -42,7 +43,7 @@ export class SchedulingScope {
     }
   }
 
-  occurrences(a: Actor): SQL | undefined {
+  occurrences(a: ScopeHolder | null): SQL | undefined {
     if (!a || a.dataScope === 'all') return undefined;
     switch (a.dataScope) {
       case 'site_subtree':

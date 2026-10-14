@@ -19,6 +19,6 @@ import { TasksService } from './tasks.service';
   imports: [SchedulingModule],
   controllers: [TasksController, TaskMediaController],
   providers: [TasksService, TaskQueries, TaskScope, TaskAssignees, TaskProblems, TaskWriter, TaskWorkService, TaskMediaService, TaskJobs, TaskListeners, TaskSync],
-  exports: [TaskSync],
+  exports: [TaskSync, TaskScope],
 })
 export class TasksModule {}

@@ -25,6 +25,9 @@ import { PlatformLayout } from '@/features/platform/platform-layout';
 import { PlatformTenantWorkspaceRoute } from '@/features/platform/platform-tenant-workspace';
 import { PlatformTenantsPage } from '@/features/platform/platform-tenants-page';
 import { HomePage } from '@/features/home/home-page';
+import { NotificationsPage } from '@/features/notifications/notifications-page';
+import { MessagesPage } from '@/features/notifications/messages-page';
+import { messagesSearch } from '@/features/notifications/routes';
 import { RolesPage } from '@/features/roles/roles-page';
 import { AssignmentsPage } from '@/features/scheduling/assignment-pages';
 import { AssignmentDetailRoute, NewAssignmentRoute, ScheduleRoute, scheduleSearch } from '@/features/scheduling/routes';
@@ -114,6 +117,9 @@ const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shift
 const scheduleRoute = createRoute({ getParentRoute: () => appLayout, path: '/schedule', component: ScheduleRoute, validateSearch: scheduleSearch });
 const problemsRoute = createRoute({ getParentRoute: () => appLayout, path: '/problems', component: () => <ProblemsPage /> });
 const tasksRoute = createRoute({ getParentRoute: () => appLayout, path: '/tasks', component: TasksPage, validateSearch: tasksSearch });
+const notificationsRoute = createRoute({ getParentRoute: () => appLayout, path: '/notifications', component: NotificationsPage });
+const messagesRoute = createRoute({ getParentRoute: () => appLayout, path: '/messages', component: MessagesPage, validateSearch: messagesSearch });
+
 const assignmentsRoute = createRoute({ getParentRoute: () => appLayout, path: '/assignments', component: AssignmentsPage });
 const newAssignmentRoute = createRoute({
   getParentRoute: () => appLayout,
@@ -237,6 +243,8 @@ export const routeTree = rootRoute.addChildren([
     scheduleRoute,
     problemsRoute,
     tasksRoute,
+    notificationsRoute,
+    messagesRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,

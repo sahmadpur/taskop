@@ -104,6 +104,22 @@ import {
   type TaskMediaRegisterInput,
   taskSummarySchema,
   type UpdateTaskInput,
+  type MessageListQuery,
+  messageDetailSchema,
+  messagePreviewSchema,
+  messageSummarySchema,
+  type MessageTargetOptionsQuery,
+  messageTargetOptionsSchema,
+  notificationItemSchema,
+  type NotificationListQuery,
+  notificationRuleDtoSchema,
+  preferencesSchema,
+  type RegisterPushDeviceInput,
+  type RuleType,
+  type SendMessageInput,
+  unreadCountSchema,
+  type UpdateNotificationRuleInput,
+  type UpdatePreferencesInput,
 } from '@taskop/contracts';
 import { z } from 'zod';
 import type { ApiClient, QueryParams } from './client.js';
@@ -176,6 +192,7 @@ export function createTaskopApi(c: ApiClient) {
     ...createSchedulingApi(c),
     ...createExecutionsApi(c),
     ...createTasksApi(c),
+    ...createNotificationsApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -327,3 +344,35 @@ export function createTasksApi(c: ApiClient) {
   };
 }
 export type TasksApi = ReturnType<typeof createTasksApi>;
+
+/** Sub-project 6: the inbox, push devices and the email preference (everyone), rules (notifications.manage), messages (notifications.send). */
+export function createNotificationsApi(c: ApiClient) {
+  return {
+    notifications: {
+      list: (query: NotificationListQuery = {}) => c.request('GET', '/me/notifications', { query: q(query), schema: pageOf(notificationItemSchema) }),
+      unreadCount: () => c.request('GET', '/me/notifications/unread-count', { schema: unreadCountSchema }),
+      markRead: (id: string) => c.request<void>('POST', `/me/notifications/${id}/read`, { body: {} }),
+      markAllRead: () => c.request<void>('POST', '/me/notifications/read-all', { body: {} }),
+    },
+    pushDevices: {
+      register: (body: RegisterPushDeviceInput) => c.request<void>('PUT', '/me/push-devices', { body }),
+      remove: (expoToken: string) => c.request<void>('DELETE', `/me/push-devices/${encodeURIComponent(expoToken)}`),
+    },
+    preferences: {
+      update: (body: UpdatePreferencesInput) => c.request('PATCH', '/me/preferences', { body, schema: preferencesSchema }),
+    },
+    notificationRules: {
+      list: () => c.request('GET', '/notification-rules', { schema: z.array(notificationRuleDtoSchema) }),
+      update: (type: RuleType, body: UpdateNotificationRuleInput) => c.request('PUT', `/notification-rules/${type}`, { body, schema: notificationRuleDtoSchema }),
+      reset: (type: RuleType) => c.request('DELETE', `/notification-rules/${type}`, { schema: notificationRuleDtoSchema }),
+    },
+    messages: {
+      options: (query: MessageTargetOptionsQuery = {}) => c.request('GET', '/notifications/messages/options', { query: q(query), schema: messageTargetOptionsSchema }),
+      preview: (body: SendMessageInput) => c.request('POST', '/notifications/messages/preview', { body, schema: messagePreviewSchema }),
+      send: (body: SendMessageInput) => c.request('POST', '/notifications/messages', { body, schema: messageSummarySchema }),
+      list: (query: MessageListQuery = {}) => c.request('GET', '/notifications/messages', { query: q(query), schema: pageOf(messageSummarySchema) }),
+      get: (id: string) => c.request('GET', `/notifications/messages/${id}`, { schema: messageDetailSchema }),
+    },
+  };
+}
+export type NotificationsApi = ReturnType<typeof createNotificationsApi>;

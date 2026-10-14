@@ -227,4 +227,19 @@ export default {
     confirmBody: 'Göndərilməmiş cavablar, foto və videolar həmişəlik silinəcək.',
     confirm: 'Sil və çıx',
   },
+  notifications: {
+    bell: 'Bildirişlər, {{count}} oxunmamış',
+    channel: 'Taskop bildirişləri',
+    unread: 'Oxunmamış',
+    online: 'Bildirişlərə baxmaq üçün internet bağlantısı tələb olunur.',
+    profile: {
+      email: 'E-poçt bildirişləri',
+      noEmail: 'Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.',
+      online: 'Dəyişmək üçün internet bağlantısı tələb olunur.',
+      push: 'Push bildirişləri',
+      pushStates: { granted: 'Açıqdır', denied: 'Bağlıdır', undetermined: 'Hələ soruşulmayıb', unavailable: 'Bu cihazda dəstəklənmir' },
+      deniedHint: 'Push bildirişlərini telefonun ayarlarından açın.',
+      openSettings: 'Ayarları aç',
+    },
+  },
 } as const;

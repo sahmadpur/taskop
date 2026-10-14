@@ -40,6 +40,7 @@ export async function applyPull(db: Db, res: SyncResponse, offsetMs: number, now
 export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now: number): Promise<string[]> {
   await setMeta(tx, 'clockOffsetMs', String(offsetMs));
   await setMeta(tx, 'lastSyncedAt', iso(now));
+  await setMeta(tx, 'unreadNotifications', String(res.unreadNotifications));
   for (const v of res.checklistVersions) {
     // Versions never change once published, so a known ID is kept as it is.
     await tx.run(

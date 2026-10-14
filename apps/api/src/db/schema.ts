@@ -151,6 +151,8 @@ export const users = pgTable(
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: ts('locked_until'),
     totpSecretEnc: text('totp_secret_enc'),
+    // B-12: the only per-user notification switch (SP6 spec §5).
+    emailNotifications: boolean('email_notifications').notNull().default(true),
     status: userStatus('status').notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -840,5 +842,154 @@ export const taskStatusHistory = pgTable(
     foreignKey({ columns: [t.tenantId, t.taskId], foreignColumns: [tasks.tenantId, tasks.id], name: 'task_status_history_task_fk' }),
     foreignKey({ columns: [t.tenantId, t.actorUserId], foreignColumns: [users.tenantId, users.id], name: 'task_status_history_actor_fk' }),
     index('task_status_history_task_idx').on(t.tenantId, t.taskId, t.at),
+  ],
+);
+
+// Must match NOTIFICATION_TARGET_KINDS, DELIVERY_CHANNELS, DELIVERY_STATUSES and PUSH_PLATFORMS in @taskop/contracts.
+export const notificationTargetKind = pgEnum('notification_target_kind', ['occurrence', 'task', 'none']);
+export const notificationChannel = pgEnum('notification_channel', ['push', 'email']);
+export const notificationDeliveryStatus = pgEnum('notification_delivery_status', ['queued', 'sent', 'delivered', 'failed', 'skipped']);
+export const pushPlatform = pgEnum('push_platform', ['ios', 'android']);
+
+/** The outbox (SP6 spec §5): one row per business event, inserted in the business transaction. */
+export const notificationEvents = pgTable(
+  'notification_events',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // A NotificationType.
+    type: text('type').notNull(),
+    // Ids only; for `manual` the message itself.
+    payload: jsonb('payload').notNull(),
+    actorUserId: uuid('actor_user_id'),
+    dedupeKey: text('dedupe_key'),
+    createdAt: createdAt(),
+    // Null until fan-out finishes.
+    processedAt: ts('processed_at'),
+    // fanned_out | disabled | no_recipients | target_gone
+    outcome: text('outcome'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+  },
+  (t) => [
+    unique('notification_events_tenant_id_uq').on(t.tenantId, t.id),
+    uniqueIndex('notification_events_dedupe_uq').on(t.tenantId, t.dedupeKey).where(sql`dedupe_key is not null`),
+    foreignKey({ columns: [t.tenantId, t.actorUserId], foreignColumns: [users.tenantId, users.id], name: 'notification_events_actor_fk' }),
+    // The sweeper.
+    index('notification_events_unprocessed_idx').on(t.createdAt).where(sql`processed_at is null`),
+    // GET /notifications/messages.
+    index('notification_events_manual_idx').on(t.tenantId, t.createdAt).where(sql`type = 'manual'`),
+  ],
+);
+
+/** The inbox: one row per recipient; title and body are rendered at fan-out and never change. */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    eventId: uuid('event_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    targetKind: notificationTargetKind('target_kind').notNull(),
+    targetId: uuid('target_id'),
+    // The occurrence's local_date, for the web schedule link.
+    targetDate: localDate('target_date'),
+    createdAt: createdAt(),
+    readAt: ts('read_at'),
+  },
+  (t) => [
+    unique('notifications_tenant_id_uq').on(t.tenantId, t.id),
+    unique('notifications_event_user_uq').on(t.eventId, t.userId),
+    foreignKey({ columns: [t.tenantId, t.eventId], foreignColumns: [notificationEvents.tenantId, notificationEvents.id], name: 'notifications_event_fk' }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: 'notifications_user_fk' }),
+    index('notifications_user_created_idx').on(t.tenantId, t.userId, t.createdAt.desc(), t.id.desc()),
+    index('notifications_unread_idx').on(t.tenantId, t.userId).where(sql`read_at is null`),
+    // notifications.cleanup.
+    index('notifications_created_idx').on(t.tenantId, t.createdAt),
+  ],
+);
+
+/** One row per channel target (NFR-11.02). */
+export const notificationDeliveries = pgTable(
+  'notification_deliveries',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    notificationId: uuid('notification_id').notNull(),
+    channel: notificationChannel('channel').notNull(),
+    // Push only. No foreign key: devices are deleted while their deliveries stay (Spec decision 8).
+    deviceId: uuid('device_id'),
+    status: notificationDeliveryStatus('status').notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    // The Expo ticket id.
+    providerRef: text('provider_ref'),
+    createdAt: createdAt(),
+    sentAt: ts('sent_at'),
+    // Set by whoever claims a queued row before calling a provider (prevents double sends).
+    claimedAt: ts('claimed_at'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('notification_deliveries_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({
+      columns: [t.tenantId, t.notificationId],
+      foreignColumns: [notifications.tenantId, notifications.id],
+      name: 'notification_deliveries_notification_fk',
+    }).onDelete('cascade'),
+    index('notification_deliveries_notification_idx').on(t.tenantId, t.notificationId),
+    // notifications.receipts.
+    index('notification_deliveries_receipt_idx').on(t.status, t.sentAt).where(sql`channel = 'push' and status = 'sent'`),
+    // notifications.sweep.
+    index('notification_deliveries_queued_idx').on(t.status, t.createdAt).where(sql`status = 'queued'`),
+  ],
+);
+
+/** Expo push tokens. A token belongs to one user of one tenant at a time (token claim, spec §6.4). */
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull(),
+    expoToken: text('expo_token').notNull(),
+    platform: pushPlatform('platform').notNull(),
+    createdAt: createdAt(),
+    lastSeenAt: ts('last_seen_at').notNull(),
+    disabledAt: ts('disabled_at'),
+  },
+  (t) => [
+    unique('push_devices_tenant_id_uq').on(t.tenantId, t.id),
+    // Across all tenants: claiming a token removes every other row first.
+    unique('push_devices_token_uq').on(t.expoToken),
+    foreignKey({ columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id], name: 'push_devices_user_fk' }),
+    index('push_devices_user_idx').on(t.tenantId, t.userId),
+  ],
+);
+
+/** At most one override per tenant and rule type (FR-15.09); a missing row means DEFAULT_RULES. */
+export const notificationRules = pgTable(
+  'notification_rules',
+  {
+    tenantId: tenantId(),
+    type: text('type').notNull(),
+    enabled: boolean('enabled').notNull(),
+    push: boolean('push').notNull(),
+    email: boolean('email').notNull(),
+    notifyAssignees: boolean('notify_assignees').notNull(),
+    notifyCreator: boolean('notify_creator').notNull(),
+    roleIds: uuid('role_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    // checklist.due_soon only.
+    leadMinutes: integer('lead_minutes'),
+    updatedAt: updatedAt(),
+    updatedBy: uuid('updated_by'),
+  },
+  (t) => [
+    primaryKey({ name: 'notification_rules_pk', columns: [t.tenantId, t.type] }),
+    foreignKey({ columns: [t.tenantId, t.updatedBy], foreignColumns: [users.tenantId, users.id], name: 'notification_rules_updated_by_fk' }),
+    check('notification_rules_lead_ck', sql`${t.leadMinutes} is null or ${t.leadMinutes} in (15, 30, 60, 120)`),
   ],
 );

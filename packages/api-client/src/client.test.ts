@@ -3,7 +3,7 @@ import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenSto
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
-  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password' },
+  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
   role: { id, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
   permissions: [],
   tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -318,7 +318,7 @@ describe('execution endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url} ${init.body ?? ''}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: '2026-11-02T04:00:00.000Z', occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [], unreadNotifications: 0 });
       if (url.endsWith('/answers')) return json(200, { executionId: id, rev: 2, stale: false, state: 'active', progress });
       if (url.endsWith('/complete')) return json(200, { executionId: id, state: 'completed', completedAt: '2026-11-02T05:00:00.000Z', late: false, progress, score: null });
       if (url.endsWith(`/executions/${id}/media`)) return json(200, { mediaId: id, status: 'pending', uploadUrl: 'http://files.test/x', headers: { 'Content-Type': 'image/jpeg' }, expiresAt: '2026-11-02T04:15:00.000Z' });
@@ -387,7 +387,7 @@ describe('task endpoints', () => {
     const calls: string[] = [];
     const { api } = await authed((url, init) => {
       calls.push(`${init.method} ${url}`);
-      if (url.includes('/me/sync')) return json(200, { serverTime: now, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [id] });
+      if (url.includes('/me/sync')) return json(200, { serverTime: now, occurrences: [], checklistVersions: [], executions: [], tasks: [], removedTaskIds: [id], unreadNotifications: 0 });
       if (url.includes('/tasks/assignees')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null, kind: 'worker' }], teams: [], sites: [] });
       if (url.endsWith('/uploaded')) return json(200, { mediaId: id, status: 'uploaded', uploadedAt: now });
       if (url.endsWith('/url')) return json(200, { url: 'http://files.test/x', expiresAt: now });
@@ -433,5 +433,109 @@ describe('task endpoints', () => {
   it('exposes TASK_ALREADY_TAKEN as an ApiError', async () => {
     const { api } = await authed(() => err(409, 'TASK_ALREADY_TAKEN'));
     await expect(createTaskopApi(api).tasks.accept(id, { at: now })).rejects.toMatchObject({ status: 409, code: 'TASK_ALREADY_TAKEN' });
+  });
+});
+
+describe('notification endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'mobile', store);
+  }
+  const now = '2026-11-02T04:00:00.000Z';
+  const token = 'ExponentPushToken[abc]';
+  const zero = { queued: 0, sent: 0, delivered: 0, failed: 0, skipped: 0 };
+  const rule = { type: 'task.assigned', enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null, isDefault: true };
+  const summary = {
+    id, title: 'Diqqət', body: 'Sabah iclas var.', sender: { id, fullName: 'Elvin' }, sentAt: now, emailRequested: false,
+    processed: false, recipientCount: 0, readCount: 0, push: zero, email: zero,
+  };
+  const item = { id, type: 'manual', title: 'Diqqət', body: 'Sabah iclas var.', targetKind: 'none', targetId: null, targetDate: null, createdAt: now, readAt: null };
+
+  it('builds every path, method and body', async () => {
+    const calls: string[] = [];
+    const { api } = await authed((url, init) => {
+      calls.push(`${init.method} ${url} ${init.body ?? ''}`);
+      if (init.method === 'POST' && (url.endsWith('/read') || url.endsWith('/read-all'))) return new Response(null, { status: 204 });
+      if (url.includes('/push-devices')) return new Response(null, { status: 204 });
+      if (url.endsWith('/unread-count')) return json(200, { count: 2 });
+      if (url.includes('/me/notifications')) return json(200, { items: [item], nextCursor: null });
+      if (url.endsWith('/me/preferences')) return json(200, { emailNotifications: false });
+      if (url.endsWith('/notification-rules')) return json(200, [rule]);
+      if (url.includes('/notification-rules/')) return json(200, rule);
+      if (url.includes('/messages/options')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null }], teams: [], sites: [] });
+      if (url.endsWith('/messages/preview')) return json(200, { recipientCount: 3 });
+      if (init.method === 'POST' && url.endsWith('/notifications/messages')) return json(201, summary);
+      if (url.includes('/notifications/messages?')) return json(200, { items: [summary], nextCursor: null });
+      return json(200, { ...summary, targets: { users: [], teams: [], sites: [] }, recipients: [] });
+    });
+    const t = createTaskopApi(api);
+    expect((await t.notifications.list({ limit: 10, unread: 'true' })).items[0]!.type).toBe('manual');
+    expect(await t.notifications.unreadCount()).toEqual({ count: 2 });
+    await t.notifications.markRead(id);
+    await t.notifications.markAllRead();
+    await t.pushDevices.register({ expoToken: token, platform: 'ios' });
+    await t.pushDevices.remove(token);
+    expect(await t.preferences.update({ emailNotifications: false })).toEqual({ emailNotifications: false });
+    expect(await t.notificationRules.list()).toEqual([rule]);
+    await t.notificationRules.update('task.assigned', { enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null });
+    await t.notificationRules.reset('task.assigned');
+    await t.messages.options({ q: 'Nig' });
+    expect(await t.messages.preview({ title: 'Diqqət', body: 'Sabah iclas var.', teamIds: [id] })).toEqual({ recipientCount: 3 });
+    await t.messages.send({ title: 'Diqqət', body: 'Sabah iclas var.', teamIds: [id] });
+    await t.messages.list({ limit: 20 });
+    expect((await t.messages.get(id)).recipients).toEqual([]);
+    expect(calls).toEqual([
+      'GET /api/v1/me/notifications?limit=10&unread=true ',
+      'GET /api/v1/me/notifications/unread-count ',
+      `POST /api/v1/me/notifications/${id}/read {}`,
+      'POST /api/v1/me/notifications/read-all {}',
+      `PUT /api/v1/me/push-devices {"expoToken":"${token}","platform":"ios"}`,
+      'DELETE /api/v1/me/push-devices/ExponentPushToken%5Babc%5D ',
+      'PATCH /api/v1/me/preferences {"emailNotifications":false}',
+      'GET /api/v1/notification-rules ',
+      'PUT /api/v1/notification-rules/task.assigned {"enabled":true,"push":true,"email":false,"notifyAssignees":true,"notifyCreator":false,"roleIds":[],"leadMinutes":null}',
+      'DELETE /api/v1/notification-rules/task.assigned ',
+      'GET /api/v1/notifications/messages/options?q=Nig ',
+      `POST /api/v1/notifications/messages/preview {"title":"Diqqət","body":"Sabah iclas var.","teamIds":["${id}"]}`,
+      `POST /api/v1/notifications/messages {"title":"Diqqət","body":"Sabah iclas var.","teamIds":["${id}"]}`,
+      'GET /api/v1/notifications/messages?limit=20 ',
+      `GET /api/v1/notifications/messages/${id} `,
+    ]);
+  });
+
+  it('parses each response with its contract schema', async () => {
+    const { api } = await authed((url, init) => {
+      if (url.endsWith('/unread-count')) return json(200, { count: -1 });
+      if (url.includes('/messages/options')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null }], teams: [], sites: [] });
+      if (url.endsWith('/messages/preview')) return json(200, { recipientCount: 3 });
+      if (init.method === 'POST' && url.endsWith('/notifications/messages')) return json(201, summary);
+      return json(200, { ...rule, type: 'not.a.type' });
+    });
+    const t = createTaskopApi(api);
+    await expect(t.notifications.unreadCount()).rejects.toBeDefined();
+    await expect(t.notificationRules.reset('task.assigned')).rejects.toBeDefined();
+    expect((await t.messages.options({})).users[0]!.fullName).toBe('Nigar');
+    expect((await t.messages.send({ title: 'Diqqət', body: 'Sabah iclas var.', userIds: [id] })).sender?.fullName).toBe('Elvin');
+  });
+
+  it('resolves the 204 endpoints to undefined', async () => {
+    const { api } = await authed(() => new Response(null, { status: 204 }));
+    const t = createTaskopApi(api);
+    expect(await t.notifications.markRead(id)).toBeUndefined();
+    expect(await t.notifications.markAllRead()).toBeUndefined();
+    expect(await t.pushDevices.register({ expoToken: token, platform: 'android' })).toBeUndefined();
+    expect(await t.pushDevices.remove(token)).toBeUndefined();
+  });
+
+  it('exposes a refused send as an ApiError with its fields', async () => {
+    const { api } = await authed(() =>
+      json(400, { error: { code: 'VALIDATION_FAILED', messageKey: 'errors.VALIDATION_FAILED', fields: { userIds: 'notifications.issues.tooManyRecipients' }, retryAfterSeconds: null, requestId: 'r1' } }),
+    );
+    await expect(createTaskopApi(api).messages.send({ title: 'a', body: 'b', siteIds: [id] })).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_FAILED',
+      fields: { userIds: 'notifications.issues.tooManyRecipients' },
+    });
   });
 });

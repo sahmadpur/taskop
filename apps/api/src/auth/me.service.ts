@@ -32,6 +32,7 @@ export class MeService {
         username: row.user.username,
         emailVerified: row.user.emailVerifiedAt !== null,
         credentialKind: row.user.credentialKind,
+        emailNotifications: row.user.emailNotifications,
       },
       role: { id: row.role.id, name: row.role.name, systemKey: row.role.systemKey, dataScope },
       permissions,
