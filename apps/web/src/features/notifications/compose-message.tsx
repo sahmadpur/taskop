@@ -17,6 +17,9 @@ import { canPreview, EMPTY_MESSAGE, type MessageDraft, previewVerdict, sendBody 
 import { notificationKeys } from './queries';
 import { TargetPicker } from './target-picker';
 
+/** The API field keys this form shows next to an input; any other key falls back to the general error. */
+const SHOWN_FIELDS = ['title', 'body', 'userIds', 'teamIds', 'siteIds'] as const;
+
 /** Spec §8, FR-15.08: compose → preview → "N nəfərə göndəriləcək" → send exactly what was previewed (decision 12). */
 export function ComposeMessage() {
   const { t } = useTranslation();
@@ -27,7 +30,7 @@ export function ComposeMessage() {
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof MessageDraft>(key: K, value: MessageDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const fail = (e: unknown) => {
-    if (e instanceof ApiError && e.fields && Object.keys(e.fields).length > 0) setFields(e.fields);
+    if (e instanceof ApiError && e.fields && SHOWN_FIELDS.some((k) => e.fields?.[k])) setFields(e.fields);
     else setError(errorText(t, e));
   };
   const preview = useMutation({

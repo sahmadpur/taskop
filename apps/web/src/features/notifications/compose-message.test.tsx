@@ -86,4 +86,15 @@ describe('ComposeMessage', () => {
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Göndər' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Bu əməliyyat üçün icazəniz yoxdur.');
   });
+
+  it('shows the general reason when the server names only fields this form does not show', async () => {
+    mocks.api.messages.preview.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { 'userIds.3': 'notifications.issues.noRecipients' }),
+    );
+    renderWithProviders(<ComposeMessage />);
+    await fill();
+    await userEvent.click(screen.getByRole('button', { name: 'Göndər' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('errors.VALIDATION_FAILED'));
+    expect(screen.queryByText(i18n.t('notifications.issues.noRecipients'))).not.toBeInTheDocument();
+  });
 });
