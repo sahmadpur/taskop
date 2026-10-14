@@ -1,6 +1,6 @@
 import { cellText, type ReportDocument, type ReportTable } from './report-table';
 
-const BOM = '﻿';
+const BOM = '\uFEFF';
 /** OWASP's CSV-injection triggers: the spec's =, +, -, @ plus a leading tab or CR (Spec decision 19). */
 const FORMULA_START = /^[=+\-@\t\r]/;
 
