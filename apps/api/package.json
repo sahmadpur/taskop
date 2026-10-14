@@ -7,7 +7,7 @@
     "drizzle"
   ],
   "scripts": {
-    "build": "swc src -d dist --strip-leading-paths --config-file .swcrc",
+    "build": "swc src -d dist --strip-leading-paths --config-file .swcrc && node -e \"require('node:fs').cpSync('src/reports/pdf/fonts', 'dist/reports/pdf/fonts', { recursive: true })\"",
     "dev": "pnpm build && (swc src -d dist --strip-leading-paths --config-file .swcrc --watch & node --env-file=.env --enable-source-maps --watch-path=dist dist/main.js)",
     "start": "node --enable-source-maps dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -36,6 +36,7 @@
     "nestjs-pino": "^5.3.1",
     "nestjs-zod": "^5.5.0",
     "nodemailer": "^10.0.15",
+    "pdfmake": "^0.3.11",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.0",
     "pino": "^10.4.0",
@@ -43,6 +44,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "uuidv7": "^1.2.1",
+    "write-excel-file": "^4.1.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -55,6 +57,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
     "@types/nodemailer": "^8.0.2",
+    "@types/pdfmake": "^0.3.3",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "chokidar": "^5.0.0",
@@ -62,10 +65,12 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^10.12.0",
     "pino-pretty": "^13.2.0",
+    "read-excel-file": "^9.3.12",
     "supertest": "^7.3.1",
     "testcontainers": "^12.2.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
+    "unpdf": "^1.8.1",
     "unplugin-swc": "^2.0.0",
     "vitest": "^5.0.3"
   }
