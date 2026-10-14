@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { COMPLETED_STATUSES, completionPercent, type EmployeeReportRow, IN_PROGRESS_STATUSES, periodDays, type ReportSummary, roundOne, type RunCounts, type SiteReportRow } from '@taskop/contracts';
+import { COMPLETED_STATUSES, completionPercent, type EmployeeReportRow, IN_PROGRESS_STATUSES, type OccurrenceStatus, type Page, periodDays, type ReportRun, type ReportSummary, roundOne, type RunBucket, type RunCounts, type SiteReportRow, type UserRef } from '@taskop/contracts';
 import { az } from '@taskop/i18n';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -111,6 +111,74 @@ export function runsCte(f: ResolvedFilters, scope: SQL | undefined): SQL {
      where ${runConditions(f, scope)})`;
 }
 
+/** /reports/runs buckets over `runs r` (Spec decision 6). */
+export function bucketCondition(b: RunBucket): SQL {
+  switch (b) {
+    case 'overdue':
+      return sql`r.status = 'overdue'`;
+    case 'partial':
+      return sql`r.status = 'partial'`;
+    case 'missed':
+      return sql`r.status = 'missed'`;
+    case 'problems':
+      return sql`r.status <> 'cancelled' and r.has_problems`;
+    case 'completed':
+      return sql`r.status in ${statusList(COMPLETED_STATUSES)}`;
+    case 'in_progress':
+      return sql`r.status in ${statusList(IN_PROGRESS_STATUSES)}`;
+    case 'planned':
+      return sql`r.status <> 'cancelled'`;
+    case 'all':
+      return sql`true`;
+  }
+}
+
+type RunRow = {
+  id: string;
+  execution_id: string | null;
+  local_date: string;
+  due_at: string;
+  status: OccurrenceStatus;
+  checklist_id: string;
+  checklist_name: string;
+  site_id: string;
+  site_name: string;
+  assignees: UserRef[];
+  executor_user_id: string | null;
+  executor_name: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  completed_received_at: string | null;
+  score_percent: number | null;
+  late: boolean;
+  clock_suspect: boolean;
+  problem_count: number;
+  critical_count: number;
+};
+
+// Drizzle's pg driver returns timestamps from `execute` as raw strings.
+const isoOf = (v: string | null): string | null => (v === null ? null : new Date(v).toISOString());
+
+const toReportRun = (r: RunRow): ReportRun => ({
+  occurrenceId: r.id,
+  executionId: r.execution_id,
+  localDate: r.local_date,
+  dueAt: isoOf(r.due_at)!,
+  checklist: { id: r.checklist_id, name: r.checklist_name },
+  site: { id: r.site_id, name: r.site_name },
+  status: r.status,
+  assignees: r.assignees,
+  executor: r.executor_user_id ? { id: r.executor_user_id, fullName: r.executor_name ?? '' } : null,
+  startedAt: isoOf(r.started_at),
+  completedAt: isoOf(r.completed_at),
+  completedReceivedAt: isoOf(r.completed_received_at),
+  score: r.score_percent,
+  problemCount: r.problem_count,
+  criticalCount: r.critical_count,
+  late: r.late,
+  clockSuspect: r.clock_suspect,
+});
+
 /** The report SQL (spec §5.1). Every method runs in the request's tenant transaction and returns contract shapes. */
 @Injectable()
 export class ReportQueries {
@@ -181,5 +249,37 @@ export class ReportQueries {
       ...toCounts(r),
       ...measuresOf(r),
     }));
+  }
+
+  /** Spec §5.3: newest due first, keyset on (due_at, id) like /problems (Spec decision 7). `limit: null` reads every row. */
+  async runs(f: ResolvedFilters, scope: SQL | undefined, bucket: RunBucket, opts: { cursor?: string; limit: number | null }): Promise<Page<ReportRun>> {
+    const conds = [bucketCondition(bucket)];
+    if (opts.cursor) conds.push(sql`(r.due_at, r.id) < (select c.due_at, c.id from occurrences c where c.id = ${opts.cursor})`);
+    const rows = (
+      await this.db.tx().execute<RunRow>(sql`
+        with ${runsCte(f, scope)}
+        select r.id, r.execution_id, r.local_date, r.due_at, r.status, r.checklist_id, c.name as checklist_name, r.site_id, s.name as site_name,
+               coalesce((select json_agg(json_build_object('id', u.id, 'fullName', u.full_name) order by u.full_name, u.id)
+                           from occurrence_assignees oa join users u on u.id = oa.user_id where oa.occurrence_id = r.id), '[]'::json) as assignees,
+               x.executor_user_id, eu.full_name as executor_name, x.started_at, x.completed_at, x.completed_received_at, r.score_percent,
+               coalesce(x.late, false) as late, coalesce(x.clock_suspect, false) as clock_suspect, r.problem_count, r.critical_count
+          from runs r
+          join checklists c on c.id = r.checklist_id
+          join sites s on s.id = r.site_id
+          left join executions x on x.id = r.execution_id
+          left join users eu on eu.id = x.executor_user_id
+         where ${sql.join(conds, sql` and `)}
+         order by r.due_at desc, r.id desc
+         ${opts.limit === null ? sql.empty() : sql`limit ${opts.limit + 1}`}`)
+    ).rows;
+    const items = opts.limit === null ? rows : rows.slice(0, opts.limit);
+    const more = opts.limit !== null && rows.length > opts.limit;
+    return { items: items.map(toReportRun), nextCursor: more ? items[items.length - 1]!.id : null };
+  }
+
+  /** The export's count-first check (spec §5.4). */
+  async countRuns(f: ResolvedFilters, scope: SQL | undefined, bucket: RunBucket): Promise<number> {
+    const r = await this.db.tx().execute<{ n: number }>(sql`with ${runsCte(f, scope)} select count(*)::int as n from runs r where ${bucketCondition(bucket)}`);
+    return r.rows[0]!.n;
   }
 }
