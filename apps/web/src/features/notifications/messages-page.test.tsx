@@ -1,8 +1,8 @@
 import { ApiError } from '@taskop/api-client';
 import { az } from '@taskop/i18n';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
 import { counts, messageDetail, messageSummary } from './fixtures';
 import { MessageDetailDialog } from './message-history';
@@ -18,6 +18,10 @@ const L = az.notifications.deliveryStatuses;
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.resetAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('MessagesPage', () => {
@@ -70,6 +74,37 @@ describe('MessagesPage', () => {
     expect(recipient('Aysel Məmmədova')).toHaveTextContent('Cihaz yoxdur');
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(router.state.location.search).toEqual({}));
+  });
+
+  it('asks for the history again every 3 s while a message is still fanning out, and stops once all are processed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mocks.api.messages.list
+      .mockResolvedValueOnce({ items: [messageSummary({ processed: false, recipientCount: 0, readCount: 0, push: counts() })], nextCursor: null })
+      .mockResolvedValue({ items: [messageSummary()], nextCursor: null });
+    renderWithRouter(<MessagesPage />, '/messages');
+    const row = async () => (await screen.findByRole('link', { name: 'Sabah iclas var' })).closest('tr')!;
+    expect(within(await row()).getAllByRole('cell')[3]).toHaveTextContent('—');
+    await act(() => vi.advanceTimersByTimeAsync(3_000));
+    await waitFor(async () => expect(within(await row()).getAllByRole('cell')[3]).toHaveTextContent('3'));
+    expect(mocks.api.messages.list).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(9_000));
+    expect(mocks.api.messages.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks for the detail again every 3 s until the message is processed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mocks.api.messages.list.mockResolvedValue({ items: [], nextCursor: null });
+    mocks.api.messages.get
+      .mockResolvedValueOnce(messageDetail({ processed: false, recipientCount: 0, readCount: 0, recipients: [] }))
+      .mockResolvedValue(messageDetail());
+    renderWithRouter(<MessagesPage />, '/messages?message=m1');
+    const dialog = await screen.findByRole('dialog', { name: 'Sabah iclas var' });
+    expect(await within(dialog).findByText(az.notifications.messages.noRecipientsYet)).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(3_000));
+    await waitFor(() => expect(dialog).toHaveTextContent('Alıcılar: 3 · Oxunub: 1'));
+    expect(mocks.api.messages.get).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(9_000));
+    expect(mocks.api.messages.get).toHaveBeenCalledTimes(2);
   });
 
   it('a link to a message the caller may not see shows the error in the dialog', async () => {

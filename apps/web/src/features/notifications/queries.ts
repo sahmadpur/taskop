@@ -9,6 +9,8 @@ export const BELL_LIMIT = 10;
 export const INBOX_PAGE_SIZE = 30;
 /** Manual message history pages (cursorQuerySchema's default). */
 export const MESSAGES_PAGE_SIZE = 50;
+/** While a sent message is still fanning out (`processed: false`), its history row and detail are asked again this often. */
+export const MESSAGE_PROCESSING_REFETCH_MS = 3_000;
 
 export const notificationKeys = {
   /** Every inbox query: invalidated after any read-state change. */
@@ -74,14 +76,21 @@ export const useMessageTargetOptions = (q: string, enabled: boolean) =>
     placeholderData: keepPreviousData,
   });
 
+/** The history; polled while any loaded message is still fanning out, so a fresh send's counts appear without a reload. */
 export const useMessages = () =>
   useInfiniteQuery({
     queryKey: notificationKeys.messageList,
     queryFn: ({ pageParam }) => api.messages.list({ cursor: pageParam, limit: MESSAGES_PAGE_SIZE }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: (q) => (q.state.data?.pages.some((p) => p.items.some((m) => !m.processed)) ? MESSAGE_PROCESSING_REFETCH_MS : false),
   });
 
-/** One message's detail; a blank id (e.g. an empty `?message=`) asks for nothing. */
+/** One message's detail, polled until it is processed; a blank id (e.g. an empty `?message=`) asks for nothing. */
 export const useMessage = (id: string) =>
-  useQuery({ queryKey: notificationKeys.message(id), queryFn: () => api.messages.get(id), enabled: !!id });
+  useQuery({
+    queryKey: notificationKeys.message(id),
+    queryFn: () => api.messages.get(id),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data && !q.state.data.processed ? MESSAGE_PROCESSING_REFETCH_MS : false),
+  });
