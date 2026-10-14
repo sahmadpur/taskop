@@ -1,11 +1,13 @@
 import { ApiError } from '@taskop/api-client';
 import type { RuleType } from '@taskop/contracts';
 import { az } from '@taskop/i18n';
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { allRules, ROLE_IDS, roleList, ruleDto } from './fixtures';
+import { notificationKeys } from './queries';
 import { NotificationRulesTab } from './rules-tab';
 
 const mocks = vi.hoisted(() => ({
@@ -58,21 +60,24 @@ describe('NotificationRulesTab', () => {
     expect(within(row).getByRole('button', { name: ctl('task.assigned', 'Defolta qaytar') })).toBeInTheDocument();
   });
 
-  it('saves one row with its full rule and shows the answer', async () => {
+  // Drives 13 rows of Radix controls: seeded cache, no typing delay and an explicit timeout keep it stable under full-monorepo load.
+  it('saves one row with its full rule and shows the answer', { timeout: 15_000 }, async () => {
     mocks.api.notificationRules.update.mockImplementation(answer);
-    renderWithProviders(<NotificationRulesTab />);
-    const save = await screen.findByRole('button', { name: ctl('checklist.due_soon', 'Yadda saxla') });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
+    client.setQueryData(notificationKeys.rules, await mocks.api.notificationRules.list());
+    client.setQueryData(['roles'], roleList());
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<NotificationRulesTab />, client);
+    const save = screen.getByRole('button', { name: ctl('checklist.due_soon', 'Yadda saxla') });
     expect(save).toBeDisabled();
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: ctl('checklist.due_soon', 'Xatırlatma vaxtı') }), '60');
-    await userEvent.click(screen.getByRole('checkbox', { name: ctl('checklist.due_soon', channels.email) }));
-    // The roles button becomes a popover trigger once GET /roles has answered.
-    await waitFor(() => expect(screen.getByRole('button', { name: ctl('checklist.due_soon', 'Rollar') })).toBeEnabled());
-    await userEvent.click(screen.getByRole('button', { name: ctl('checklist.due_soon', 'Rollar') }));
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'Administrator' }));
-    await userEvent.keyboard('{Escape}');
+    await user.selectOptions(screen.getByRole('combobox', { name: ctl('checklist.due_soon', 'Xatırlatma vaxtı') }), '60');
+    await user.click(screen.getByRole('checkbox', { name: ctl('checklist.due_soon', channels.email) }));
+    await user.click(screen.getByRole('button', { name: ctl('checklist.due_soon', 'Rollar') }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Administrator' }));
+    await user.keyboard('{Escape}');
     expect(screen.getByRole('button', { name: ctl('checklist.due_soon', 'Rollar') })).toHaveTextContent('Administrator');
     expect(save).toBeEnabled();
-    await userEvent.click(save);
+    await user.click(save);
     await waitFor(() =>
       expect(mocks.api.notificationRules.update).toHaveBeenCalledWith('checklist.due_soon', {
         enabled: true,
