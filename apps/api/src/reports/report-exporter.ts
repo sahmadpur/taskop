@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { REPORT_CONTENT_TYPES, REPORT_LIMITS, type ReportExportKind, type ReportExportParams, type ReportTaskCounts, reportFileName, type RunBucket } from '@taskop/contracts';
 import { az } from '@taskop/i18n';
-import { eq, type SQL } from 'drizzle-orm';
+import { and, eq, type SQL } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
+import { ScopeService } from '../common/scope.service';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { checklists, sites, users } from '../db/schema';
@@ -43,6 +44,7 @@ export class ReportExporter {
     private readonly queries: ReportQueries,
     private readonly scheduling: SchedulingScope,
     private readonly taskScope: TaskScope,
+    private readonly scope: ScopeService,
   ) {}
 
   async export(p: Principal, kind: ReportExportKind, q: ReportExportParams): Promise<ExportedFile> {
@@ -54,7 +56,7 @@ export class ReportExporter {
         tenantName: f.tenantName,
         from: f.from,
         to: f.to,
-        filters: await this.filterLabels(kind, f, q),
+        filters: await this.filterLabels(p, kind, f, q),
         generatedAt: f.now,
         timezone: f.timezone,
         sections,
@@ -136,17 +138,17 @@ export class ReportExporter {
     }
   }
 
-  /** "Obyekt: Zona A1"-style lines for the PDF header; names as they are now. */
-  private async filterLabels(kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams): Promise<string[]> {
+  /** "Obyekt: Zona A1"-style lines for the PDF header; names as they are now, only for what the viewer's scope can see (else "—"). */
+  private async filterLabels(p: Principal, kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams): Promise<string[]> {
     const tx = this.db.tx();
     const F = az.reports.filters;
     const out: string[] = [];
     if (f.siteId) {
-      const [s] = await tx.select({ name: sites.name }).from(sites).where(eq(sites.id, f.siteId));
+      const [s] = await tx.select({ name: sites.name }).from(sites).where(and(eq(sites.id, f.siteId), this.scheduling.readableSites(p)));
       out.push(`${F.site}: ${s?.name ?? az.reports.noValue}`);
     }
     if (f.userId) {
-      const [u] = await tx.select({ name: users.fullName }).from(users).where(eq(users.id, f.userId));
+      const [u] = await tx.select({ name: users.fullName }).from(users).where(and(eq(users.id, f.userId), this.scope.usersFilter(p)));
       out.push(`${F.employee}: ${u?.name ?? az.reports.noValue}`);
     }
     if (f.checklistId) {

@@ -14,7 +14,7 @@ describe('report exports (spec §5.4)', () => {
   let t: TestApp;
   let w: ReportWorld;
   beforeAll(async () => {
-    t = await createTestApp({}, { clock });
+    t = await createTestApp({ REPORTS_STATEMENT_TIMEOUT_MS: '60000' }, { clock });
     w = await reportWorld(t);
   });
   afterAll(() => t.close());
@@ -92,6 +92,26 @@ describe('report exports (spec §5.4)', () => {
         after: { kind: 'runs', format: 'csv', filters: { from: '2026-11-02', to: '2026-11-04', siteId: w.sites.branchA, userId: null, checklistId: null, bucket: 'missed', severity: null }, rows: 2 },
       },
     ]);
+  });
+
+  it('names filter entities in the PDF header only inside the viewer’s scope', async () => {
+    const scoped = await pdfText((await file(w.leyla.api, 'summary', { ...PERIOD, format: 'pdf', userId: w.nigar.id, siteId: w.sites.branchB })).body);
+    expect(scoped).toContain('Obyekt: —');
+    expect(scoped).toContain('Əməkdaş: —');
+    expect(scoped).not.toContain('Nigar');
+    expect(scoped).not.toContain('Filial B');
+    // Inside her scope the names still print.
+    const inside = await pdfText((await file(w.leyla.api, 'summary', { ...PERIOD, format: 'pdf', userId: w.aynur.id, siteId: w.sites.zoneA1 })).body);
+    expect(inside).toContain('Obyekt: Zona A1');
+    expect(inside).toContain('Əməkdaş: Aynur Quliyeva');
+    // A subordinates viewer sees the sites of their people's runs, not other branches.
+    const role = await w.owner.post('/api/v1/roles', { name: 'Nəzarətçi ixrac', dataScope: 'subordinates', permissions: ['reports.view', 'reports.export'] });
+    expect(role.status, JSON.stringify(role.body)).toBe(201);
+    const user = await createUserDirect(t, w.s.tenantId, { kind: 'staff', roleId: role.body.id as string, fullName: 'Rauf İxrac', managerId: w.leyla.id, emailVerified: true });
+    const api = as(t, (await loginStaff(t, user.email!, user.secret, 'web')).accessToken);
+    const outside = await pdfText((await file(api, 'summary', { ...PERIOD, format: 'pdf', siteId: w.sites.branchB })).body);
+    expect(outside).toContain('Obyekt: —');
+    expect(outside).not.toContain('Filial B');
   });
 
   it('produces header-only files for an empty period', async () => {
