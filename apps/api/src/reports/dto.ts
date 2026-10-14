@@ -1,5 +1,6 @@
 import {
   employeeReportRowSchema,
+  reportExportQuerySchema,
   reportFiltersSchema,
   reportProblemsQuerySchema,
   reportProblemsSchema,
@@ -22,3 +23,4 @@ export class ReportProblemsQueryDto extends createZodDto(reportProblemsQuerySche
 export class ReportProblemsResponse extends createZodDto(reportProblemsSchema) {}
 export class ReportTasksQueryDto extends createZodDto(reportTasksQuerySchema) {}
 export class ReportTasksResponse extends createZodDto(reportTasksSchema) {}
+export class ReportExportQueryDto extends createZodDto(reportExportQuerySchema) {}
