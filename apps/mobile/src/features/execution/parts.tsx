@@ -1,4 +1,5 @@
-import type { MediaKind, MediaSource } from '@taskop/contracts';
+import type { Item, MediaKind, MediaSource } from '@taskop/contracts';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
@@ -17,6 +18,43 @@ export function Choice(p: { label: string; selected: boolean; role: 'radio' | 'c
     >
       <Text style={[styles.choiceText, p.selected ? styles.choiceTextOn : null]}>{p.label}</Text>
     </Pressable>
+  );
+}
+
+/**
+ * A choice item's options with their labels: yes/no and confirm/deny are fixed keys put into words, single and multi
+ * choice carry their own labels. Null for every other item type. Shared by the worker's field and the read-only display.
+ */
+export function choiceOptions(item: Item, t: TFunction): { id: string; label: string }[] | null {
+  switch (item.type) {
+    case 'yes_no':
+    case 'confirm_deny':
+      return (item.options as readonly { id: string; key: string }[]).map((o) => ({ id: o.id, label: t(`checklists.builder.fixedOptions.${o.key}`) }));
+    case 'single_choice':
+    case 'multi_choice':
+      return item.options.map((o) => ({ id: o.id, label: o.label }));
+    default:
+      return null;
+  }
+}
+
+export function Options(p: { options: readonly { id: string; label: string }[]; selected: string[]; multi: boolean; disabled: boolean; onChange: (ids: string[]) => void }) {
+  return (
+    <View style={styles.options}>
+      {p.options.map((o) => {
+        const on = p.selected.includes(o.id);
+        return (
+          <Choice
+            key={o.id}
+            label={o.label}
+            selected={on}
+            role={p.multi ? 'checkbox' : 'radio'}
+            disabled={p.disabled}
+            onPress={() => p.onChange(p.multi ? (on ? p.selected.filter((x) => x !== o.id) : [...p.selected, o.id]) : [o.id])}
+          />
+        );
+      })}
+    </View>
   );
 }
 
@@ -100,6 +138,7 @@ export function EvidenceRow(p: {
 }
 
 const styles = StyleSheet.create({
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   choice: { minHeight: 44, minWidth: 64, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   choiceOn: { borderColor: colors.primary, backgroundColor: colors.primary },
   choiceText: { color: colors.text, fontSize: 15 },

@@ -21,7 +21,7 @@ import { useOffline } from '@/offline/context';
 import type { LocalMedia } from '@/offline/local-model';
 import { fromAnswerDatetime, nowInputFor, toAnswerDatetime } from './datetime-format';
 import { numberKeyboard, parseNumberAnswer } from './number-format';
-import { Chip, Choice, EvidenceRow } from './parts';
+import { Chip, choiceOptions, EvidenceRow, Options } from './parts';
 
 export interface ItemFieldProps {
   item: Item;
@@ -38,26 +38,6 @@ export interface ItemFieldProps {
   onRemoveMedia: (mediaId: string) => void;
   onOpenVideo: (uri: string) => void;
   onFlag: () => void;
-}
-
-function Options(p: { options: readonly { id: string; label: string }[]; selected: string[]; multi: boolean; disabled: boolean; onChange: (ids: string[]) => void }) {
-  return (
-    <View style={styles.options}>
-      {p.options.map((o) => {
-        const on = p.selected.includes(o.id);
-        return (
-          <Choice
-            key={o.id}
-            label={o.label}
-            selected={on}
-            role={p.multi ? 'checkbox' : 'radio'}
-            disabled={p.disabled}
-            onPress={() => p.onChange(p.multi ? (on ? p.selected.filter((x) => x !== o.id) : [...p.selected, o.id]) : [o.id])}
-          />
-        );
-      })}
-    </View>
-  );
 }
 
 function NumberInput(p: { item: NumberItem; value: number | undefined; disabled: boolean; onChange: (n: number | undefined) => void }) {
@@ -126,13 +106,18 @@ function AnswerInput(p: ItemFieldProps) {
   const { item, answer } = p;
   switch (item.type) {
     case 'yes_no':
-    case 'confirm_deny': {
-      const options = (item.options as readonly { id: string; key: string }[]).map((o) => ({ id: o.id, label: t(`checklists.builder.fixedOptions.${o.key}`) }));
-      return <Options options={options} selected={answer?.optionIds ?? []} multi={false} disabled={p.readOnly} onChange={(optionIds) => p.onPatch({ optionIds })} />;
-    }
+    case 'confirm_deny':
     case 'single_choice':
     case 'multi_choice':
-      return <Options options={item.options} selected={answer?.optionIds ?? []} multi={item.type === 'multi_choice'} disabled={p.readOnly} onChange={(optionIds) => p.onPatch({ optionIds })} />;
+      return (
+        <Options
+          options={choiceOptions(item, t) ?? []}
+          selected={answer?.optionIds ?? []}
+          multi={item.type === 'multi_choice'}
+          disabled={p.readOnly}
+          onChange={(optionIds) => p.onPatch({ optionIds })}
+        />
+      );
     case 'number':
       return <NumberInput item={item} value={answer?.number} disabled={p.readOnly} onChange={(number) => p.onPatch({ number })} />;
     case 'text':
@@ -231,7 +216,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 16, fontWeight: '600', color: colors.text, flexShrink: 1 },
   required: { color: colors.danger, fontWeight: '700' },
   help: { color: colors.muted, fontSize: 13 },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   gap: { gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flex: { flex: 1 },
