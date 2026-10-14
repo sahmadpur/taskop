@@ -13,12 +13,15 @@ export const chain = (userId: string) => sql`(with recursive chain as (
     select u.id from users u join chain c on u.manager_id = c.id
   ) select id from chain)`;
 
-/** The site in `siteCol` lies under one of the user's own sites (Foundation §4.4). */
-export const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`exists (
-    select 1 from user_sites mine
+/**
+ * The site in `siteCol` lies under one of the user's own sites (Foundation §4.4). The visible sites are an uncorrelated
+ * subquery, so Postgres hashes them once; a correlated `exists` re-ran per row and took about a second over 73,200 runs.
+ */
+export const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`${siteCol} in (
+    select target.id from user_sites mine
     join sites ms on ms.id = mine.site_id
-    join sites target on target.id = ${siteCol}
-    where mine.user_id = ${userId} and target.path <@ ms.path)`;
+    join sites target on target.path <@ ms.path
+    where mine.user_id = ${userId})`;
 
 const failClosed = (scope: never): never => {
   throw new Error(`Unhandled data scope: ${String(scope)}`);
