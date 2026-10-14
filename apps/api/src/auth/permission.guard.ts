@@ -16,7 +16,11 @@ export class PermissionGuard implements CanActivate {
     ]);
     if (!required) return true;
     const keys = Array.isArray(required) ? required : required.any;
-    if (!keys.length) return true;
+    // A plain empty list asks for nothing; an empty any-of can never be satisfied.
+    if (!keys.length) {
+      if (Array.isArray(required)) return true;
+      throw new AppError('FORBIDDEN');
+    }
     const principal = ctx.switchToHttp().getRequest<AppRequest>().principal;
     const has = (k: PermissionKey) => principal?.permissions.has(k) === true;
     const ok = Array.isArray(required) ? keys.every(has) : keys.some(has);

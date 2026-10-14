@@ -30,4 +30,11 @@ describe('PermissionGuard', () => {
     expect(guard.canActivate(ctx({ permissions: new Set(['assignments.view']) }))).toBe(true);
     expect(() => guard.canActivate(ctx({ permissions: new Set(['users.view']) }))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
   });
+  it('refuses an empty any-of requirement, but an empty plain list asks for nothing', () => {
+    expect(() => new PermissionGuard(reflector({ any: [] })).canActivate(ctx({ permissions: new Set(['users.view']) }))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
+    expect(new PermissionGuard(reflector([])).canActivate(ctx({ permissions: new Set() }))).toBe(true);
+  });
+  it('refuses an any-of requirement when there is no principal', () => {
+    expect(() => new PermissionGuard(reflector({ any: ['reports.view'] })).canActivate(ctx(undefined))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
+  });
 });

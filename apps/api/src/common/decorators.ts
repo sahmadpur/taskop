@@ -11,7 +11,7 @@ export const REQUIRED_PERMISSIONS_KEY = 'taskop:requiredPermissions';
 export type PermissionRequirement = PermissionKey[] | { any: PermissionKey[] };
 export const RequirePermission = (...keys: PermissionKey[]) => SetMetadata(REQUIRED_PERMISSIONS_KEY, keys satisfies PermissionRequirement);
 /** One of `keys` is enough, e.g. the run drawer: assignments.view or reports.view (SP7 spec §5.6). */
-export const RequireAnyPermission = (...keys: PermissionKey[]) => SetMetadata(REQUIRED_PERMISSIONS_KEY, { any: keys } satisfies PermissionRequirement);
+export const RequireAnyPermission = (...keys: [PermissionKey, ...PermissionKey[]]) => SetMetadata(REQUIRED_PERMISSIONS_KEY, { any: keys } satisfies PermissionRequirement);
 
 export const CurrentPrincipal = createParamDecorator((_data: unknown, ctx: ExecutionContext): Principal => {
   const principal = ctx.switchToHttp().getRequest<AppRequest>().principal;
