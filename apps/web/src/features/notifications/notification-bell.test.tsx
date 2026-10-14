@@ -3,6 +3,7 @@ import { focusManager, QueryClient } from '@tanstack/react-query';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Toaster } from '@/components/ui/sonner';
 import { renderWithRouter } from '@/test/router';
 import { messageNote, problemNote, taskNote } from './fixtures';
 import { NotificationBell } from './notification-bell';
@@ -21,6 +22,7 @@ const openBell = async () => {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   vi.resetAllMocks();
   mocks.api.notifications.unreadCount.mockResolvedValue({ count: 3 });
   mocks.api.notifications.list.mockResolvedValue({ items: [taskNote, problemNote, messageNote], nextCursor: null });
@@ -111,5 +113,21 @@ describe('NotificationBell', () => {
     await userEvent.click(all);
     await waitFor(() => expect(router.state.location.pathname).toBe('/notifications'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows why marking all read failed, and asks for the count again', async () => {
+    mocks.api.notifications.markAllRead.mockRejectedValue(new ApiError(0, 'NETWORK', 'errors.NETWORK'));
+    renderWithRouter(
+      <>
+        <NotificationBell />
+        <Toaster />
+      </>,
+    );
+    const popover = await openBell();
+    const calls = mocks.api.notifications.unreadCount.mock.calls.length;
+    await userEvent.click(within(popover).getByRole('button', { name: 'Hamısını oxunmuş et' }));
+    expect(await screen.findByText('Serverlə əlaqə qurulmadı. İnternet bağlantınızı yoxlayın.')).toBeInTheDocument();
+    await waitFor(() => expect(mocks.api.notifications.unreadCount.mock.calls.length).toBeGreaterThan(calls));
+    expect(within(popover).getByRole('button', { name: 'Hamısını oxunmuş et' })).toBeEnabled();
   });
 });

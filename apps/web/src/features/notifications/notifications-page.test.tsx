@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '@taskop/api-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Toaster } from '@/components/ui/sonner';
 import { renderWithRouter } from '@/test/router';
 import { messageNote, problemNote, taskNote } from './fixtures';
 import { NotificationsPage } from './notifications-page';
@@ -9,9 +11,23 @@ const mocks = vi.hoisted(() => ({
   api: { notifications: { list: vi.fn(), unreadCount: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn() } },
 }));
 vi.mock('@/lib/session', () => ({ api: mocks.api, useMe: () => ({ tenant: { timezone: 'Asia/Baku', locale: 'az' } }) }));
+/** Lets a test make opening a row reject (e.g. a navigation that throws); otherwise the real hook runs. */
+const open = vi.hoisted(() => ({ failure: null as Error | null }));
+vi.mock('./open-notification', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./open-notification')>();
+  return {
+    useOpenNotification: () => {
+      const real = actual.useOpenNotification();
+      return (...args: Parameters<typeof real>) => (open.failure ? Promise.reject(open.failure) : real(...args));
+    },
+  };
+});
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.restoreAllMocks();
+  open.failure = null;
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   mocks.api.notifications.unreadCount.mockResolvedValue({ count: 2 });
   mocks.api.notifications.markRead.mockResolvedValue(undefined);
   mocks.api.notifications.markAllRead.mockResolvedValue(undefined);
@@ -94,5 +110,32 @@ describe('NotificationsPage', () => {
     await userEvent.click(markAll);
     await waitFor(() => expect(mocks.api.notifications.markAllRead).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mocks.api.notifications.list).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows why marking everything read failed', async () => {
+    mocks.api.notifications.list.mockResolvedValue({ items: [taskNote], nextCursor: null });
+    mocks.api.notifications.markAllRead.mockRejectedValue(new ApiError(0, 'NETWORK', 'errors.NETWORK'));
+    renderWithRouter(
+      <>
+        <NotificationsPage />
+        <Toaster />
+      </>,
+      '/notifications',
+    );
+    const markAll = await screen.findByRole('button', { name: 'Hamısını oxunmuş et' });
+    await waitFor(() => expect(markAll).toBeEnabled());
+    await userEvent.click(markAll);
+    expect(await screen.findByText('Serverlə əlaqə qurulmadı. İnternet bağlantınızı yoxlayın.')).toBeInTheDocument();
+    await waitFor(() => expect(markAll).toBeEnabled());
+  });
+
+  it('logs a row whose opening fails instead of leaving the rejection unhandled', async () => {
+    const failure = new Error('navigation failed');
+    open.failure = failure;
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.api.notifications.list.mockResolvedValue({ items: [problemNote], nextCursor: null });
+    renderWithRouter(<NotificationsPage />, '/notifications');
+    await userEvent.click(await screen.findByRole('button', { name: /Kritik problem/ }));
+    await waitFor(() => expect(logged).toHaveBeenCalledWith('Opening the notification failed', failure));
   });
 });

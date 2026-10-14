@@ -1,4 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { errorText } from '@/lib/errors';
 import { api } from '@/lib/session';
 
 /** Spec §8: the badge polls every 30 s and on window focus. */
@@ -56,10 +59,13 @@ export const useInbox = (unreadOnly: boolean) =>
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 
+/** Marks every notification read; a failure is told in a toast, and the lists are asked again either way. */
 export function useMarkAllRead() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.notifications.markAllRead(),
+    onError: (e) => toast.error(errorText(t, e)),
     onSettled: () => qc.invalidateQueries({ queryKey: notificationKeys.all }),
   });
 }

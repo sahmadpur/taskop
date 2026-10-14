@@ -43,7 +43,15 @@ export function NotificationsPage() {
       {items.length > 0 && (
         <ul aria-label={t('notifications.title')} className="grid gap-1 rounded-md border p-1">
           {items.map((n) => (
-            <NotificationRow key={n.id} item={n} onOpen={(item) => void openNotification(item, { inboxFallback: false })} />
+            <NotificationRow
+              key={n.id}
+              item={n}
+              onOpen={(item) => {
+                openNotification(item, { inboxFallback: false }).catch((error: unknown) => {
+                  console.error('Opening the notification failed', error);
+                });
+              }}
+            />
           ))}
         </ul>
       )}
