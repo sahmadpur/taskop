@@ -17,7 +17,7 @@ jest.mock('expo-notifications', () => ({
 jest.mock('expo-device', () => ({ isDevice: true }));
 jest.mock('expo-constants', () => ({
   __esModule: true,
-  default: { expoConfig: { extra: { eas: { projectId: 'f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f' } } }, easConfig: null },
+  default: { expoConfig: { extra: { eas: { projectId: 'test-eas-project-id' } } }, easConfig: null },
 }));
 jest.mock('@/lib/secure-storage', () => {
   const store = new Map<string, string>();
@@ -104,9 +104,9 @@ describe('native push port', () => {
     expect(await nativePush.permission()).toBe('undetermined');
     N.requestPermissionsAsync.mockResolvedValueOnce({ status: 'granted', granted: true, canAskAgain: true, expires: 'never' });
     expect(await nativePush.requestPermission()).toBe('granted');
-    expect(nativePush.projectId()).toBe('f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f');
-    expect(await nativePush.expoToken('f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f')).toBe('ExponentPushToken[abc]');
-    expect(N.getExpoPushTokenAsync).toHaveBeenCalledWith({ projectId: 'f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f' });
+    expect(nativePush.projectId()).toBe('test-eas-project-id');
+    expect(await nativePush.expoToken('test-eas-project-id')).toBe('ExponentPushToken[abc]');
+    expect(N.getExpoPushTokenAsync).toHaveBeenCalledWith({ projectId: 'test-eas-project-id' });
     expect(nativePush.isDevice).toBe(true);
   });
 

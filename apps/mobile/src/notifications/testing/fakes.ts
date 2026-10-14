@@ -3,7 +3,7 @@ import type { AppStatePort } from '@/offline/sync-triggers';
 import type { NotificationEvents, PushPermission, PushPort, PushTokenStore, TapResponse } from '../ports';
 
 /** Test-only: nothing in the app imports this file. */
-export const PROJECT_ID = 'f1c3d2a4-5b6c-4d7e-8f90-1a2b3c4d5e6f';
+export const PROJECT_ID = 'test-eas-project-id';
 export const PUSH_TOKEN = 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]';
 
 export type FakePush = PushPort & { ensureChannel: jest.Mock; permission: jest.Mock; requestPermission: jest.Mock; expoToken: jest.Mock; setBadge: jest.Mock };
