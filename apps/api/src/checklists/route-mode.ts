@@ -1,7 +1,7 @@
 import { applyDecorators, Controller, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { PermissionKey } from '@taskop/contracts';
-import { Public, RequirePermission } from '../common/decorators';
+import { Public, RequireAnyPermission, RequirePermission } from '../common/decorators';
 import { PlatformGuard } from '../platform/platform.guard';
 import { PlatformTenantInterceptor } from './platform-tenant.interceptor';
 
@@ -11,6 +11,9 @@ const noop: MethodDecorator = () => undefined;
 
 /** Tenant routes check role permissions; platform admins hold every checklist permission (spec §6.2). */
 export const perm = (mode: RouteMode, ...keys: PermissionKey[]): MethodDecorator => (mode === 'tenant' ? RequirePermission(...keys) : noop);
+
+/** Like `perm`, but one of `keys` is enough. */
+export const permAny = (mode: RouteMode, ...keys: PermissionKey[]): MethodDecorator => (mode === 'tenant' ? RequireAnyPermission(...keys) : noop);
 
 /** `path` is relative: tenant → `/<path>`, platform → `/platform/tenants/:tenantId/<path>`. */
 export function controllerDecorators(mode: RouteMode, path: string, tag: string): ClassDecorator {
