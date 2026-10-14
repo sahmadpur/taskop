@@ -19,11 +19,17 @@ import {
   NOTIFICATION_ISSUE_CODES,
   NOTIFICATION_TYPES,
   OCCURRENCE_STATUSES,
+  PERIOD_PRESETS,
   PERMISSION_GROUPS,
   PREVIEW_WARNINGS,
   PROBLEM_RESOLUTIONS,
   PROBLEM_SEVERITIES,
   PROBLEM_SOURCES,
+  REPORT_EXPORT_KINDS,
+  REPORT_ISSUE_CODES,
+  REPORT_KINDS,
+  RUN_BUCKETS,
+  RUN_COUNT_KEYS,
   SCHEDULING_ISSUE_CODES,
   TASK_HISTORY_REASONS,
   TASK_ISSUE_CODES,
@@ -356,5 +362,84 @@ describe('notification web translations', () => {
     expect(n().deliveryStatuses.delivered).toBe('Çatdırıldı');
     expect(n().deliveryStatuses.failed).toBe('Alınmadı');
     expect(az.nav.messages).toBe('Mesajlar');
+  });
+});
+
+describe('report translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('labels every count, bucket, period, tab, export title and issue', () => {
+    for (const k of RUN_COUNT_KEYS) expect(az.reports.counts[k], k).toBeTypeOf('string');
+    for (const b of RUN_BUCKETS) expect(az.reports.buckets[b], b).toBeTypeOf('string');
+    for (const p of PERIOD_PRESETS) expect(az.reports.periods[p], p).toBeTypeOf('string');
+    expect(az.reports.periods.custom).toBeTypeOf('string');
+    for (const k of REPORT_KINDS) expect(az.reports.tabs[k], k).toBeTypeOf('string');
+    for (const k of REPORT_EXPORT_KINDS) expect(az.reports.titles[k], k).toBeTypeOf('string');
+    for (const code of REPORT_ISSUE_CODES) expect(lookup(code), code).toBeTypeOf('string');
+  });
+
+  it('uses the agreed wording and registers the nav, audit, role and error labels', () => {
+    expect(az.nav.reports).toBe('Hesabatlar');
+    expect(az.reports.title).toBe('Hesabatlar');
+    expect(az.reports.measures.completionPercent).toBe('Tamamlanma faizi');
+    expect(az.reports.export.thisTable).toBe('Bu cədvəl');
+    expect(az.reports.export.fullReport).toBe('Tam hesabat');
+    expect(az.reports.employees.unassigned).toBe('Təyin edilməyib');
+    expect(az.reports.periods.today).toBe('Bu gün');
+    expect(az.roles.groups.reports).toBe('Hesabatlar');
+    expect(az.audit.entityTypes.report).toBe('Hesabat');
+    for (const s of [az.errors.REPORT_TOO_LARGE, az.reports.export.tooLarge]) {
+      expect(s).toContain('{{rows}}');
+      expect(s).toContain('{{limit}}');
+    }
+    expect(az.reports.pdf.page).toBe('Səhifə {{page}} / {{pages}}');
+  });
+});
+
+describe('mobile team translations', () => {
+  it('labels the Team tab, its periods, its offline state, its rows and the run screen', () => {
+    expect(az.mobile.tabs.team).toBe('Komanda');
+    expect(az.mobile.team.title).toBe('Komanda');
+    expect(az.mobile.team.offline).toBe('Komandanı görmək üçün internetə qoşulun');
+    expect(az.mobile.team.periods).toEqual({ today: 'Bu gün', last_7: '7 gün', last_30: '30 gün' });
+    for (const p of Object.keys(az.mobile.team.periods)) expect(PERIOD_PRESETS, p).toContain(p);
+    expect(az.mobile.team.due.replace('{{time}}', '10:00')).toBe('Son vaxt: 10:00');
+    expect(az.mobile.team.problems.replace('{{count}}', '2')).toBe('Problem: 2');
+    expect(az.mobile.team.critical.replace('{{count}}', '1')).toBe('Kritik: 1');
+    expect(az.mobile.team.run.notExecuted).toBe('Hələ icra edilməyib');
+    for (const k of ['title', 'answers', 'cancelReason'] as const) expect(az.mobile.team.run[k], k).toBeTypeOf('string');
+  });
+
+  it('shares the report wording with the web (Part 1)', () => {
+    expect(az.reports.notCompleted).toBe('Tamamlanmayıb');
+    expect(az.reports.buckets).toMatchObject({ all: 'Hamısı', overdue: 'Gecikmiş', partial: 'Yarımçıq', missed: 'Buraxılmış', problems: 'Problemli' });
+    expect(az.reports.measures.completionPercent).toBe('Tamamlanma faizi');
+    expect(az.errors.REPORT_TIMEOUT).toBeTypeOf('string');
+  });
+});
+
+describe('report web translations', () => {
+  it('has the strings the filter bar, the tiles, the trend, the dashboard and the report tables use', () => {
+    expect(az.reports.range.label).toBe('{{from}} – {{to}}');
+    expect(az.reports.range.incomplete).toBe('Başlanğıc və son tarixi seçin.');
+    expect(az.reports.picker.unknown).toBeTypeOf('string');
+    expect(az.reports.picker.unknownEmployee).toBeTypeOf('string');
+    expect(az.reports.tiles.link).toBe('{{label}}: {{value}}');
+    expect(az.reports.chart.table).toBe('Gündəlik icra cədvəli');
+    expect(az.reports.live.refresh).toBe('Yenilə');
+    expect(az.reports.live.updatedAt).toBe('Son yenilənmə: {{time}}');
+    expect(az.reports.attention.title).toBe('Diqqət tələb edir');
+    expect(az.reports.attention.overdueNow).toBe('Hazırda gecikən icralar');
+    expect(az.reports.attention.critical).toBe('Kritik problemlər');
+    for (const k of ['noneOverdue', 'noneCritical'] as const) expect(az.reports.attention[k], k).toBeTypeOf('string');
+    expect(az.reports.table.more).toBe('Daha çox göstər');
+    expect(az.reports.table.sort).toBe('{{column}} üzrə sırala');
+    expect(az.reports.table.openTask).toBe('Tapşırığı aç');
+    expect(az.reports.table.receivedAt).toBe('Serverə çatıb: {{time}}');
+    // Part 1's keys are untouched.
+    expect(az.reports.dashboard).toBe('İdarə paneli');
+    expect(az.reports.export.thisTable).toBe('Bu cədvəl');
+    expect(az.reports.measures.completionHint).toBe('Vaxtı çatmış icralardan tamamlananların payı');
+    expect(az.nav.reports).toBe('Hesabatlar');
   });
 });

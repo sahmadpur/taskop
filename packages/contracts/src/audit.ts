@@ -38,3 +38,7 @@ export type TaskAuditAction = (typeof TASK_AUDIT_ACTIONS)[number];
  */
 export const NOTIFICATION_AUDIT_ACTIONS = ['notification_rule.updated', 'notification_rule.reset', 'notification.message_sent'] as const;
 export type NotificationAuditAction = (typeof NOTIFICATION_AUDIT_ACTIONS)[number];
+
+/** Audited report action (SP7 spec §5.4): entity type `report`, entity id null, `after: { kind, format, filters, rows }`. */
+export const REPORT_AUDIT_ACTIONS = ['reports.exported'] as const;
+export type ReportAuditAction = (typeof REPORT_AUDIT_ACTIONS)[number];

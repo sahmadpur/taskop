@@ -34,6 +34,8 @@ export interface RequestOptions<T> {
   query?: QueryParams;
   schema?: ZodType<T>;
   auth?: boolean;
+  /** The Accept header; JSON unless a file is downloaded. */
+  accept?: string;
 }
 
 export interface ApiClientOptions {
@@ -69,7 +71,30 @@ async function toApiError(res: Response): Promise<ApiError> {
   const parsed = errorBodySchema.safeParse(await res.json().catch(() => null));
   if (!parsed.success) return new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
   const e = parsed.data.error;
-  return new ApiError(res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null, e.userIds ?? null, e.missing ?? null);
+  return new ApiError(res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null, e.userIds ?? null, e.missing ?? null, e.rows ?? null, e.limit ?? null);
+}
+
+export interface DownloadedFile {
+  blob: Blob;
+  /** From Content-Disposition; null when the server sent none. */
+  filename: string | null;
+  contentType: string | null;
+}
+
+/** The file name of a Content-Disposition header; RFC 6266 `filename*=UTF-8''…` wins over `filename="…"`. */
+export function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1]!.trim());
+    } catch {
+      // A malformed escape: fall back to the plain parameter.
+    }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+  const name = plain?.[1] ?? plain?.[2]?.trim();
+  return name ? name : null;
 }
 
 async function isUnauthenticated(res: Response): Promise<boolean> {
@@ -86,18 +111,34 @@ export class ApiClient {
   }
 
   request<T>(method: string, path: string, o: RequestOptions<T> = {}): Promise<T> {
+    return this.bounded(async (signal) => this.parse(await this.sendAuthed(method, path, o, signal), o.schema));
+  }
+
+  /** A file download (SP7 report exports): the same auth, refresh, timeout and errors as `request`; the body is a Blob. */
+  download(path: string, o: { query?: QueryParams } = {}): Promise<DownloadedFile> {
     return this.bounded(async (signal) => {
-      let res = await this.send(method, path, o, signal);
-      if (res.status === 401 && o.auth !== false && this.opts.refresh !== false && (await isUnauthenticated(res))) {
-        const refreshed = await this.refresh();
-        if (!refreshed) {
-          this.opts.onSessionExpired?.();
-          throw await toApiError(res);
-        }
-        res = await this.send(method, path, o, signal);
-      }
-      return this.parse(res, o.schema);
+      const res = await this.sendAuthed('GET', path, { query: o.query, accept: '*/*' }, signal);
+      if (!res.ok) throw await toApiError(res);
+      return {
+        blob: await res.blob(),
+        filename: parseContentDispositionFilename(res.headers.get('content-disposition')),
+        contentType: res.headers.get('content-type'),
+      };
     });
+  }
+
+  /** Sends once; on UNAUTHENTICATED refreshes (single-flight) and sends again. */
+  private async sendAuthed<T>(method: string, path: string, o: RequestOptions<T>, signal: AbortSignal | undefined): Promise<Response> {
+    let res = await this.send(method, path, o, signal);
+    if (res.status === 401 && o.auth !== false && this.opts.refresh !== false && (await isUnauthenticated(res))) {
+      const refreshed = await this.refresh();
+      if (!refreshed) {
+        this.opts.onSessionExpired?.();
+        throw await toApiError(res);
+      }
+      res = await this.send(method, path, o, signal);
+    }
+    return res;
   }
 
   /** Single-flight: concurrent callers share one refresh request. */
@@ -147,7 +188,7 @@ export class ApiClient {
   }
 
   private async send<T>(method: string, path: string, o: RequestOptions<T>, signal?: AbortSignal): Promise<Response> {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { Accept: o.accept ?? 'application/json' };
     if (o.body !== undefined) headers['Content-Type'] = 'application/json';
     const token = o.auth === false ? null : this.opts.tokenStore.getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;

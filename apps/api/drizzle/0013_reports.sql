@@ -1,0 +1,1 @@
+CREATE INDEX "occurrences_local_date_idx" ON "occurrences" USING btree ("tenant_id","local_date");

@@ -52,6 +52,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Problemlər' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tapşırıqlar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Mesajlar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Hesabatlar' })).not.toBeInTheDocument();
 
     expect(screen.getByRole('link', { name: 'Parametrlər' })).toBeInTheDocument();
   });
@@ -79,6 +80,12 @@ describe('AppShell', () => {
     state.current = { status: 'authenticated', me: me(['notifications.send']) };
     renderShell();
     expect(await screen.findByRole('link', { name: 'Mesajlar' })).toHaveAttribute('href', '/messages');
+  });
+
+  it('shows Hesabatlar to holders of reports.view', async () => {
+    state.current = { status: 'authenticated', me: me(['reports.view']) };
+    renderShell();
+    expect(await screen.findByRole('link', { name: 'Hesabatlar' })).toHaveAttribute('href', '/reports');
   });
 
   it('opens the notification settings from the user menu', async () => {

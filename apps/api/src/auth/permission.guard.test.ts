@@ -10,7 +10,7 @@ function ctx(principal: unknown): ExecutionContext {
     switchToHttp: () => ({ getRequest: () => ({ principal }) }),
   } as unknown as ExecutionContext;
 }
-const reflector = (keys: string[] | undefined) => ({ getAllAndOverride: () => keys }) as unknown as Reflector;
+const reflector = (keys: unknown) => ({ getAllAndOverride: () => keys }) as unknown as Reflector;
 
 describe('PermissionGuard', () => {
   it('allows routes without requirements', () => {
@@ -23,5 +23,18 @@ describe('PermissionGuard', () => {
     expect(() =>
       new PermissionGuard(reflector(['users.view', 'users.manage'])).canActivate(ctx({ permissions: new Set(['users.view']) })),
     ).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
+  });
+  it('allows an any-of requirement when one key is held, and refuses it when none is', () => {
+    const guard = new PermissionGuard(reflector({ any: ['assignments.view', 'reports.view'] }));
+    expect(guard.canActivate(ctx({ permissions: new Set(['reports.view']) }))).toBe(true);
+    expect(guard.canActivate(ctx({ permissions: new Set(['assignments.view']) }))).toBe(true);
+    expect(() => guard.canActivate(ctx({ permissions: new Set(['users.view']) }))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
+  });
+  it('refuses an empty any-of requirement, but an empty plain list asks for nothing', () => {
+    expect(() => new PermissionGuard(reflector({ any: [] })).canActivate(ctx({ permissions: new Set(['users.view']) }))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
+    expect(new PermissionGuard(reflector([])).canActivate(ctx({ permissions: new Set() }))).toBe(true);
+  });
+  it('refuses an any-of requirement when there is no principal', () => {
+    expect(() => new PermissionGuard(reflector({ any: ['reports.view'] })).canActivate(ctx(undefined))).toThrow(expect.objectContaining({ code: 'FORBIDDEN' }));
   });
 });

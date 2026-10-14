@@ -221,14 +221,14 @@ describe('changes to existing contracts', () => {
   });
 
   it('adds the notification permissions last, with the role defaults', () => {
-    expect(PERMISSION_GROUPS.at(-1)).toEqual({ group: 'notifications', keys: ['notifications.manage', 'notifications.send'] });
+    expect(PERMISSION_GROUPS.find((g) => g.group === 'notifications')).toEqual({ group: 'notifications', keys: ['notifications.manage', 'notifications.send'] });
     expect(SYSTEM_ROLE_DEFAULTS.owner.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));
     expect(SYSTEM_ROLE_DEFAULTS.admin.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));
     expect(SYSTEM_ROLE_DEFAULTS.manager.permissions).toContain('notifications.send');
     expect(SYSTEM_ROLE_DEFAULTS.manager.permissions).not.toContain('notifications.manage');
     expect(SYSTEM_ROLE_DEFAULTS.worker.permissions).toEqual([]);
     expect(SYSTEM_ROLE_DEFAULTS.auditor.permissions.filter((k) => k.startsWith('notifications.'))).toEqual([]);
-    expect(ALL_PERMISSIONS.slice(-2)).toEqual(['notifications.manage', 'notifications.send']);
+    expect(ALL_PERMISSIONS.filter((k) => k.startsWith('notifications.'))).toEqual(['notifications.manage', 'notifications.send']);
   });
 
   it('lists the audited notification actions', () => {

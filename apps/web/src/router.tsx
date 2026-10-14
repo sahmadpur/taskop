@@ -28,6 +28,8 @@ import { HomePage } from '@/features/home/home-page';
 import { NotificationsPage } from '@/features/notifications/notifications-page';
 import { MessagesPage } from '@/features/notifications/messages-page';
 import { messagesSearch } from '@/features/notifications/routes';
+import { ReportsPage } from '@/features/reports/reports-page';
+import { reportSearch, reportsPageSearch } from '@/features/reports/search';
 import { RolesPage } from '@/features/roles/roles-page';
 import { AssignmentsPage } from '@/features/scheduling/assignment-pages';
 import { AssignmentDetailRoute, NewAssignmentRoute, ScheduleRoute, scheduleSearch } from '@/features/scheduling/routes';
@@ -100,7 +102,7 @@ const verifyEmailRoute = createRoute({
   validateSearch: tokenSearch,
 });
 
-const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage });
+const homeRoute = createRoute({ getParentRoute: () => appLayout, path: '/', component: HomePage, validateSearch: reportSearch });
 const settingsRoute = createRoute({
   getParentRoute: () => appLayout,
   path: '/settings',
@@ -119,6 +121,7 @@ const problemsRoute = createRoute({ getParentRoute: () => appLayout, path: '/pro
 const tasksRoute = createRoute({ getParentRoute: () => appLayout, path: '/tasks', component: TasksPage, validateSearch: tasksSearch });
 const notificationsRoute = createRoute({ getParentRoute: () => appLayout, path: '/notifications', component: NotificationsPage });
 const messagesRoute = createRoute({ getParentRoute: () => appLayout, path: '/messages', component: MessagesPage, validateSearch: messagesSearch });
+const reportsRoute = createRoute({ getParentRoute: () => appLayout, path: '/reports', component: () => <ReportsPage />, validateSearch: reportsPageSearch });
 
 const assignmentsRoute = createRoute({ getParentRoute: () => appLayout, path: '/assignments', component: AssignmentsPage });
 const newAssignmentRoute = createRoute({
@@ -245,6 +248,7 @@ export const routeTree = rootRoute.addChildren([
     tasksRoute,
     notificationsRoute,
     messagesRoute,
+    reportsRoute,
     rolesRoute,
     usersRoute,
     userDetailRoute,

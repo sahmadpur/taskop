@@ -59,6 +59,9 @@ export default {
   PROBLEM_NOT_CLOSED: 'Problem üzrə tapşırıq yalnız icra bağlandıqdan sonra yaradıla bilər.',
   PROBLEM_ALREADY_HAS_TASK: 'Bu problem üçün artıq tapşırıq yaradılıb.',
   EVIDENCE_REQUIRED: 'Tələb olunan foto və ya videonu əlavə edin.',
+  REPORT_RANGE_TOO_LONG: 'Hesabat dövrü ən çox 366 gün ola bilər.',
+  REPORT_TOO_LARGE: 'Hesabatda çox sətir var ({{rows}}, limit {{limit}}). Filtrləri daraldın.',
+  REPORT_TIMEOUT: 'Hesabat vaxtında hazırlanmadı. Dövrü qısaldın və ya bir az sonra yenidən cəhd edin.',
   INTERNAL: 'Gözlənilməz xəta baş verdi. Sorğu ID: {{requestId}}',
   NETWORK: 'Serverlə əlaqə qurulmadı. İnternet bağlantınızı yoxlayın.',
   validation: {

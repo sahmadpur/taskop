@@ -38,6 +38,8 @@ const configSchema = z.object({
   EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
   /** Real Expo pushes. Unset: on, except under NODE_ENV=test, where FakePushSender records them (Spec decision 11). */
   NOTIFICATIONS_PUSH_ENABLED: z.stringbool().optional(),
+  /** SP7 spec §5.5: statement timeout of every report request, in ms (503 REPORT_TIMEOUT). Tests lower it. */
+  REPORTS_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1).default(15_000),
 });
 
 export type AppConfig = Omit<z.infer<typeof configSchema>, 'NOTIFICATIONS_PUSH_ENABLED'> & { NOTIFICATIONS_PUSH_ENABLED: boolean };

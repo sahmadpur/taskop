@@ -13,12 +13,17 @@ export const chain = (userId: string) => sql`(with recursive chain as (
     select u.id from users u join chain c on u.manager_id = c.id
   ) select id from chain)`;
 
-/** The site in `siteCol` lies under one of the user's own sites (Foundation §4.4). */
-export const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`exists (
-    select 1 from user_sites mine
+/**
+ * The site in `siteCol` lies under one of the user's own sites (Foundation §4.4). It yields NULL, not false, when the
+ * site column is NULL: safe in WHERE, AND/OR and under `coalesce(...)`, but never negate it without a `coalesce`.
+ * The visible sites are an uncorrelated
+ * subquery, so Postgres hashes them once; a correlated `exists` re-ran per row and took about a second over 73,200 runs.
+ */
+export const inSubtree = (userId: string, siteCol: AnyPgColumn) => sql`${siteCol} in (
+    select target.id from user_sites mine
     join sites ms on ms.id = mine.site_id
-    join sites target on target.id = ${siteCol}
-    where mine.user_id = ${userId} and target.path <@ ms.path)`;
+    join sites target on target.path <@ ms.path
+    where mine.user_id = ${userId})`;
 
 const failClosed = (scope: never): never => {
   throw new Error(`Unhandled data scope: ${String(scope)}`);
@@ -55,6 +60,16 @@ export class SchedulingScope {
       default:
         return failClosed(a.dataScope);
     }
+  }
+
+  /**
+   * The sites whose name a viewer may read, as SQL over `sites`: everything for `all`, the subtree for site_subtree,
+   * and for narrower scopes the sites that hold a run inside their scope (the sites their report rows name).
+   */
+  readableSites(a: ScopeHolder | null): SQL {
+    if (!a || a.dataScope === 'all') return sql`true`;
+    if (a.dataScope === 'site_subtree') return inSubtree(a.userId, sites.id);
+    return sql`exists (select 1 from occurrences where occurrences.site_id = ${sites.id} and ${this.occurrences(a)!})`;
   }
 
   /** Roster rows; the site itself is checked with assertSiteReadable. */

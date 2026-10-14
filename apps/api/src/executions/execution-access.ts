@@ -14,10 +14,13 @@ export class ExecutionAccess {
     private readonly scope: SchedulingScope,
   ) {}
 
-  /** The executor, or an assignments.view holder whose data scope covers the occurrence; anyone else gets 404. */
+  /**
+   * The executor, or an assignments.view or reports.view holder whose data scope covers the occurrence (SP7 spec §5.6);
+   * anyone else gets 404.
+   */
   async assertCanRead(p: Principal, executorUserId: string, occurrenceId: string): Promise<void> {
     if (p.userId === executorUserId) return;
-    if (p.permissions.has('assignments.view')) {
+    if (p.permissions.has('assignments.view') || p.permissions.has('reports.view')) {
       const [o] = await this.db
         .tx()
         .select({ id: occurrences.id })

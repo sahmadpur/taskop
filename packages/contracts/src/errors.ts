@@ -63,6 +63,9 @@ export const ErrorCode = {
   PROBLEM_NOT_CLOSED: 'PROBLEM_NOT_CLOSED',
   PROBLEM_ALREADY_HAS_TASK: 'PROBLEM_ALREADY_HAS_TASK',
   EVIDENCE_REQUIRED: 'EVIDENCE_REQUIRED',
+  REPORT_RANGE_TOO_LONG: 'REPORT_RANGE_TOO_LONG',
+  REPORT_TOO_LARGE: 'REPORT_TOO_LARGE',
+  REPORT_TIMEOUT: 'REPORT_TIMEOUT',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -128,6 +131,9 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   PROBLEM_NOT_CLOSED: 409,
   PROBLEM_ALREADY_HAS_TASK: 409,
   EVIDENCE_REQUIRED: 422,
+  REPORT_RANGE_TOO_LONG: 400,
+  REPORT_TOO_LARGE: 422,
+  REPORT_TIMEOUT: 503,
   INTERNAL: 500,
 };
 
@@ -145,6 +151,9 @@ export const errorBodySchema = z.object({
     userIds: z.array(z.string()).optional(),
     /** REQUIREMENTS_UNMET: what still blocks completion. */
     missing: z.array(missingSchema).optional(),
+    /** REPORT_TOO_LARGE: the rows the export would have and the cap. */
+    rows: z.number().int().optional(),
+    limit: z.number().int().optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;

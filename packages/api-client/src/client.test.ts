@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenStore, type TokenStore } from './index.js';
+import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenStore, parseContentDispositionFilename, type TokenStore } from './index.js';
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
@@ -537,5 +537,94 @@ describe('notification endpoints', () => {
       code: 'VALIDATION_FAILED',
       fields: { userIds: 'notifications.issues.tooManyRecipients' },
     });
+  });
+});
+
+describe('report endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'web', store);
+  }
+  const range = { from: '2026-11-02', to: '2026-11-04' };
+  const zero = { planned: 0, due: 0, completed: 0, inProgress: 0, pending: 0, overdue: 0, partial: 0, missed: 0, withProblems: 0, withCritical: 0 };
+  const summary = { counts: zero, completionPercent: null, averageScore: null, trend: [{ date: '2026-11-02', due: 0, completed: 0, completionPercent: null }] };
+  const empty = { items: [], nextCursor: null };
+  const problems = { counts: { total: 0, critical: 0, resolution: { none: 0, open: 0, resolved: 0, cancelled: 0 } }, ...empty };
+  const tasks = {
+    counts: { byStatus: { new: 0, accepted: 0, in_progress: 0, awaiting_review: 0, completed: 0, cancelled: 0 }, overdueOpen: 0, completedOnTime: 0, completedLate: 0 },
+    ...empty,
+  };
+  const csvFile = () =>
+    new Response(new Uint8Array([0xef, 0xbb, 0xbf, 0x61]), {
+      status: 200,
+      headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="taskop-runs-2026-11-02_2026-11-04.csv"' },
+    });
+
+  it('builds every path and query string and parses each response', async () => {
+    const calls: string[] = [];
+    const { api } = await authed((url, init) => {
+      calls.push(`${init.method} ${url}`);
+      if (url.includes('/reports/summary')) return json(200, summary);
+      if (url.includes('/reports/sites') || url.includes('/reports/employees')) return json(200, []);
+      if (url.includes('/reports/runs')) return json(200, empty);
+      if (url.includes('/reports/problems')) return json(200, problems);
+      return json(200, tasks);
+    });
+    const r = createTaskopApi(api).reports;
+    expect(await r.summary({ ...range, siteId: id })).toEqual(summary);
+    expect(await r.sites(range)).toEqual([]);
+    expect(await r.employees({ ...range, userId: id })).toEqual([]);
+    expect(await r.runs({ ...range, bucket: 'overdue', cursor: id })).toEqual(empty);
+    expect(await r.problems({ ...range, severity: 'critical' })).toEqual(problems);
+    expect(await r.tasks({ ...range, checklistId: id })).toEqual(tasks);
+    expect(calls).toEqual([
+      `GET /api/v1/reports/summary?from=2026-11-02&to=2026-11-04&siteId=${id}`,
+      'GET /api/v1/reports/sites?from=2026-11-02&to=2026-11-04',
+      `GET /api/v1/reports/employees?from=2026-11-02&to=2026-11-04&userId=${id}`,
+      `GET /api/v1/reports/runs?from=2026-11-02&to=2026-11-04&bucket=overdue&cursor=${id}`,
+      'GET /api/v1/reports/problems?from=2026-11-02&to=2026-11-04&severity=critical',
+      `GET /api/v1/reports/tasks?from=2026-11-02&to=2026-11-04&checklistId=${id}`,
+    ]);
+  });
+
+  it('downloads an export as a Blob named by Content-Disposition', async () => {
+    const seen: Array<[string, string]> = [];
+    const { api } = await authed((url, init) => {
+      seen.push([url, (init.headers as Record<string, string>).Accept!]);
+      return csvFile();
+    });
+    const file = await createTaskopApi(api).reports.export('runs', { ...range, format: 'csv', bucket: 'missed' });
+    expect(file.filename).toBe('taskop-runs-2026-11-02_2026-11-04.csv');
+    expect(new Uint8Array(await file.blob.arrayBuffer())).toEqual(new Uint8Array([0xef, 0xbb, 0xbf, 0x61]));
+    expect(seen).toEqual([['/api/v1/reports/runs/export?from=2026-11-02&to=2026-11-04&format=csv&bucket=missed', '*/*']]);
+  });
+
+  it('falls back to the contract file name without Content-Disposition', async () => {
+    const { api } = await authed(() => new Response('x', { status: 200 }));
+    expect((await createTaskopApi(api).reports.export('full', { ...range, format: 'pdf' })).filename).toBe('taskop-full-2026-11-02_2026-11-04.pdf');
+  });
+
+  it('refreshes and retries a download on UNAUTHENTICATED', async () => {
+    const { api } = setup((url, init) => {
+      if (url.endsWith('/auth/refresh')) return json(200, loginResult('fresh'));
+      return (init.headers as Record<string, string>).Authorization === 'Bearer fresh' ? csvFile() : err(401, 'UNAUTHENTICATED');
+    });
+    expect((await api.download('/reports/runs/export', { query: { ...range, format: 'csv' } })).filename).toBe('taskop-runs-2026-11-02_2026-11-04.csv');
+  });
+
+  it('exposes rows and limit on REPORT_TOO_LARGE', async () => {
+    const { api } = await authed(() =>
+      json(422, { error: { code: 'REPORT_TOO_LARGE', messageKey: 'errors.REPORT_TOO_LARGE', fields: null, retryAfterSeconds: null, requestId: 'r1', rows: 12000, limit: 10000 } }),
+    );
+    await expect(createTaskopApi(api).reports.export('runs', { ...range, format: 'xlsx' })).rejects.toMatchObject({ status: 422, code: 'REPORT_TOO_LARGE', rows: 12000, limit: 10000 });
+  });
+
+  it('reads RFC 6266 file names', () => {
+    expect(parseContentDispositionFilename('attachment; filename="a b.csv"')).toBe('a b.csv');
+    expect(parseContentDispositionFilename(`attachment; filename*=UTF-8''t%C9%99.csv; filename="t.csv"`)).toBe('tə.csv');
+    expect(parseContentDispositionFilename('attachment; filename=plain.pdf')).toBe('plain.pdf');
+    expect(parseContentDispositionFilename('attachment')).toBeNull();
+    expect(parseContentDispositionFilename(null)).toBeNull();
   });
 });

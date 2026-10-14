@@ -120,6 +120,19 @@ import {
   unreadCountSchema,
   type UpdateNotificationRuleInput,
   type UpdatePreferencesInput,
+  employeeReportRowSchema,
+  type ReportExportKind,
+  type ReportExportQuery,
+  reportFileName,
+  type ReportFiltersQuery,
+  type ReportProblemsQuery,
+  reportProblemsSchema,
+  reportRunPageSchema,
+  type ReportRunsQuery,
+  reportSummarySchema,
+  type ReportTasksQuery,
+  reportTasksSchema,
+  siteReportRowSchema,
 } from '@taskop/contracts';
 import { z } from 'zod';
 import type { ApiClient, QueryParams } from './client.js';
@@ -193,6 +206,7 @@ export function createTaskopApi(c: ApiClient) {
     ...createExecutionsApi(c),
     ...createTasksApi(c),
     ...createNotificationsApi(c),
+    ...createReportsApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -376,3 +390,29 @@ export function createNotificationsApi(c: ApiClient) {
   };
 }
 export type NotificationsApi = ReturnType<typeof createNotificationsApi>;
+
+/** A downloaded report file (SP7 spec §5.4). */
+export interface ReportFile {
+  blob: Blob;
+  filename: string;
+}
+
+/** Sub-project 7: dashboards and reports (reports.view) and their files (reports.export). */
+export function createReportsApi(c: ApiClient) {
+  return {
+    reports: {
+      summary: (query: ReportFiltersQuery) => c.request('GET', '/reports/summary', { query: q(query), schema: reportSummarySchema }),
+      sites: (query: ReportFiltersQuery) => c.request('GET', '/reports/sites', { query: q(query), schema: z.array(siteReportRowSchema) }),
+      employees: (query: ReportFiltersQuery) => c.request('GET', '/reports/employees', { query: q(query), schema: z.array(employeeReportRowSchema) }),
+      runs: (query: ReportRunsQuery) => c.request('GET', '/reports/runs', { query: q(query), schema: reportRunPageSchema }),
+      problems: (query: ReportProblemsQuery) => c.request('GET', '/reports/problems', { query: q(query), schema: reportProblemsSchema }),
+      tasks: (query: ReportTasksQuery) => c.request('GET', '/reports/tasks', { query: q(query), schema: reportTasksSchema }),
+      /** The file and its name: Content-Disposition, else `taskop-<kind>-<from>_<to>.<ext>`. */
+      export: async (kind: ReportExportKind, query: ReportExportQuery): Promise<ReportFile> => {
+        const file = await c.download(`/reports/${kind}/export`, { query: q(query) });
+        return { blob: file.blob, filename: file.filename ?? reportFileName(kind, query.from, query.to, query.format) };
+      },
+    },
+  };
+}
+export type ReportsApi = ReturnType<typeof createReportsApi>;

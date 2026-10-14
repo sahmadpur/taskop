@@ -20,7 +20,7 @@ export class ExecutionsController {
     @Inject(ExecutionQueries) private readonly queries: ExecutionQueries,
   ) {}
 
-  /** The executor, or assignments.view within the data scope (spec §6.8); anyone else gets 404. */
+  /** The executor, or assignments.view or reports.view within the data scope (spec §6.8, SP7 §5.6); anyone else gets 404. */
   @Get(':id')
   @ApiOkResponse({ type: ExecutionDetailResponse })
   get(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string): Promise<ExecutionDetail> {

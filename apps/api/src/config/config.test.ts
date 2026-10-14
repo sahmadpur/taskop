@@ -41,4 +41,9 @@ describe('loadConfig', () => {
     expect(loadConfig(valid).EXPO_ACCESS_TOKEN).toBeUndefined();
     expect(loadConfig({ ...valid, EXPO_ACCESS_TOKEN: 'expo-token' }).EXPO_ACCESS_TOKEN).toBe('expo-token');
   });
+  it('reads the report statement timeout, 15 s by default', () => {
+    expect(loadConfig(valid).REPORTS_STATEMENT_TIMEOUT_MS).toBe(15_000);
+    expect(loadConfig({ ...valid, REPORTS_STATEMENT_TIMEOUT_MS: '250' }).REPORTS_STATEMENT_TIMEOUT_MS).toBe(250);
+    expect(() => loadConfig({ ...valid, REPORTS_STATEMENT_TIMEOUT_MS: '0' })).toThrow(/REPORTS_STATEMENT_TIMEOUT_MS/);
+  });
 });

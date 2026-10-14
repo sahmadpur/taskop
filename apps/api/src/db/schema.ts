@@ -549,6 +549,8 @@ export const occurrences = pgTable(
     index('occurrences_status_due_idx').on(t.tenantId, t.status, t.dueAt),
     index('occurrences_status_close_idx').on(t.tenantId, t.status, t.closesAt),
     index('occurrences_assignment_start_idx').on(t.tenantId, t.assignmentId, t.startsAt),
+    // Every report filters runs by their tenant-local day (SP7 spec §5.7).
+    index('occurrences_local_date_idx').on(t.tenantId, t.localDate),
   ],
 );
 

@@ -16,6 +16,9 @@ export class ApiError extends Error {
     readonly userIds: string[] | null = null,
     /** REQUIREMENTS_UNMET: what still blocks completion. */
     readonly missing: Missing[] | null = null,
+    /** REPORT_TOO_LARGE: the rows the export would have, and the cap. */
+    readonly rows: number | null = null,
+    readonly limit: number | null = null,
   ) {
     super(code);
     this.name = 'ApiError';

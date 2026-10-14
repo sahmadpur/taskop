@@ -46,6 +46,14 @@ describe('toAppError', () => {
   it('hides unknown errors', () => {
     expect(toAppError(new Error('boom')).code).toBe('INTERNAL');
   });
+
+  it('passes report issue keys through as field keys', () => {
+    const r = z
+      .object({ to: z.string() })
+      .superRefine((_v, ctx) => ctx.addIssue({ code: 'custom', path: ['to'], message: 'reports.issues.toBeforeFrom' }))
+      .safeParse({ to: '2026-11-01' });
+    expect(toAppError(new ZodValidationException(r.error!)).fields).toEqual({ to: 'reports.issues.toBeforeFrom' });
+  });
 });
 
 describe('AllExceptionsFilter logging', () => {
