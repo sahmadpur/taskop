@@ -16,6 +16,7 @@ export default {
   tasks: 'Tapşırıqlar',
   notifications: 'Bildirişlər',
   messages: 'Mesajlar',
+  reports: 'Hesabatlar',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

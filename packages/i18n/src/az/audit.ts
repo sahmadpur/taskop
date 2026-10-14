@@ -19,5 +19,6 @@ export default {
     task: 'Tapşırıq',
     notification_rule: 'Bildiriş qaydası',
     notification_message: 'Bildiriş mesajı',
+    report: 'Hesabat',
   },
 } as const;

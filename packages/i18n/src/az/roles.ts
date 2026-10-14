@@ -35,6 +35,7 @@ export default {
     shifts: 'Növbələr',
     tasks: 'Tapşırıqlar',
     notifications: 'Bildirişlər',
+    reports: 'Hesabatlar',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -60,5 +61,7 @@ export default {
     tasks_manage: 'Tapşırıqları yaratmaq və idarə etmək',
     notifications_manage: 'Bildiriş qaydalarını idarə etmək',
     notifications_send: 'Bildiriş mesajları göndərmək',
+    reports_view: 'Hesabatlara və idarə panelinə baxmaq',
+    reports_export: 'Hesabatları yükləmək (CSV, Excel, PDF)',
   },
 } as const;
