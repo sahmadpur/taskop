@@ -1,5 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type EmployeeReportRow, type Page, REPORT_LIMITS, type ReportFilters, type ReportRun, type ReportRunsParams, type ReportSummary, type SiteReportRow } from '@taskop/contracts';
+import {
+  type EmployeeReportRow,
+  type Page,
+  REPORT_LIMITS,
+  type ReportFilters,
+  type ReportProblems,
+  type ReportProblemsParams,
+  type ReportRun,
+  type ReportRunsParams,
+  type ReportSummary,
+  type ReportTasks,
+  type ReportTasksParams,
+  type SiteReportRow,
+} from '@taskop/contracts';
 import { sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { pgErrorOf } from '../common/pg-errors';
@@ -7,6 +20,7 @@ import type { Principal } from '../common/request';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { DbService } from '../db/db.service';
 import { SchedulingScope } from '../scheduling/scheduling-scope';
+import { TaskScope } from '../tasks/task-scope';
 import { ReportFilterResolver, type ResolvedFilters } from './report-filters';
 import { ReportQueries } from './report-queries';
 
@@ -21,6 +35,7 @@ export class ReportsService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly filters: ReportFilterResolver,
     private readonly scheduling: SchedulingScope,
+    private readonly taskScope: TaskScope,
     private readonly queries: ReportQueries,
   ) {}
 
@@ -53,5 +68,21 @@ export class ReportsService {
 
   runs(p: Principal, q: ReportRunsParams): Promise<Page<ReportRun>> {
     return this.guarded(q, (f) => this.queries.runs(f, this.scheduling.occurrences(p), q.bucket, { cursor: q.cursor, limit: REPORT_LIMITS.pageSize }));
+  }
+
+  problems(p: Principal, q: ReportProblemsParams): Promise<ReportProblems> {
+    return this.guarded(q, async (f) => {
+      const scope = this.scheduling.occurrences(p);
+      const counts = await this.queries.problemCounts(f, scope, q.severity);
+      return { counts, ...(await this.queries.problems(f, scope, q.severity, { cursor: q.cursor, limit: REPORT_LIMITS.pageSize })) };
+    });
+  }
+
+  tasks(p: Principal, q: ReportTasksParams): Promise<ReportTasks> {
+    return this.guarded(q, async (f) => {
+      const scope = this.taskScope.readable(p);
+      const counts = await this.queries.taskCounts(f, scope);
+      return { counts, ...(await this.queries.tasks(f, scope, { cursor: q.cursor, limit: REPORT_LIMITS.pageSize })) };
+    });
   }
 }

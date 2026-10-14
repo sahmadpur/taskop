@@ -1,10 +1,33 @@
 import { Injectable } from '@nestjs/common';
-import { COMPLETED_STATUSES, completionPercent, type EmployeeReportRow, IN_PROGRESS_STATUSES, type OccurrenceStatus, type Page, periodDays, type ReportRun, type ReportSummary, roundOne, type RunBucket, type RunCounts, type SiteReportRow, type UserRef } from '@taskop/contracts';
+import {
+  COMPLETED_STATUSES,
+  completionPercent,
+  type EmployeeReportRow,
+  FINAL_TASK_STATUSES,
+  IN_PROGRESS_STATUSES,
+  type OccurrenceStatus,
+  type Page,
+  periodDays,
+  type ProblemSeverity,
+  type ReportProblem,
+  type ReportProblemCounts,
+  type ReportRun,
+  type ReportSummary,
+  type ReportTask,
+  type ReportTaskCounts,
+  roundOne,
+  type RunBucket,
+  type RunCounts,
+  type SiteReportRow,
+  type UserRef,
+} from '@taskop/contracts';
 import { az } from '@taskop/i18n';
-import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { DbService } from '../db/db.service';
-import { occurrences } from '../db/schema';
+import { executionProblems, executions, occurrences, tasks } from '../db/schema';
+import { resolutionFilter, selectProblemRows, toProblemDtos } from '../executions/problem-rows';
+import { iso, selectTasks, toTaskSummary } from '../tasks/task-rows';
 import type { ResolvedFilters } from './report-filters';
 
 /** A SQL list of status literals from a contracts constant (never user input). */
@@ -179,6 +202,29 @@ const toReportRun = (r: RunRow): ReportRun => ({
   clockSuspect: r.clock_suspect,
 });
 
+/** Problems of the period's occurrences (spec §3.2) under scope and filters; a problem's user is its run's executor (Spec decision 10). */
+function problemConditions(f: ResolvedFilters, scope: SQL | undefined, severity: ProblemSeverity | undefined): SQL {
+  const conds: (SQL | undefined)[] = [scope, sql`${occurrences.localDate} between ${f.from}::date and ${f.to}::date`, inFilterSubtree(f, occurrences.siteId)];
+  if (f.checklistId) conds.push(eq(executionProblems.checklistId, f.checklistId));
+  if (f.userId) conds.push(eq(executions.executorUserId, f.userId));
+  if (severity) conds.push(eq(executionProblems.severity, severity));
+  return and(...conds)!;
+}
+
+/** Tasks of the period by the tenant-local day of their due time, else their creation (spec §3.2), under scope and filters (Spec decision 10). */
+function taskConditions(f: ResolvedFilters, scope: SQL): SQL {
+  const conds: (SQL | undefined)[] = [
+    scope,
+    sql`(coalesce(${tasks.dueAt}, ${tasks.createdAt}) at time zone ${f.timezone})::date between ${f.from}::date and ${f.to}::date`,
+    inFilterSubtree(f, tasks.siteId),
+  ];
+  if (f.userId) conds.push(eq(tasks.assigneeUserId, f.userId));
+  if (f.checklistId) conds.push(sql`exists (select 1 from execution_problems fp where fp.id = ${tasks.problemId} and fp.checklist_id = ${f.checklistId})`);
+  return and(...conds)!;
+}
+
+const taskPeriodKey = sql`coalesce(${tasks.dueAt}, ${tasks.createdAt})`;
+
 /** The report SQL (spec §5.1). Every method runs in the request's tenant transaction and returns contract shapes. */
 @Injectable()
 export class ReportQueries {
@@ -275,6 +321,98 @@ export class ReportQueries {
     const items = opts.limit === null ? rows : rows.slice(0, opts.limit);
     const more = opts.limit !== null && rows.length > opts.limit;
     return { items: items.map(toReportRun), nextCursor: more ? items[items.length - 1]!.id : null };
+  }
+
+  /** Spec §5.3: the /problems rows (newest first, the same keyset) with the linked task's status. */
+  async problems(f: ResolvedFilters, scope: SQL | undefined, severity: ProblemSeverity | undefined, opts: { cursor?: string; limit: number | null }): Promise<Page<ReportProblem>> {
+    const conds = [problemConditions(f, scope, severity)];
+    if (opts.cursor) {
+      conds.push(sql`(${executionProblems.createdAt}, ${executionProblems.id}) < (select c.created_at, c.id from execution_problems c where c.id = ${opts.cursor})`);
+    }
+    const tx = this.db.tx();
+    const query = selectProblemRows(tx)
+      .where(and(...conds))
+      .orderBy(desc(executionProblems.createdAt), desc(executionProblems.id));
+    const rows = opts.limit === null ? await query : await query.limit(opts.limit + 1);
+    const page = opts.limit === null ? rows : rows.slice(0, opts.limit);
+    const dtos = await toProblemDtos(tx, page);
+    const more = opts.limit !== null && rows.length > opts.limit;
+    return { items: dtos.map((d, i) => ({ ...d, taskStatus: page[i]!.taskStatus })), nextCursor: more ? page[page.length - 1]!.pr.id : null };
+  }
+
+  /** Over the whole filtered set, cursor ignored (Spec decision 12); resolution by SP5's own rules (resolutionFilter). */
+  async problemCounts(f: ResolvedFilters, scope: SQL | undefined, severity: ProblemSeverity | undefined): Promise<ReportProblemCounts> {
+    const n = (cond: SQL) => sql<number>`(count(*) filter (where ${cond}))::int`;
+    const [r] = await this.db
+      .tx()
+      .select({
+        total: sql<number>`count(*)::int`,
+        critical: n(sql`${executionProblems.severity} = 'critical'`),
+        none: n(resolutionFilter('none')),
+        open: n(resolutionFilter('open')),
+        resolved: n(resolutionFilter('resolved')),
+        cancelled: n(resolutionFilter('cancelled')),
+      })
+      .from(executionProblems)
+      .innerJoin(occurrences, eq(occurrences.id, executionProblems.occurrenceId))
+      .innerJoin(executions, eq(executions.id, executionProblems.executionId))
+      .leftJoin(tasks, eq(tasks.problemId, executionProblems.id))
+      .where(problemConditions(f, scope, severity));
+    return { total: r!.total, critical: r!.critical, resolution: { none: r!.none, open: r!.open, resolved: r!.resolved, cancelled: r!.cancelled } };
+  }
+
+  /** Spec §5.3: newest period key first, keyset on (coalesce(due_at, created_at), id) (Spec decision 11). */
+  async tasks(f: ResolvedFilters, scope: SQL, opts: { cursor?: string; limit: number | null }): Promise<Page<ReportTask>> {
+    const conds = [taskConditions(f, scope)];
+    if (opts.cursor) conds.push(sql`(${taskPeriodKey}, ${tasks.id}) < (select coalesce(c.due_at, c.created_at), c.id from tasks c where c.id = ${opts.cursor})`);
+    const query = selectTasks(this.db.tx())
+      .where(and(...conds))
+      .orderBy(sql`${taskPeriodKey} desc`, desc(tasks.id));
+    const rows = opts.limit === null ? await query : await query.limit(opts.limit + 1);
+    const page = opts.limit === null ? rows : rows.slice(0, opts.limit);
+    const more = opts.limit !== null && rows.length > opts.limit;
+    return {
+      items: page.map((r) => {
+        const s = toTaskSummary(r);
+        return {
+          id: s.id,
+          title: s.title,
+          priority: s.priority,
+          status: s.status,
+          site: s.site,
+          assignee: s.assignee,
+          team: s.team,
+          dueAt: s.dueAt,
+          completedAt: iso(r.t.completedAt),
+          createdAt: s.createdAt,
+          overdue: s.overdueAt !== null,
+          problemId: s.problemId,
+        };
+      }),
+      nextCursor: more ? page[page.length - 1]!.t.id : null,
+    };
+  }
+
+  /** Spec §3.4 over the whole filtered set. "On time" / "late" count completed tasks only. */
+  async taskCounts(f: ResolvedFilters, scope: SQL): Promise<ReportTaskCounts> {
+    const n = (cond: SQL) => sql<number>`(count(*) filter (where ${cond}))::int`;
+    const [r] = await this.db
+      .tx()
+      .select({
+        new: n(sql`${tasks.status} = 'new'`),
+        accepted: n(sql`${tasks.status} = 'accepted'`),
+        in_progress: n(sql`${tasks.status} = 'in_progress'`),
+        awaiting_review: n(sql`${tasks.status} = 'awaiting_review'`),
+        completed: n(sql`${tasks.status} = 'completed'`),
+        cancelled: n(sql`${tasks.status} = 'cancelled'`),
+        overdueOpen: n(sql`${tasks.status} not in ${statusList(FINAL_TASK_STATUSES)} and ${tasks.overdueAt} is not null`),
+        completedOnTime: n(sql`${tasks.status} = 'completed' and (${tasks.dueAt} is null or ${tasks.completedAt} <= ${tasks.dueAt})`),
+        completedLate: n(sql`${tasks.status} = 'completed' and ${tasks.completedAt} > ${tasks.dueAt}`),
+      })
+      .from(tasks)
+      .where(taskConditions(f, scope));
+    const { overdueOpen, completedOnTime, completedLate, ...byStatus } = r!;
+    return { byStatus, overdueOpen, completedOnTime, completedLate };
   }
 
   /** The export's count-first check (spec §5.4). */
