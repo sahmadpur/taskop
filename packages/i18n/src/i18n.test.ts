@@ -417,3 +417,29 @@ describe('mobile team translations', () => {
     expect(az.errors.REPORT_TIMEOUT).toBeTypeOf('string');
   });
 });
+
+describe('report web translations', () => {
+  it('has the strings the filter bar, the tiles, the trend, the dashboard and the report tables use', () => {
+    expect(az.reports.range.label).toBe('{{from}} – {{to}}');
+    expect(az.reports.range.incomplete).toBe('Başlanğıc və son tarixi seçin.');
+    expect(az.reports.picker.unknown).toBeTypeOf('string');
+    expect(az.reports.picker.unknownEmployee).toBeTypeOf('string');
+    expect(az.reports.tiles.link).toBe('{{label}}: {{value}}');
+    expect(az.reports.chart.table).toBe('Gündəlik icra cədvəli');
+    expect(az.reports.live.refresh).toBe('Yenilə');
+    expect(az.reports.live.updatedAt).toBe('Son yenilənmə: {{time}}');
+    expect(az.reports.attention.title).toBe('Diqqət tələb edir');
+    expect(az.reports.attention.overdueNow).toBe('Hazırda gecikən icralar');
+    expect(az.reports.attention.critical).toBe('Kritik problemlər');
+    for (const k of ['noneOverdue', 'noneCritical'] as const) expect(az.reports.attention[k], k).toBeTypeOf('string');
+    expect(az.reports.table.more).toBe('Daha çox göstər');
+    expect(az.reports.table.sort).toBe('{{column}} üzrə sırala');
+    expect(az.reports.table.openTask).toBe('Tapşırığı aç');
+    expect(az.reports.table.receivedAt).toBe('Serverə çatıb: {{time}}');
+    // Part 1's keys are untouched.
+    expect(az.reports.dashboard).toBe('İdarə paneli');
+    expect(az.reports.export.thisTable).toBe('Bu cədvəl');
+    expect(az.reports.measures.completionHint).toBe('Vaxtı çatmış icralardan tamamlananların payı');
+    expect(az.nav.reports).toBe('Hesabatlar');
+  });
+});

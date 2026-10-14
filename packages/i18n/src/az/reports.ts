@@ -147,4 +147,36 @@ export default {
     toBeforeFrom: 'Son tarix başlanğıc tarixindən əvvəl ola bilməz.',
     fullNotCsv: 'Tam hesabat yalnız Excel və ya PDF formatında yüklənir.',
   },
+  // ---- Web (Part 3): the filter bar, the tiles, the trend, the dashboard and the report tables ----
+  range: {
+    label: '{{from}} – {{to}}',
+    incomplete: 'Başlanğıc və son tarixi seçin.',
+  },
+  picker: {
+    unknown: 'Seçilmiş (siyahıda yoxdur)',
+    unknownEmployee: 'Seçilmiş əməkdaş (bu dövrdə icrası yoxdur)',
+  },
+  tiles: {
+    link: '{{label}}: {{value}}',
+  },
+  chart: {
+    table: 'Gündəlik icra cədvəli',
+  },
+  live: {
+    refresh: 'Yenilə',
+    updatedAt: 'Son yenilənmə: {{time}}',
+  },
+  attention: {
+    title: 'Diqqət tələb edir',
+    overdueNow: 'Hazırda gecikən icralar',
+    critical: 'Kritik problemlər',
+    noneOverdue: 'Hazırda gecikən icra yoxdur.',
+    noneCritical: 'Bu dövrdə kritik problem yoxdur.',
+  },
+  table: {
+    more: 'Daha çox göstər',
+    sort: '{{column}} üzrə sırala',
+    openTask: 'Tapşırığı aç',
+    receivedAt: 'Serverə çatıb: {{time}}',
+  },
 } as const;
