@@ -2,24 +2,30 @@
 
 Everything here needs a simulator, a real phone or the web admin, so Jest and the agents cannot run it. Spec: `docs/superpowers/specs/` (SP7 reports design, sections 7 to 9). Tick each item in the pull request description, with the phone model and OS version for the items that need the real phone (6 and 9: airplane mode).
 
-**Run this after Part 1 (API) is merged on this branch.** The Team tab reads `/reports/*`, and the run screen reads `GET /occurrences/:id`, `GET /executions/:id` and `GET /media/:id/url` with `reports.view`. The web app (Part 3) is optional and only used to compare numbers and to deactivate users in items 5 and 10.
+**Run this after Part 1 (API) is merged on this branch.** The Team tab reads `/reports/*`, and the run screen reads `GET /occurrences/:id`, `GET /executions/:id` and `GET /media/:id/url` with `reports.view`. The web app (Part 3) is optional and only used to compare numbers (item 2), to deactivate and reactivate elvin with the owner account (item 5), and to create or edit a custom role and a second staff user (item 10).
 
 Never commit device notes or credentials.
 
 ## A. Start the stack against a local database
 
+The demo database already lives in the `foundation` compose project, so start that project; do not create a new one:
+
 ```bash
-docker compose up -d                       # or `docker compose -p foundation start` where the demo DB lives in that project
+docker compose -p foundation start         # the existing demo Postgres (5432) and S3 (8333)
 ipconfig getifaddr en0                     # e.g. 192.168.1.20 (needed for a real phone; the simulator can use localhost)
 cp -n apps/api/.env.example apps/api/.env
 cp -n apps/mobile/.env.example apps/mobile/.env
-pnpm --filter @taskop/api keys:generate    # only if apps/api/.env has empty JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
+pnpm --filter @taskop/api keys:generate    # only if apps/api/.env has empty JWT_PRIVATE_KEY / JWT_PUBLIC_KEY: paste its output into apps/api/.env
 ```
+
+Do not run `docker compose up -d` from this worktree: it would create a second compose project that collides with `foundation` on ports 5432 and 8333.
 
 Edit the two gitignored files:
 
 - `apps/api/.env`: `JOBS_ENABLED=true` (occurrences come from the cron), and for a real phone `S3_PUBLIC_ENDPOINT=http://192.168.1.20:8333`.
 - `apps/mobile/.env`: `EXPO_PUBLIC_API_URL=http://localhost:3000` for the simulator, `http://192.168.1.20:3000` for a real phone.
+
+`db:setup`, `db:seed` and `db:seed-report-volume` change the existing demo database (additively: they apply migrations and add demo rows and, for the volume seed, a second "perf" tenant).
 
 ```bash
 pnpm db:setup && pnpm db:seed              # applies 0013_reports and 0014_reports_permissions, creates the demo tenant
@@ -45,9 +51,18 @@ A profile cached before the migration lacks `reports.view` until the app refresh
 | Leyla, Manager, scope `site_subtree` | Rəhbər tab, email | `manager@demo.taskop.az` / `DemoPassword123` |
 | Owner, scope `all` | Rəhbər tab, email | `owner@demo.taskop.az` / `DemoPassword123` |
 | Workers `elvin` and `nigar` | Worker tab, org code `demo` | PIN `482915` |
-| Perf manager, scope `site_subtree` (optional tenant) | Rəhbər tab, org `perf` | `perf-manager@taskop.test` / `PerfPassword123` |
+| Perf manager, scope `site_subtree` (optional tenant) | Rəhbər tab, email | `perf-manager@taskop.test` / `PerfPassword123` |
 
 Seed data used below: yesterday's partial "Səhər təmizliyi" run by elvin with two problems (one rule problem "Pis qoxu var?" = yes, one manual). A daily "Səhər təmizliyi" assignment for elvin (shift Səhər 08:00 to 16:00) produces today's occurrence once the API cron has run. Leyla's `site_subtree` scope gives her only elvin as a person (not nigar), so her employee picker offers just elvin.
+
+### Getting `<token>` for curl
+
+```bash
+curl -s -X POST http://localhost:3000/api/v1/auth/login/staff -H 'Content-Type: application/json' \
+  -d '{"email":"owner@demo.taskop.az","password":"DemoPassword123","client":"web"}'
+```
+
+Read `accessToken` from the JSON reply. Use the owner's login for the all-tenant numbers, or `manager@demo.taskop.az` to compare with Leyla's phone.
 
 ## B. Checklist
 
@@ -58,7 +73,7 @@ Seed data used below: yesterday's partial "Səhər təmizliyi" run by elvin with
 2. **The manager's tab and today's tiles.**
    - Log out and sign in as Leyla on the Rəhbər tab. Expected: a Komanda tab between Tapşırıqlar and Profil, opening on "Bu gün".
    - Expected: six tiles: Tamamlanıb, Tamamlanmayıb, Gecikib, Yarımçıq, Problemli, Tamamlanma faizi.
-   - The numbers match the web dashboard for "Bu gün", or `curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/v1/reports/summary?from=<today>&to=<today>"`. "Tamamlanmayıb" = due minus completed.
+   - The numbers match the web dashboard for "Bu gün", or `curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/v1/reports/summary?from=<today>&to=<today>"` (get `<token>` as described below). "Tamamlanmayıb" = due minus completed.
 3. **Periods.**
    - Tap "7 gün". Expected: the tiles change, and yesterday's partial "Səhər təmizliyi" run is in the list, its badge "Yarımçıq" and "Problem: 2" (one rule problem, one manual).
    - Tap "30 gün", then "Bu gün" again.
@@ -83,7 +98,7 @@ Seed data used below: yesterday's partial "Səhər təmizliyi" run by elvin with
    - Expected: nothing on the screen can be edited, and back returns to the list where it was.
 7. **Read-only unexecuted run.** Open an overdue or missed run. Expected: the header, "İcraçılar" with the assignees (or "Təyin edilməyib"), and "Hələ icra edilməyib". No answers are requested.
 8. **Paging on a big tenant.**
-   - Sign in as `perf-manager@taskop.test` (org `perf`), choose "30 gün" and "Hamısı", and scroll fast to the bottom several times.
+   - Sign in as `perf-manager@taskop.test` on the Rəhbər tab, choose "30 gün" and "Hamısı", and scroll fast to the bottom several times.
    - Expected: rows keep coming 50 at a time with a spinner at the bottom, no row appears twice, and scrolling stops at the end.
    - Pull to refresh at the top. Expected: the list restarts at the first page.
 9. **Offline.** (real phone, or Network Link Conditioner on the simulator)
