@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
 import { fixedSizeCharts } from './chart-test-setup';
-import { CHECKLISTS, EMPLOYEE_ROWS, IDS, meWith, page, reportProblems, reportSummary, reportTasks, SITES, TODAY, VIEWER } from './fixtures';
+import { CHECKLISTS, EMPLOYEE_ROWS, IDS, meWith, page, reportProblems, reportSummary, reportTasks, SITE_ROWS, SITES, TODAY, VIEWER } from './fixtures';
 import { ReportsPage } from './reports-page';
 
 const mocks = vi.hoisted(() => ({
@@ -77,5 +77,23 @@ describe('ReportsPage', () => {
     renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=audit&siteId=site-1&bucket=late');
     expect(await screen.findByRole('tab', { name: 'Xülasə' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(mocks.api.reports.summary).toHaveBeenCalledWith({ from: TODAY, to: TODAY }));
+  });
+
+  it('drills down from a site row to its Summary, keeps the period, and Back returns to the sites', async () => {
+    mocks.api.reports.sites.mockResolvedValue(SITE_ROWS);
+    const router = renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=sites&period=last_7');
+    await userEvent.click(await screen.findByRole('button', { name: 'Zona A1' }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ period: 'last_7', tab: 'summary', siteId: IDS.zoneA }));
+    expect(screen.getByRole('tab', { name: 'Xülasə' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(mocks.api.reports.summary).toHaveBeenLastCalledWith({ from: '2026-10-29', to: TODAY, siteId: IDS.zoneA }));
+    router.history.back();
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'sites', period: 'last_7' }));
+  });
+
+  it('drills down from an employee row to their Summary', async () => {
+    const router = renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=employees');
+    await userEvent.click(await screen.findByRole('button', { name: 'Aynur Quliyeva' }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'summary', userId: IDS.aynur }));
+    await waitFor(() => expect(mocks.api.reports.summary).toHaveBeenLastCalledWith({ from: TODAY, to: TODAY, userId: IDS.aynur }));
   });
 });

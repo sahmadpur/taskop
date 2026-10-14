@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTenantToday } from '@/features/scheduling/labels';
+import { EmployeesTab } from './employees-tab';
 import { ReportFilters } from './report-filters';
 import { DEFAULT_TAB, filterSearch, pageExtras, type ReportsPageSearch, reportsPageSearch, resolveReportFilters } from './search';
+import { SitesTab } from './sites-tab';
 import { SummaryTab } from './summary-view';
 
 type Go = (next: ReportsPageSearch, replace?: boolean) => void;
@@ -48,11 +50,16 @@ export function ReportsPage({ today: fixedToday }: { today?: string }) {
   );
 }
 
-/** The open tab's report. Tasks 7 and 8 add the other tabs. */
-function TabBody({ kind, search, filters }: { kind: ReportKind; search: ReportsPageSearch; filters: Filters; go: Go }) {
+/** The open tab's report. Task 8 adds runs, problems and tasks. */
+function TabBody({ kind, search, filters, go }: { kind: ReportKind; search: ReportsPageSearch; filters: Filters; go: Go }) {
   switch (kind) {
     case 'summary':
       return <SummaryTab search={filterSearch(search)} filters={filters} />;
+    case 'sites':
+      // A row narrows the report to that site and its zones, on Summary (spec §6.2).
+      return <SitesTab filters={filters} onDrill={(siteId) => go({ ...search, siteId, tab: 'summary' })} />;
+    case 'employees':
+      return <EmployeesTab filters={filters} onDrill={(userId) => go({ ...search, userId, tab: 'summary' })} />;
     default:
       return null;
   }
