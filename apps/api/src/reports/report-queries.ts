@@ -291,7 +291,7 @@ export class ReportQueries {
     return rows.rows.map((r) => ({
       userId: r.user_id,
       name: r.user_id ? (r.full_name ?? '') : az.reports.employees.unassigned,
-      active: r.user_id ? r.status === 'active' : true,
+      active: r.user_id ? r.status !== 'deactivated' : true,
       ...toCounts(r),
       ...measuresOf(r),
     }));

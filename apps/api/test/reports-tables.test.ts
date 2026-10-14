@@ -54,6 +54,21 @@ describe('GET /reports/sites and /reports/employees', () => {
     expect(rows.reduce((n, r) => n + r.planned, 0)).toBe(17);
   });
 
+  it('marks only deactivated people inactive: an invited person is still active', async () => {
+    await ownerQuery("update users set status = 'invited' where id = $1", [w.kamran.id]);
+    try {
+      expect((await employees(w.owner, PERIOD)).map((r) => [r.name, r.active])).toEqual([
+        ['Aynur Quliyeva', true],
+        ['Kamran Əliyev', true],
+        ['Nigar Həsənova', true],
+        ['Samir Məmmədov', false],
+        ['Təyin edilməyib', true],
+      ]);
+    } finally {
+      await ownerQuery("update users set status = 'active' where id = $1", [w.kamran.id]);
+    }
+  });
+
   it('narrows both tables by employee, and never matches the Unassigned row', async () => {
     expect((await employees(w.owner, { ...PERIOD, userId: w.kamran.id })).map((r) => [r.name, r.planned])).toEqual([['Kamran Əliyev', 6]]);
     expect((await sites(w.owner, { ...PERIOD, userId: w.kamran.id })).map((r) => [r.name, r.planned])).toEqual([['Zona A1', 1], ['Zona A2', 5]]);
