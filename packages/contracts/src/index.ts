@@ -32,3 +32,4 @@ export * from './scheduling-describe.js';
 export * from './shifts.js';
 export * from './occurrences.js';
 export * from './assignments.js';
+export * from './report-logic.js';
