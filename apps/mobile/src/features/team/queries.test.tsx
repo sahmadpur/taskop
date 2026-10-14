@@ -1,9 +1,8 @@
 import { ApiError } from '@taskop/api-client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { ME, OCC, OCC2 } from '@/offline/testing/fixtures';
-import { eventually } from '@/offline/testing/render';
 import {
   filterQuery,
   teamKeys,
@@ -38,7 +37,8 @@ jest.mock('@/lib/session', () => ({
 }));
 
 const TODAY: TeamFilters = { from: '2026-11-02', to: '2026-11-02', userId: null };
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+// Inside act, so a query that does start is published before the assertions run.
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 30)));
 const forbidden = () => new ApiError(403, 'FORBIDDEN', 'errors.FORBIDDEN');
 
 async function hook<R, P>(fn: (props: P) => R, o: { initialProps?: P; client?: QueryClient } = {}) {
@@ -60,8 +60,8 @@ describe('team queries', () => {
     mockEmployees.mockResolvedValue([employeeRow()]);
     const s = await hook(() => useTeamSummary(ME, { ...TODAY, userId: WORKER_A }, true));
     const e = await hook(() => useTeamEmployees(ME, '2026-10-27', '2026-11-02', true));
-    await eventually(async () => expect(s.result.current.data?.counts.completed).toBe(7));
-    await eventually(async () => expect(e.result.current.data).toEqual([employeeRow()]));
+    await waitFor(async () => expect(s.result.current.data?.counts.completed).toBe(7));
+    await waitFor(async () => expect(e.result.current.data).toEqual([employeeRow()]));
     expect(mockSummary).toHaveBeenCalledWith({ from: '2026-11-02', to: '2026-11-02', userId: WORKER_A });
     expect(mockEmployees).toHaveBeenCalledWith({ from: '2026-10-27', to: '2026-11-02' });
   });
@@ -84,19 +84,19 @@ describe('team queries', () => {
         return reportSummary({ counts: counts({ completed: 1 }) });
       });
     const h = await hook(({ viewer }: { viewer: string }) => useTeamSummary(viewer, TODAY, true), { initialProps: { viewer: ME } });
-    await eventually(async () => expect(h.result.current.data?.counts.completed).toBe(7));
+    await waitFor(async () => expect(h.result.current.data?.counts.completed).toBe(7));
     await h.rerender({ viewer: VIEWER2 });
     // Manager B, signed in on the same phone, never sees manager A's numbers, not even while B's own load is running.
     expect(h.result.current.data).toBeUndefined();
     await act(async () => second.open());
-    await eventually(async () => expect(h.result.current.data?.counts.completed).toBe(1));
+    await waitFor(async () => expect(h.result.current.data?.counts.completed).toBe(1));
     expect(teamKeys.summary(VIEWER2, TODAY).slice(0, 3)).toEqual(['team', VIEWER2, 'list']);
   });
 
   it('pages the runs with the cursor and stops at the last page', async () => {
     mockRuns.mockImplementation(async (q: { cursor?: string }) => (q.cursor ? runPage([reportRun({ occurrenceId: OCC2 })]) : runPage([reportRun()], RUN_CURSOR)));
     const h = await hook(() => useTeamRuns(ME, TODAY, 'overdue', true));
-    await eventually(async () => expect(h.result.current.hasNextPage).toBe(true));
+    await waitFor(async () => expect(h.result.current.hasNextPage).toBe(true));
     await act(async () => {
       await h.result.current.fetchNextPage();
     });
@@ -104,7 +104,7 @@ describe('team queries', () => {
       { from: '2026-11-02', to: '2026-11-02', bucket: 'overdue' },
       { from: '2026-11-02', to: '2026-11-02', bucket: 'overdue', cursor: RUN_CURSOR },
     ]);
-    await eventually(async () => expect(h.result.current.hasNextPage).toBe(false));
+    await waitFor(async () => expect(h.result.current.hasNextPage).toBe(false));
     expect(h.result.current.data?.pages.flatMap((p) => p.items.map((r) => r.occurrenceId))).toEqual([OCC, OCC2]);
   });
 
@@ -113,7 +113,7 @@ describe('team queries', () => {
     const appLike = new QueryClient({ defaultOptions: { queries: { retry: 1, retryDelay: 0, gcTime: Infinity } } });
     mockSummary.mockRejectedValue(new ApiError(503, 'REPORT_TIMEOUT', 'errors.REPORT_TIMEOUT'));
     const h = await hook(() => useTeamSummary(ME, TODAY, true), { client: appLike });
-    await eventually(async () => expect(h.result.current.error).toMatchObject({ code: 'REPORT_TIMEOUT' }));
+    await waitFor(async () => expect(h.result.current.error).toMatchObject({ code: 'REPORT_TIMEOUT' }));
     await settle();
     expect(mockSummary).toHaveBeenCalledTimes(1);
   });
@@ -122,14 +122,14 @@ describe('team queries', () => {
     mockOccurrence.mockResolvedValue(occurrenceDetail());
     mockExecution.mockResolvedValue({ id: EXECUTION });
     const o = await hook(() => useTeamOccurrence(ME, OCC, true));
-    await eventually(async () => expect(o.result.current.data?.id).toBe(OCC));
+    await waitFor(async () => expect(o.result.current.data?.id).toBe(OCC));
     expect(mockOccurrence).toHaveBeenCalledWith(OCC);
     const none = await hook(() => useTeamExecution(ME, null, true));
     await settle();
     expect(mockExecution).not.toHaveBeenCalled();
     expect(none.result.current.fetchStatus).toBe('idle');
     await hook(() => useTeamExecution(ME, EXECUTION, true));
-    await eventually(async () => expect(mockExecution).toHaveBeenCalledWith(EXECUTION));
+    await waitFor(async () => expect(mockExecution).toHaveBeenCalledWith(EXECUTION));
   });
 
   it('refreshes the profile once after a 403, never for other errors', async () => {
@@ -147,7 +147,7 @@ describe('team queries', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     mockRefreshMe.mockRejectedValue(ApiError.network());
     await hook(() => useRefreshMeOnForbidden([forbidden()]));
-    await eventually(async () => expect(warn).toHaveBeenCalledWith('[team] Could not refresh the profile', 'NETWORK'));
+    await waitFor(async () => expect(warn).toHaveBeenCalledWith('[team] Could not refresh the profile', 'NETWORK'));
     warn.mockRestore();
   });
 });
