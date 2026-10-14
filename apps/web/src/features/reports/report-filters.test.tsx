@@ -130,6 +130,27 @@ describe('ReportFilters', () => {
     await waitFor(() => expect(screen.getByLabelText('Əməkdaş')).toHaveDisplayValue('Seçilmiş əməkdaş (bu dövrdə icrası yoxdur)'));
   });
 
+  it('never reads as "all" while the site list is loading or failed: the selected id shows as unlisted', async () => {
+    mocks.api.sites.list.mockRejectedValue(new Error('boom'));
+    renderBar({ siteId: IDS.zoneA });
+    expect(screen.getByLabelText('Obyekt')).toHaveDisplayValue('Seçilmiş (siyahıda yoxdur)');
+    await waitFor(() => expect(mocks.api.sites.list).toHaveBeenCalled());
+    expect(screen.getByLabelText('Obyekt')).toHaveDisplayValue('Seçilmiş (siyahıda yoxdur)');
+  });
+
+  it('keeps the selected person visible when an invalid custom range asks for no employee report', () => {
+    // An invalid custom range asks for no employee report, yet the selected person stays visible.
+    renderBar({ period: 'custom', from: '2026-10-31', to: '2026-10-01', userId: IDS.aynur });
+    expect(screen.getByLabelText('Əməkdaş')).toHaveDisplayValue('Seçilmiş əməkdaş (bu dövrdə icrası yoxdur)');
+    expect(mocks.api.reports.employees).not.toHaveBeenCalled();
+  });
+
+  it('shows a checklist id the list does not contain as selected', async () => {
+    renderBar({ checklistId: IDS.stranger });
+    await waitFor(() => expect(mocks.api.checklists.list).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByLabelText('Yoxlama vərəqəsi')).toHaveDisplayValue('Seçilmiş (siyahıda yoxdur)'));
+  });
+
   it('hides the site and checklist pickers without sites.view or checklists.view and does not ask for them', async () => {
     mocks.me.current = meWith(['reports.view']);
     renderBar();

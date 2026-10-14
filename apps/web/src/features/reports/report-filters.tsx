@@ -43,9 +43,9 @@ export function ReportFilters({ value, today, onChange }: { value: ReportSearch;
   const people = employeeOptions(employees.data ?? [], showInactive, value.userId);
   const lists = checklistOptions(checklists.data ?? [], showInactive, value.checklistId);
   // A selected id no list contains still shows as selected (decision 5), never as "all".
-  const unknownSite = Boolean(value.siteId) && sites.isSuccess && !siteList.some((s) => s.id === value.siteId);
-  const unknownPerson = Boolean(value.userId) && employees.isSuccess && !people.some((p) => p.id === value.userId);
-  const unknownList = Boolean(value.checklistId) && checklists.isSuccess && !lists.some((c) => c.id === value.checklistId);
+  const unknownSite = Boolean(value.siteId) && !siteList.some((s) => s.id === value.siteId);
+  const unknownPerson = Boolean(value.userId) && !people.some((p) => p.id === value.userId);
+  const unknownList = Boolean(value.checklistId) && !lists.some((c) => c.id === value.checklistId);
 
   let range: string | null = null;
   if (resolved.ok) {
