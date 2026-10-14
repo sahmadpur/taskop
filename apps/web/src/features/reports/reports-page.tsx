@@ -1,14 +1,18 @@
 import { REPORT_KINDS, type ReportFilters as Filters, type ReportKind } from '@taskop/contracts';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTenantToday } from '@/features/scheduling/labels';
 import { EmployeesTab } from './employees-tab';
+import { ProblemsTab } from './problems-tab';
 import { ReportFilters } from './report-filters';
-import { DEFAULT_TAB, filterSearch, pageExtras, type ReportsPageSearch, reportsPageSearch, resolveReportFilters } from './search';
+import { RunsTab } from './runs-tab';
+import { cleanSearch, DEFAULT_BUCKET, DEFAULT_TAB, filterSearch, pageExtras, type ReportsPageSearch, reportsPageSearch, resolveReportFilters } from './search';
 import { SitesTab } from './sites-tab';
 import { SummaryTab } from './summary-view';
+import { TasksTab } from './tasks-tab';
 
 type Go = (next: ReportsPageSearch, replace?: boolean) => void;
 
@@ -50,8 +54,8 @@ export function ReportsPage({ today: fixedToday }: { today?: string }) {
   );
 }
 
-/** The open tab's report. Task 8 adds runs, problems and tasks. */
-function TabBody({ kind, search, filters, go }: { kind: ReportKind; search: ReportsPageSearch; filters: Filters; go: Go }) {
+/** The open tab's report. Chips push a history entry, like tabs (decision 3). */
+function TabBody({ kind, search, filters, go }: { kind: ReportKind; search: ReportsPageSearch; filters: Filters; go: Go }): ReactNode {
   switch (kind) {
     case 'summary':
       return <SummaryTab search={filterSearch(search)} filters={filters} />;
@@ -60,7 +64,11 @@ function TabBody({ kind, search, filters, go }: { kind: ReportKind; search: Repo
       return <SitesTab filters={filters} onDrill={(siteId) => go({ ...search, siteId, tab: 'summary' })} />;
     case 'employees':
       return <EmployeesTab filters={filters} onDrill={(userId) => go({ ...search, userId, tab: 'summary' })} />;
-    default:
-      return null;
+    case 'runs':
+      return <RunsTab filters={filters} bucket={search.bucket ?? DEFAULT_BUCKET} onBucket={(bucket) => go({ ...search, bucket })} />;
+    case 'problems':
+      return <ProblemsTab filters={filters} severity={search.severity ?? null} onSeverity={(severity) => go(cleanSearch({ ...search, severity: severity ?? undefined }))} />;
+    case 'tasks':
+      return <TasksTab filters={filters} />;
   }
 }

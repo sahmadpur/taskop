@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/router';
 import { fixedSizeCharts } from './chart-test-setup';
-import { CHECKLISTS, EMPLOYEE_ROWS, IDS, meWith, page, reportProblems, reportSummary, reportTasks, SITE_ROWS, SITES, TODAY, VIEWER } from './fixtures';
+import { CHECKLISTS, EMPLOYEE_ROWS, IDS, meWith, page, reportProblems, reportRun, reportSummary, reportTasks, SITE_ROWS, SITES, TODAY, VIEWER } from './fixtures';
 import { ReportsPage } from './reports-page';
 
 const mocks = vi.hoisted(() => ({
@@ -95,5 +95,15 @@ describe('ReportsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Aynur Quliyeva' }));
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'summary', userId: IDS.aynur }));
     await waitFor(() => expect(mocks.api.reports.summary).toHaveBeenLastCalledWith({ from: TODAY, to: TODAY, userId: IDS.aynur }));
+  });
+
+  it('keeps the runs bucket and the problems severity in the URL', async () => {
+    mocks.api.reports.runs.mockResolvedValue(page([reportRun()]));
+    const router = renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=runs');
+    await screen.findByRole('button', { name: 'Açılış yoxlaması' });
+    expect(mocks.api.reports.runs).toHaveBeenCalledWith({ from: TODAY, to: TODAY, bucket: 'all' });
+    await userEvent.click(screen.getByRole('button', { name: 'Buraxılmış' }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'runs', bucket: 'missed' }));
+    await waitFor(() => expect(mocks.api.reports.runs).toHaveBeenLastCalledWith({ from: TODAY, to: TODAY, bucket: 'missed' }));
   });
 });
