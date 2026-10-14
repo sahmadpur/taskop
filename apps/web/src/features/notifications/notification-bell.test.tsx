@@ -4,6 +4,7 @@ import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@/components/ui/sonner';
+import { queryClient as appQueryClient } from '@/lib/query';
 import { renderWithRouter } from '@/test/router';
 import { messageNote, problemNote, taskNote } from './fixtures';
 import { NotificationBell } from './notification-bell';
@@ -39,7 +40,9 @@ describe('NotificationBell', () => {
   it('shows the unread count and asks again every 30 s and when the window gets focus', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mocks.api.notifications.unreadCount.mockResolvedValueOnce({ count: 3 }).mockResolvedValueOnce({ count: 4 }).mockResolvedValue({ count: 5 });
-    renderWithRouter(<NotificationBell />);
+    // The app's own defaults (30 s stale, no focus refetch), so this pins useUnreadCount's overrides.
+    const client = new QueryClient({ defaultOptions: appQueryClient.getDefaultOptions() });
+    renderWithRouter(<NotificationBell />, '/', client);
     expect(await screen.findByRole('button', { name: 'Bildirişlər: 3 oxunmamış' })).toHaveTextContent('3');
     await act(() => vi.advanceTimersByTimeAsync(30_000));
     expect(await screen.findByRole('button', { name: 'Bildirişlər: 4 oxunmamış' })).toHaveTextContent('4');
