@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
 import { FakeClock } from './fake-clock';
 import { as, createUserDirect, loginStaff } from './fixtures';
-import { ownerQuery } from './owner-db';
+import { ownerBulkInsert, ownerQuery } from './owner-db';
 import { addChecklist, addSite, PERIOD, qs, REPORT_NOW, reportBase, type ReportWorld, reportWorld } from './report-fixtures';
 import type { Api } from './scheduling-fixtures';
 
@@ -135,36 +135,12 @@ describe('report exports (spec §5.4)', () => {
     expect((await api.get(`/api/v1/reports/summary/export?${qs({ ...PERIOD, format: 'pdf' })}`)).status).toBe(403);
   });
 
-  /**
-   * Diagnostics for an intermittent CI timeout of the next test (3 s normally, over 60 s once on GitHub's runners).
-   * A step that takes over 2 s is logged with its duration, and every 10 s while it runs the database's busy
-   * sessions are written to stderr, so a slow run shows where the time goes. Remove once the cause is known.
-   */
-  const step = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
-    const started = Date.now();
-    const watchdog = setInterval(() => {
-      void ownerQuery(
-        `select pid, usename, state, wait_event_type, wait_event, now() - query_start as age, left(query, 160) as query
-           from pg_stat_activity where state <> 'idle' and pid <> pg_backend_pid() order by query_start`,
-      ).then(
-        (r) => process.stderr.write(`[cap-test] ${label} still running after ${Date.now() - started} ms:\n${JSON.stringify(r.rows, null, 1)}\n`),
-        (e: unknown) => process.stderr.write(`[cap-test] activity query failed: ${String(e)}\n`),
-      );
-    }, 10_000);
-    try {
-      return await fn();
-    } finally {
-      clearInterval(watchdog);
-      const ms = Date.now() - started;
-      if (ms > 2_000) process.stderr.write(`[cap-test] ${label} took ${ms} ms\n`);
-    }
-  };
-
   it('refuses more than 10,000 rows with 422 before building the file, and audits nothing', async () => {
-    const b = await step('reportBase', () => reportBase(t));
-    const site = await step('addSite', () => addSite(b, 'Böyük filial'));
-    const checklist = await step('addChecklist', () => addChecklist(b, 'Yoxlama'));
-    await step('seed 10,001 runs', () => ownerQuery(
+    const b = await reportBase(t);
+    const site = await addSite(b, 'Böyük filial');
+    const checklist = await addChecklist(b, 'Yoxlama');
+    // Foreign-key triggers off: the plain insert took up to a minute on CI's busy runners.
+    await ownerBulkInsert(
       `with a as (
          insert into assignments (id, tenant_id, checklist_id, site_id, schedule, timing, status, created_by_user_id)
          select gen_random_uuid(), $1, $2, $3, '{}'::jsonb, '{}'::jsonb, 'ended', $4 from generate_series(1, 10001)
@@ -172,13 +148,13 @@ describe('report exports (spec §5.4)', () => {
        insert into occurrences (id, tenant_id, assignment_id, checklist_id, site_id, local_date, starts_at, due_at, closes_at, status, checklist_version_id)
        select gen_random_uuid(), $1, a.id, $2, $3, '2026-11-03', '2026-11-03T04:00:00Z', '2026-11-03T06:00:00Z', '2026-11-03T07:00:00Z', 'missed', $5 from a`,
       [b.s.tenantId, checklist.id, site, b.s.ownerId, checklist.versionId],
-    ));
-    const runs = await step('runs export', () => b.owner.get(`/api/v1/reports/runs/export?${qs({ ...PERIOD, format: 'xlsx' })}`));
+    );
+    const runs = await b.owner.get(`/api/v1/reports/runs/export?${qs({ ...PERIOD, format: 'xlsx' })}`);
     expect([runs.status, runs.body.error.code, runs.body.error.rows, runs.body.error.limit]).toEqual([422, 'REPORT_TOO_LARGE', 10001, 10000]);
-    const full = await step('full export', () => b.owner.get(`/api/v1/reports/full/export?${qs({ ...PERIOD, format: 'pdf' })}`));
+    const full = await b.owner.get(`/api/v1/reports/full/export?${qs({ ...PERIOD, format: 'pdf' })}`);
     expect([full.status, full.body.error.rows]).toEqual([422, 10001]);
     // The site table has one row: fine.
-    expect((await step('sites export', () => file(b.owner, 'sites', { ...PERIOD, format: 'csv' }))).body.length).toBeGreaterThan(0);
+    expect((await file(b.owner, 'sites', { ...PERIOD, format: 'csv' })).body.length).toBeGreaterThan(0);
     expect((await ownerQuery("select after->>'kind' as kind from audit_log where tenant_id = $1 and action = 'reports.exported'", [b.s.tenantId])).rows).toEqual([{ kind: 'sites' }]);
   }, 60_000);
 });
