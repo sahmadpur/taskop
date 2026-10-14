@@ -149,7 +149,7 @@ describe('Team screen', () => {
   it('shows each run with checklist, site, person, due time, status and problems, and opens it', async () => {
     mockRuns.mockResolvedValue(
       runPage([
-        reportRun({ clockSuspect: true }),
+        reportRun({ late: true, clockSuspect: true }),
         reportRun({ occurrenceId: OCC2, executionId: null, status: 'missed', executor: null, startedAt: null, completedAt: null, completedReceivedAt: null, score: null, problemCount: 0, criticalCount: 0 }),
         reportRun({ occurrenceId: OCC3, executionId: null, status: 'overdue', assignees: [], executor: null, startedAt: null, completedAt: null, completedReceivedAt: null, score: null, problemCount: 0, criticalCount: 0 }),
       ]),
@@ -161,6 +161,10 @@ describe('Team screen', () => {
     for (const text of ['Açılış yoxlaması', 'Bakı filialı 1', 'Aynur Quliyeva', due, 'Tamamlanıb', 'Problem: 2', 'Kritik: 1', 'Telefon saatı şübhəlidir']) {
       expect(done.getByText(text)).toBeTruthy();
     }
+    // A screen reader hears the label instead of the children, so it carries every badge too.
+    expect(screen.getByTestId(`run-${OCC}`).props.accessibilityLabel).toBe(
+      `Açılış yoxlaması. Bakı filialı 1. Aynur Quliyeva. ${due}. Tamamlanıb. Problem: 2. Kritik: 1. Gecikib. Telefon saatı şübhəlidir`,
+    );
     const missed = within(screen.getByTestId(`run-${OCC2}`));
     expect(missed.getByText('Aynur Quliyeva, Kamran Əliyev')).toBeTruthy();
     expect(missed.getByText('Buraxılıb')).toBeTruthy();
