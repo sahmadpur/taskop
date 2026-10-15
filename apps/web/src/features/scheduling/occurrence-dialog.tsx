@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { RunAuditTab } from '@/features/audits/run-audit-tab';
+import { CorrectionsTab } from '@/features/corrections/corrections-tab';
 import { ExecutionTab } from '@/features/executions/execution-tab';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
@@ -17,7 +19,9 @@ import { api, useCan } from '@/lib/session';
 import { cancelReasonText, occurrenceVariant } from './labels';
 import { useOccurrence } from './queries';
 
-export type OccurrenceTab = 'overview' | 'execution';
+/** The run dialog's tabs, in order (decision 14). */
+export const OCCURRENCE_TABS = ['overview', 'execution', 'audit', 'corrections'] as const;
+export type OccurrenceTab = (typeof OCCURRENCE_TABS)[number];
 
 export function OccurrenceDialog({ id, onClose, initialTab }: { id: string; onClose: () => void; initialTab?: OccurrenceTab }) {
   const { t } = useTranslation();
@@ -62,6 +66,8 @@ export function OccurrenceDialog({ id, onClose, initialTab }: { id: string; onCl
             <TabsList>
               <TabsTrigger value="overview">{t('executions.tabs.overview')}</TabsTrigger>
               <TabsTrigger value="execution">{t('executions.tabs.execution')}</TabsTrigger>
+              <TabsTrigger value="audit">{t('audits.audit')}</TabsTrigger>
+              <TabsTrigger value="corrections">{t('corrections.title')}</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <div className="grid gap-4 text-sm">
@@ -109,6 +115,12 @@ export function OccurrenceDialog({ id, onClose, initialTab }: { id: string; onCl
             <TabsContent value="execution">
               {/* Radix unmounts inactive tabs, so the execution is only fetched when this tab is opened. */}
               <ExecutionTab occurrence={o} />
+            </TabsContent>
+            <TabsContent value="audit">
+              <RunAuditTab occurrence={o} />
+            </TabsContent>
+            <TabsContent value="corrections">
+              <CorrectionsTab occurrence={o} />
             </TabsContent>
           </Tabs>
         )}

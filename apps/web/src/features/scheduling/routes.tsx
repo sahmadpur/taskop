@@ -1,7 +1,7 @@
 import { localDateSchema } from '@taskop/contracts';
 import { useParams, useSearch } from '@tanstack/react-router';
 import { AssignmentDetailPage, NewAssignmentPage } from './assignment-pages';
-import type { OccurrenceTab } from './occurrence-dialog';
+import { OCCURRENCE_TABS, type OccurrenceTab } from './occurrence-dialog';
 import { SchedulePage } from './schedule-page';
 
 export function NewAssignmentRoute() {
@@ -14,7 +14,7 @@ export function AssignmentDetailRoute() {
   return <AssignmentDetailPage assignmentId={p.assignmentId!} />;
 }
 
-/** `/schedule?date=YYYY-MM-DD&occurrence=<id>&tab=execution`: the week to show and the drawer to open. */
+/** `/schedule?date=YYYY-MM-DD&occurrence=<id>&tab=execution|audit|corrections`: the week to show and the drawer to open. */
 export interface ScheduleSearch {
   date?: string;
   occurrence?: string;
@@ -24,7 +24,7 @@ export interface ScheduleSearch {
 export const scheduleSearch = (s: Record<string, unknown>): ScheduleSearch => ({
   ...(localDateSchema.safeParse(s.date).success ? { date: s.date as string } : {}),
   ...(typeof s.occurrence === 'string' && s.occurrence ? { occurrence: s.occurrence } : {}),
-  ...(s.tab === 'overview' || s.tab === 'execution' ? { tab: s.tab } : {}),
+  ...((OCCURRENCE_TABS as readonly unknown[]).includes(s.tab) ? { tab: s.tab as OccurrenceTab } : {}),
 });
 
 export function ScheduleRoute() {
