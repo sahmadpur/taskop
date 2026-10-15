@@ -202,6 +202,16 @@ describe('the audit report job (spec §7.2)', () => {
     expect(t.mailer.sent.length).toBe(before + 1);
   });
 
+  it('keeps the first send time when a later resend succeeds (spec §7.2)', async () => {
+    const { auditId, job } = await finished();
+    clock.set('2026-11-02T06:01:00Z');
+    expect(await run(job)).toBe('sent');
+    clock.set('2026-11-02T09:30:00Z');
+    expect(await run({ ...job, emails: ['new@acme.az'] })).toBe('sent');
+    expect(t.mailer.sent.map((m) => m.to)).toContain('new@acme.az');
+    expect((await row(auditId)).report_sent_at?.toISOString()).toBe('2026-11-02T06:01:00.000Z');
+  });
+
   it('does not hide a delivered report when a later resend gives up, and logs a warning', async () => {
     const { auditId, job } = await finished();
     expect(await run(job)).toBe('sent');

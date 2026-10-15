@@ -141,8 +141,9 @@ export class AuditReportJob implements OnModuleInit {
       }
     }
     if (!sent) throw new Error(`Every audit report e-mail of audit ${job.auditId} failed`);
+    // report_sent_at keeps the first successful send (markSent's coalesce, spec §7.2); a resend does not move it.
     await this.db.withTenant(job.tenantId, null, (tx) =>
-      tx.update(audits).set({ reportSentAt: this.clock.now(), reportAttempts: 0, updatedAt: this.clock.now() }).where(eq(audits.id, job.auditId)),
+      tx.update(audits).set({ reportAttempts: 0, updatedAt: this.clock.now() }).where(eq(audits.id, job.auditId)),
     );
     return 'sent';
   }
