@@ -23,6 +23,8 @@ export interface DomainEventMap {
   'problem.recorded': { tenantId: string; problemId: string; occurrenceId: string; severity: ProblemSeverity; actorUserId: string | null };
   /** SP8: a manager sent a completed run back to its executor (spec §6.2). SP6 turns it into run.correction_required. */
   'execution.sent_back': { tenantId: string; executionId: string; occurrenceId: string; round: number; actorUserId: string | null };
+  /** SP8: the executor resubmitted a run sent back. SP6 turns it into run.resubmitted for whoever sent it back. */
+  'execution.resubmitted': { tenantId: string; executionId: string; occurrenceId: string; round: number; actorUserId: string };
   'task.assigned': TaskEvent;
   'task.accepted': TaskEvent;
   'task.submitted': TaskEvent;

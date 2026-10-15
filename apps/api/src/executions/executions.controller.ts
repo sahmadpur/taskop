@@ -1,13 +1,14 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult, CompleteResult, ExecutionDetail, MediaUploadTicket, SaveAnswersResult } from '@taskop/contracts';
+import type { ClaimResult, CompleteResult, ExecutionDetail, MediaUploadTicket, ResubmitResult, SaveAnswersResult } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, ExecutionDetailResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, ExecutionDetailResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, ResubmitCommandDto, ResubmitResultResponse, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
 import { ExecutionQueries } from './execution-queries';
 import { ExecutionsService } from './executions.service';
 import { MediaService } from './media.service';
+import { ReworkService } from './rework.service';
 
 /** Upload commands from the phone (spec §6). Any authenticated tenant user; the service checks the executor. */
 @ApiTags('executions')
@@ -18,6 +19,7 @@ export class ExecutionsController {
     @Inject(ExecutionsService) private readonly executions: ExecutionsService,
     @Inject(MediaService) private readonly media: MediaService,
     @Inject(ExecutionQueries) private readonly queries: ExecutionQueries,
+    @Inject(ReworkService) private readonly rework: ReworkService,
   ) {}
 
   /** The executor, or assignments.view or reports.view within the data scope (spec §6.8, SP7 §5.6); anyone else gets 404. */
@@ -53,5 +55,13 @@ export class ExecutionsController {
   @ApiOkResponse({ type: CompleteResultResponse })
   complete(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: CompleteCommandDto): Promise<CompleteResult> {
     return this.executions.complete(p, id, body);
+  }
+
+  /** SP8: the executor closes a rework round; the outbox sends it after the round's answers and media. */
+  @Post(':id/resubmit')
+  @HttpCode(200)
+  @ApiOkResponse({ type: ResubmitResultResponse })
+  resubmit(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string, @Body() body: ResubmitCommandDto): Promise<ResubmitResult> {
+    return this.rework.resubmit(p, id, body);
   }
 }

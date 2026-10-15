@@ -20,6 +20,7 @@ import { ProblemsController } from './problems.controller';
 import { ProblemsService } from './problems.service';
 import { ExecutionRecalculator } from './recalculation';
 import { ReworkRequests } from './rework-requests';
+import { ReworkService } from './rework.service';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 
@@ -40,6 +41,7 @@ import { SyncService } from './sync.service';
     ExecutionRecalculator,
     CorrectionsService,
     ReworkRequests,
+    ReworkService,
     AuditLookup,
     PlatformTenantInterceptor,
   ],

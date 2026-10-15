@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { countItems, MEDIA_LIMITS, type MediaConfirmResult, type MediaUploadTicket, type MediaUrl, mediaLimitFor } from '@taskop/contracts';
+import { type Answers, countItems, MEDIA_LIMITS, type MediaConfirmResult, type MediaUploadTicket, type MediaUrl, mediaLimitFor, type ReworkItem, visibleItems } from '@taskop/contracts';
 import { and, count, eq, getTableColumns, isNull } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
@@ -12,6 +12,7 @@ import { ExecutionAccess } from './execution-access';
 import type { RegisterMediaCommandDto } from './dto';
 import { ExecutionLookups, findItem } from './execution-lookups';
 import type { ExecutionRow } from './executions.service';
+import { ReworkRequests } from './rework-requests';
 
 export type MediaRow = typeof executionMedia.$inferSelect;
 
@@ -49,6 +50,7 @@ export class MediaService {
     private readonly s3: S3Service,
     private readonly lookups: ExecutionLookups,
     private readonly access: ExecutionAccess,
+    private readonly reworkRequests: ReworkRequests,
   ) {}
 
   /**
@@ -76,6 +78,16 @@ export class MediaService {
     // A swept partial execution (no completed_at) is revived by late syncs: it still takes media captured inside the window.
     const open = e.state === 'partial' ? e.completedAt === null && capturedAt < o.closesAt : e.state !== 'completed';
     if (!open) throw new AppError('EXECUTION_NOT_ACTIVE');
+    // SP8 Spec decisions 5 and 28: a run sent back takes new media for its flagged items, for items hidden when it was
+    // sent back (follow-ups a flagged change may reveal; registration order does not matter), and problem-only media.
+    if (e.state === 'rework' && cmd.itemId !== null) {
+      const request = await this.reworkRequests.open(e.id);
+      if (!request) throw new AppError('EXECUTION_NOT_ACTIVE');
+      const content = await this.lookups.content(e.checklistVersionId);
+      const flagged = (request.items as ReworkItem[]).some((x) => x.itemId === cmd.itemId);
+      const shownBefore = visibleItems(content, request.answersBefore as Answers).some((v) => v.item.id === cmd.itemId);
+      if (!flagged && shownBefore) throw new AppError('ITEM_NOT_IN_REWORK', { fields: { itemId: 'errors.ITEM_NOT_IN_REWORK' } });
+    }
     if (!(MEDIA_LIMITS.mimeTypes[cmd.kind] as readonly string[]).includes(cmd.mime)) throw new AppError('MEDIA_TYPE_INVALID');
     if (tooLarge(cmd)) throw new AppError('MEDIA_TOO_LARGE');
     await this.assertRoom(e, cmd);

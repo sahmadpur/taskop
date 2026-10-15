@@ -38,7 +38,7 @@ export const pickAnswers = (answers: Answers, ids: readonly string[]): Record<st
   Object.fromEntries(ids.map((id) => [id, answers[id] ?? null]));
 
 /** The item ids in the checklist's own order (sections, then items), so rows never depend on jsonb key order. */
-function inChecklistOrder(content: ChecklistContent, ids: readonly string[]): string[] {
+export function inChecklistOrder(content: ChecklistContent, ids: readonly string[]): string[] {
   const position = new Map<string, number>();
   walkItems(content, (item) => position.set(item.id, position.size));
   return [...ids].sort((x, y) => (position.get(x) ?? Number.MAX_SAFE_INTEGER) - (position.get(y) ?? Number.MAX_SAFE_INTEGER));

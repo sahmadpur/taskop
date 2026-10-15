@@ -12,6 +12,7 @@ import { TaskSync } from '../tasks/task-sync';
 import type { SyncQueryDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
 import { mediaPendingSql } from './mappers';
+import { ReworkRequests } from './rework-requests';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -27,6 +28,7 @@ export class SyncService {
     private readonly lookups: ExecutionLookups,
     private readonly taskSync: TaskSync,
     private readonly inbox: InboxService,
+    private readonly reworkRequests: ReworkRequests,
   ) {}
 
   async pull(p: Principal, q: SyncQueryDto): Promise<SyncResponse> {
@@ -35,8 +37,8 @@ export class SyncService {
     const from = new Date(+now - EXECUTION_LIMITS.syncPastDays * DAY);
     const to = new Date(+now + EXECUTION_LIMITS.syncFutureDays * DAY);
     // Driven by the indexes: the caller's assignee rows (tenant, user) joined to occurrences in the window, plus the
-    // occurrences of the caller's active executions (tenant, executor) — an executor removed from the snapshot after
-    // starting still finishes their own execution.
+    // occurrences of the caller's active executions (tenant, executor) and of the caller's runs sent back to them, whatever
+    // their date (SP8 Spec decision 8) — an executor removed from the snapshot after starting still finishes their own execution.
     const assignedRows = await tx
       .select({ id: occurrences.id })
       .from(occurrenceAssignees)
@@ -53,7 +55,7 @@ export class SyncService {
     const executingRows = await tx
       .select({ id: executions.occurrenceId })
       .from(executions)
-      .where(and(eq(executions.tenantId, p.tenantId), eq(executions.executorUserId, p.userId), eq(executions.state, 'active')));
+      .where(and(eq(executions.tenantId, p.tenantId), eq(executions.executorUserId, p.userId), inArray(executions.state, ['active', 'rework'])));
     const assignedIds = assignedRows.map((r) => r.id);
     const ids = [...new Set([...assignedIds, ...executingRows.map((r) => r.id)])];
     // The first download by an assignee pins the version (spec §5.1); someone only finishing their own execution pins nothing.
@@ -68,10 +70,11 @@ export class SyncService {
       .where(
         and(
           eq(executions.executorUserId, p.userId),
-          or(eq(executions.state, 'active'), gte(executions.updatedAt, new Date(+now - EXECUTION_LIMITS.syncFinishedHours * HOUR))),
+          or(inArray(executions.state, ['active', 'rework']), gte(executions.updatedAt, new Date(+now - EXECUTION_LIMITS.syncFinishedHours * HOUR))),
         ),
       )
       .orderBy(asc(executions.startedAt), asc(executions.id));
+    const rework = await this.reworkRequests.openByExecution(own.filter((r) => r.x.state === 'rework').map((r) => r.x.id));
     // Every version the phone needs: those of the listed occurrences and of its own executions.
     const known = new Set(q.knownVersionIds);
     const referenced = [...rows.map((r) => r.o.checklistVersionId), ...own.map((r) => r.x.checklistVersionId)];
@@ -120,8 +123,8 @@ export class SyncService {
         late: x.late,
         clockSuspect: x.clockSuspect,
         mediaPending,
-        reworkRound: 0,
-        rework: null,
+        reworkRound: x.reworkRound,
+        rework: rework.get(x.id) ?? null,
       })),
       ...(await this.taskSync.forUser(p, q.knownTaskIds, now)),
       unreadNotifications: await this.inbox.unreadCount(p.userId),
