@@ -75,6 +75,22 @@ describe('audit report builder (spec §7.2)', () => {
     expect(flat).toContain('Yekun şərh —');
   });
 
+  it('keeps very long answers, originals and comments by letting rows break across pages', async () => {
+    const words = (n: number, last: string) => `${Array.from({ length: n }, () => 'Söz').join(' ')} ${last}`;
+    const long = item({ itemId: 'l', label: 'Uzun cavab', answer: words(1200, 'sonuncuCavab'), original: words(1200, 'sonuncuİlkin'), verdict: 'rejected', verdictComment: words(1200, 'sonuncuŞərh') });
+    expect(long.answer.length).toBeGreaterThan(4500);
+    const pdf = await buildAuditReport(reportData({ sections: [{ title: 'Zal', items: [long, item({ itemId: 'after', label: 'Sonrakı sual' })] }] }));
+    const { text } = await extractText(new Uint8Array(pdf), { mergePages: true });
+    const flat = text.replace(/\s+/g, ' ');
+    for (const s of ['sonuncuCavab', 'sonuncuİlkin', 'sonuncuŞərh', 'Sonrakı sual']) expect(flat, s).toContain(s);
+  });
+
+  it('embeds no more than the photo limits even when the caller passes more', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => dataUrl(i + 1));
+    const items = Array.from({ length: 15 }, (_, i) => item({ itemId: `m${i}`, label: `Foto ${i}`, photos: many }));
+    expect(imageCount(await buildAuditReport(reportData({ sections: [{ title: 'Zal', items }] })))).toBe(40);
+  });
+
   it('embeds at most 3 photos per item and 40 per report, in checklist order, counting the rest', () => {
     const items = Array.from({ length: 20 }, (_, i) => `i${i}`);
     const photos = new Map(items.map((id) => [id, ['p1', 'p2', 'p3', 'p4']]));

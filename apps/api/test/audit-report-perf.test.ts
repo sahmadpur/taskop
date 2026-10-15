@@ -42,7 +42,7 @@ describe('audit report performance', () => {
       auditScore: { approved: 171, rejected: 29, reviewed: 200, percent: 85.5 }, runScore: 90, originalScore: 80, comment: null,
       sections, generatedAt: new Date('2026-11-02T06:01:00Z'),
     };
-    // maxRSS is a high-water mark, so it does not depend on when V8 collects (spec §7.2). Collect first when --expose-gc is on.
+    // maxRSS is a high-water mark, so it does not depend on when V8 collects (spec §7.2). Collect first when node runs with --expose-gc (optional).
     (globalThis as { gc?: () => void }).gc?.();
     const before = process.memoryUsage();
     const maxBefore = process.resourceUsage().maxRSS; // KB

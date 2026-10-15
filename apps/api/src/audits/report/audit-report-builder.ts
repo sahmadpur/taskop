@@ -116,14 +116,17 @@ export function auditReportDefinition(d: AuditReportData): TDocumentDefinitions 
       if (it.original !== null) answer.push({ text: `${L.original}: ${it.original}`, style: 'muted' });
       if (it.correctedBy) answer.push({ text: interpolate(L.correctedBy, { name: it.correctedBy.name, reason: it.correctedBy.reason }), style: 'muted' });
       if (it.problem) answer.push({ text: `${L.problem}: ${az.executions.severities[it.problem.severity]}${it.problem.note ? ` — ${it.problem.note}` : ''}`, color: '#b42318' });
-      if (it.photos.length) answer.push({ columns: it.photos.map((p): Content => ({ image: image(p), fit: [150, 150] })), columnGap: 6, margin: [0, 4, 0, 0] });
-      const extras = [it.morePhotos ? interpolate(L.morePhotos, { count: it.morePhotos }) : null, it.videos ? interpolate(L.videos, { count: it.videos }) : null].filter(Boolean);
+      // The same caps selectReportPhotos applies, so a caller that skips it cannot embed everything; the cut photos are counted.
+      const shown = it.photos.slice(0, Math.min(AUDIT_LIMITS.photosPerItem, AUDIT_LIMITS.photosPerReport - Object.keys(images).length));
+      if (shown.length) answer.push({ columns: shown.map((p): Content => ({ image: image(p), fit: [150, 150] })), columnGap: 6, margin: [0, 4, 0, 0] });
+      const more = it.morePhotos + it.photos.length - shown.length;
+      const extras = [more ? interpolate(L.morePhotos, { count: more }) : null, it.videos ? interpolate(L.videos, { count: it.videos }) : null].filter(Boolean);
       if (extras.length) answer.push({ text: extras.join(' · '), style: 'muted' });
       const verdict: Content[] = [{ text: it.verdict ? az.audits.verdicts[it.verdict] : az.audits.verdicts.unreviewed, bold: it.verdict === 'rejected' }];
       if (it.verdictComment) verdict.push({ text: it.verdictComment, style: 'muted' });
       body.push([{ text: it.label, margin: [it.depth * 10, 0, 0, 0] }, { stack: answer }, { stack: verdict }]);
     }
-    content.push({ text: section.title, style: 'section' }, { table: { headerRows: 1, dontBreakRows: true, widths: ['30%', '45%', '25%'], body }, layout: 'lightHorizontalLines' });
+    content.push({ text: section.title, style: 'section' }, { table: { headerRows: 1, widths: ['30%', '45%', '25%'], body }, layout: 'lightHorizontalLines' });
   }
   return {
     pageSize: 'A4',
