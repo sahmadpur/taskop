@@ -164,7 +164,7 @@ There is one row per item that actually changed; an unchanged submitted value wr
 | `items` | jsonb `[{itemId, comment}]`, 1–200 items, comment 1–1000 characters |
 | `due_at` | nullable |
 | `requested_by_user_id`, `requested_at` | |
-| `answers_before` | the answers as they were when the run was sent back, used to build the rework diff |
+| `answers_before` | the answers as they were when the run was sent back. Used for the rework guard and the rework diff, and returned to the phone as `answersBefore` |
 | `status_before` | `completed` or `audit_pending`, restored if the send-back is withdrawn |
 | `resubmitted_at` | null while open |
 | `withdrawn_at`, `withdrawn_by_user_id` | null unless the manager withdrew the send-back |
@@ -198,7 +198,7 @@ Unique partial index on `(execution_id) WHERE status <> 'cancelled'`.
 - `auditableItems(versionContent)`: every answerable item. Section headers and info blocks are excluded.
 - `auditScore(verdicts, items)`: `percent = approved ÷ (approved + rejected)`. Unreviewed items don't count.
 - `diffAnswers(before, after)`: the list of item ids that changed, using a deep-equal on normalised answer values.
-- `reworkGuard(answers, prevAnswers, reworkItemIds)`: rejects changes outside the flagged items.
+- `reworkViolations(content, before, after, flagged)`: the changed items the worker may not change. Only unflagged items that are visible both in `before` (the request's `answers_before`) and in `after` are locked. Follow-ups that a flagged answer reveals (and chains of them) can be answered, and a follow-up hidden again may keep its leftover answer. Without this, a revealed required follow-up would make the run impossible to resubmit.
 
 ## 5. Permissions and access
 
@@ -237,7 +237,7 @@ Unique partial index on `(execution_id) WHERE status <> 'cancelled'`.
 | `GET /audits/:id` | `audits.perform` or `reports.view` | The audit, its verdicts, the run's current answers, the pinned version content, media references, and correction history (§6.4). |
 | `PUT /audits/:id/items/:itemId` | `audits.perform` | `{verdict, comment?}`. Comment required when rejecting. Only while in progress; paused audits accept it too. The item must be auditable. No audit-log entry for each verdict; the finish entry carries them all. |
 | `DELETE /audits/:id/items/:itemId` | `audits.perform` | Clears a verdict. |
-| `POST /audits/:id/finish` | `audits.perform` | `{result, comment?, extraEmails?}`. Refusals: `AUDIT_PAUSED` while `correction_required`; `AUDIT_INCOMPLETE` (with item ids) unless every auditable item has a verdict; `MEDIA_PENDING` if any of the run's media is still uploading. Sets `audit_score`, `finished_at` and `report_status=pending`, moves the run to `audited`, queues `audit.report` and emits `audit.finished`. Audit log `audit.finished` with result, score and the rejected item ids. |
+| `POST /audits/:id/finish` | `audits.perform` | `{result, comment?, extraEmails?}`. Refusals: `AUDIT_PAUSED` while `correction_required`; `AUDIT_INCOMPLETE` (with item ids) unless every auditable item has a verdict; `422 MEDIA_NOT_FOUND_IN_STORAGE` (the existing code) if any of the run's media is still uploading. Sets `audit_score`, `finished_at` and `report_status=pending`, moves the run to `audited`, queues `audit.report` and emits `audit.finished`. Audit log `audit.finished` with result, score and the rejected item ids. |
 | `POST /audits/:id/cancel` | `audits.perform` | `{reason}`. Status transition as in §3.1. Audit log `audit.cancelled`. |
 | `GET /audits/:id/report.pdf` | `audits.perform` or `reports.view` | Streams the stored PDF. Returns `REPORT_NOT_READY` (409) while pending; a failed report can be rebuilt with the next endpoint. |
 | `POST /audits/:id/report/send` | `audits.perform` | `{emails?}`. Rebuilds the report if it failed and sends it to the given addresses, or to the stored recipients. Audit log `audit.report_sent`. |
@@ -245,7 +245,7 @@ Unique partial index on `(execution_id) WHERE status <> 'cancelled'`.
 | `POST /executions/:id/send-back` | `executions.correct` | `{items: [{itemId, comment}], dueAt?}`. Same status checks. Writes the snapshot on the first change, the rework request with `answers_before`, `state=rework`, `rework_round+1`, and the status change. Emits `run.correction_required`. Audit log `execution.sent_back`. |
 | `POST /executions/:id/send-back/cancel` | `executions.correct` | Withdraws the open request. Sets `withdrawn_at`, `state=completed`, and the status back to `status_before`. Answers the worker already synced stay in place; they aren't counted as corrections unless the manager corrects them. The next pull drops the run from the worker's phone. Audit log `execution.send_back_withdrawn`. |
 | `GET /executions/:id/corrections` | read access to the run | `{original: {answers, score, capturedAt} \| null, corrections[], reworkRequests[], diff: [{itemId, original, current}]}`. |
-| `PUT /executions/:id/answers` | executor | Existing endpoint. In `rework` state it is also accepted, and runs `reworkGuard` against the open request's `answers_before` (`ITEM_NOT_IN_REWORK`). |
+| `PUT /executions/:id/answers` | executor | Existing endpoint. In `rework` state it is also accepted, and runs `reworkViolations` against the open request's `answers_before` (`ITEM_NOT_IN_REWORK`). `POST /executions/:id/media` allows an `itemId` that is flagged or hidden in `answers_before`. |
 | `POST /executions/:id/media` | executor | Existing endpoint, also accepted in `rework` state for flagged items. |
 | `POST /executions/:id/resubmit` | executor | `{resubmittedAt}` (device time, checked with the existing clock bounds). Needs state `rework`. Runs the required-answer check (`REQUIREMENTS_UNMET`). Writes `rework` correction rows (diff of `answers_before` against the current answers, using each item's comment as the reason), recalculates, sets `resubmitted_at`, `state=completed`, and the status from §3.1. Resets verdicts on changed items if an audit is open. Emits `run.resubmitted`. Audit log `execution.resubmitted`. Idempotent: if state is already `completed` and the latest request is resubmitted, it returns 200. |
 
@@ -305,7 +305,7 @@ Three types are added to `NOTIFICATION_TYPES`, `NOTIFICATION_TYPE_META` and `DEF
 
 ### 7.2 Audit report job
 
-- **The job:** `audit.report` runs as a pg-boss job with the SP6 worker settings (retry delay 15 s, up to 240 retries, localConcurrency 2). Steps:
+- **The job:** `audit.report` runs as a pg-boss job with the SP6 worker settings (retry delay 15 s, backing off to at most 240 s, 5 retries, localConcurrency 2). Steps:
   1. Load the audit, the run, the version content, the corrections and the media.
   2. Build the PDF with `AuditReportBuilder` (pdfmake and Noto Sans from SP7).
   3. Upload it to SeaweedFS under `tenants/{tenantId}/audits/{auditId}/report.pdf` and set `report_status=ready`.
@@ -389,7 +389,7 @@ All of these need a connection. With no connection, the buttons are disabled and
 
 ## 10. Testing
 
-- **contracts (Vitest):** `audit-logic` transition helpers, `auditScore`, `diffAnswers` normalisation (option order, empty vs missing), `reworkGuard`, email list validation.
+- **contracts (Vitest):** `audit-logic` transition helpers, `auditScore`, `answersEqual`/`changedItemIds` normalisation (option order, empty vs missing), `reworkViolations` (including revealed and re-hidden follow-ups), email list validation.
 - **API (Vitest on a real Postgres):**
   - Every transition in §3.1, including the system move to `audit_pending` on completion, and each refusal code in §6.5.
   - Scope: users out of scope get 404 for every new endpoint. Worker, Auditor and Manager permission matrix.
