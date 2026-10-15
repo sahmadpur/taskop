@@ -14,9 +14,17 @@ const refuse = (code: string, status = 409) => async (): Promise<never> => {
   throw new ApiError(status, code as never, `errors.${code}`);
 };
 
+/** The pull of the first cycle fails, so what a test sees after it is what the push left. */
+const failPull = (h: Harness) => h.api.on('pull', refuse('INTERNAL', 503));
+
 /** OCC sent back with Temperatur and the shelf photo flagged; the server keeps listing it until it leaves rework. */
+let current: Harness | null = null;
+/** A failed assertion can leave a backoff retry scheduled: stop the engine so it cannot keep the run alive. */
+afterEach(() => current?.engine.stop());
+
 async function reworking(): Promise<Harness> {
   const h = await createHarness();
+  current = h;
   const res = reworkSync(h.c, [{ itemId: h.c.temp.id, comment: 'Temperaturu yenidən ölçün' }, { itemId: h.c.photo.id, comment: 'Şəkil bulanıqdır' }]);
   await h.seed(res);
   h.api.sync = res;
@@ -49,8 +57,16 @@ describe('resubmitting a run sent back for correction (spec §8.1)', () => {
       });
       return { executionId: id, state: 'completed', status: 'audit_pending', progress, score: null };
     });
+    failPull(h);
     await h.engine.run('manual');
-    expect(methods(h)).toEqual(['registerMedia', 'saveAnswers', 'resubmit', 'pull', 'registerMedia', 'confirmUploaded']);
+    expect(methods(h)).toEqual(['registerMedia', 'saveAnswers', 'resubmit', 'pull']);
+    // What the push alone left: the state and the occurrence status come from the resubmit's answer.
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null });
+    expect((await h.store.occurrence(OCC))?.status).toBe('audit_pending');
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+    h.api.reset('pull');
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['registerMedia', 'saveAnswers', 'resubmit', 'pull', 'pull', 'registerMedia', 'confirmUploaded']);
     // R21: the round being closed is captured when the worker taps Resubmit.
     expect(bodyOf(h, 'resubmit')).toEqual({ round: 1, resubmittedAt: T.open, deviceTime: T.open, clientOffsetMs: 0 });
     expect(await execution(h)).toMatchObject({ state: 'completed', completedAt: T.due, rework: null, reworkRound: 1, answers, syncedRev: 5 });
@@ -65,18 +81,30 @@ describe('resubmitting a run sent back for correction (spec §8.1)', () => {
     expect((await listCommands(h.db))[0]!.payload).toEqual({ round: 1, resubmittedAt: T.open });
   });
 
-  it('a replay answered with the run completed closes the rework locally, with the status of the server', async () => {
+  it('a replay answered with the run completed closes the rework locally, with the status of the body and no stale note', async () => {
     const h = await reworking();
+    failPull(h);
+    h.api.on('resubmit', refuse('CLOCK_INVALID', 422));
+    await h.store.resubmit(REWORK_EXECUTION);
+    await h.engine.run('manual');
+    const [parked] = await listCommands(h.db);
+    await h.engine.discardCommand(parked!.seq);
+    expect(await execution(h)).toMatchObject({ state: 'rework', syncNote: 'errors.CLOCK_INVALID' });
     h.api.on('resubmit', async (id) => ({ executionId: id, state: 'completed', status: 'audited', progress: { answered: 0, total: 0, requiredMissing: 0 }, score: null }));
+    await h.store.resubmit(REWORK_EXECUTION);
+    await h.engine.run('manual');
+    // The pull failed again: this is what the push left.
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null, syncNote: null });
+    expect((await h.store.occurrence(OCC))?.status).toBe('audited');
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
     h.api.sync = syncResponse({
       occurrences: [occurrence({ status: 'audited' })],
       executions: [myExecution({ id: REWORK_EXECUTION, state: 'completed', completedAt: T.due, answers: completedAnswers(h.c), answersRev: 3, reworkRound: 1, rework: null })],
     });
-    await h.store.resubmit(REWORK_EXECUTION);
+    h.api.reset('pull');
     await h.engine.run('manual');
-    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null });
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null, syncNote: null });
     expect((await h.store.occurrence(OCC))?.status).toBe('audited');
-    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
   });
 
   it('a replay answered with a newer round only drops its command and pulls: the run is not finished and nothing is taken from the body', async () => {
@@ -84,15 +112,51 @@ describe('resubmitting a run sent back for correction (spec §8.1)', () => {
     await h.store.resubmit(REWORK_EXECUTION);
     // Round 1 was resubmitted elsewhere and the manager has sent the run back again: the server answers with the current state.
     h.api.on('resubmit', async (id) => ({ executionId: id, state: 'rework', status: 'correction_required', progress: { answered: 1, total: 9, requiredMissing: 7 }, score: null }));
-    const second = reworkSync(h.c, [{ itemId: h.c.temp.id, comment: 'Yenə ölçün' }], { request: { round: 2 }, execution: { reworkRound: 2, answersRev: 3 } });
-    h.api.sync = second;
+    failPull(h);
     await h.engine.run('manual');
+    // The pull failed: the push alone dropped the command and marked nothing finished.
     expect(methods(h)).toEqual(['resubmit', 'pull']);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: { round: 1 }, reworkRound: 1, finishedSyncedAt: null });
+    expect((await h.store.occurrence(OCC))?.status).toBe('correction_required');
+    h.api.sync = reworkSync(h.c, [{ itemId: h.c.temp.id, comment: 'Yenə ölçün' }], { request: { round: 2 }, execution: { reworkRound: 2, answersRev: 3 } });
+    h.api.reset('pull');
+    await h.engine.run('manual');
+    expect(methods(h)).toEqual(['resubmit', 'pull', 'pull']);
     expect(await listCommands(h.db)).toEqual([]);
     expect(await execution(h)).toMatchObject({ state: 'rework', reworkRound: 2, rework: { round: 2 }, finishedSyncedAt: null });
     expect((await h.store.occurrence(OCC))?.status).toBe('correction_required');
     expect(await h.store.resubmit(REWORK_EXECUTION)).toEqual({ ok: true });
     expect((await listCommands(h.db))[0]!.payload).toMatchObject({ round: 2 });
+  });
+
+  it('a transient failure keeps one resubmit queued and sends the same body again', async () => {
+    const h = await reworking();
+    h.api.on('resubmit', refuse('INTERNAL', 503));
+    await h.store.resubmit(REWORK_EXECUTION);
+    await h.engine.run('manual');
+    expect(await outboxCounts(h.db)).toEqual({ pending: 1, failed: 0 });
+    expect((await listCommands(h.db)).map((c) => c.kind)).toEqual(['resubmit']);
+    h.api.reset('resubmit');
+    h.api.sync = syncResponse({
+      occurrences: [occurrence({ status: 'completed' })],
+      executions: [myExecution({ id: REWORK_EXECUTION, state: 'completed', completedAt: T.due, answers: completedAnswers(h.c), answersRev: 3, reworkRound: 1, rework: null })],
+    });
+    await h.engine.run('manual');
+    const bodies = h.api.calls.filter((c) => c.method === 'resubmit').map((c) => c.body);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[0]).toEqual({ round: 1, resubmittedAt: T.open, deviceTime: T.open, clientOffsetMs: 0 });
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null });
+  });
+
+  it('refuses to resubmit a run in rework that holds no request', async () => {
+    const h = await reworking();
+    await h.db.run('UPDATE executions SET rework = NULL WHERE id = ?', [REWORK_EXECUTION]);
+    await expect(h.store.resubmit(REWORK_EXECUTION)).rejects.toBeInstanceOf(ExecutionLockedError);
+    expect(await listCommands(h.db)).toEqual([]);
+    expect(await execution(h)).toMatchObject({ state: 'rework' });
   });
 
   it('queues one resubmit when two taps race', async () => {

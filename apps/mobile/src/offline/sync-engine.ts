@@ -293,8 +293,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         // A replay answers with the run's current state (Part 1): a newer round means this one was already closed elsewhere.
         // Nothing is taken from that body (not progress, not score); the acked command goes and the pull brings the new round.
         if (r.state !== 'completed') return null;
-        // Spec decision 3: the run leaves rework; the occurrence takes the server's status (completed or audit_pending).
-        await tx.run('UPDATE executions SET state = ?, rework = NULL, updated_at = ? WHERE id = ?', [r.state, iso(now), cmd.entityId]);
+        // Spec decision 3: the run leaves rework (and a refusal note of an earlier try is stale); the occurrence takes the server's status (completed or audit_pending).
+        await tx.run('UPDATE executions SET state = ?, rework = NULL, sync_note = NULL, updated_at = ? WHERE id = ?', [r.state, iso(now), cmd.entityId]);
         await tx.run('UPDATE occurrences SET status = ? WHERE id = (SELECT occurrence_id FROM executions WHERE id = ?)', [r.status, cmd.entityId]);
         return null;
       }
