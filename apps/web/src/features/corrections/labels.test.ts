@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { executionFixture } from '@/features/executions/fixtures';
 import i18n from '@/lib/i18n';
 import { correction, noCorrections, reworkRequest } from './fixtures';
-import { answerSummary, correctionTimeline, scoreText } from './labels';
+import { answerSummary, correctionAnswer, correctionChanges, correctionTimeline, isoToLocalInput, localInputToIso, pruneAnswer, scoreText } from './labels';
 
 const t = i18n.t.bind(i18n);
 const fmt = (iso: string) => `@${iso}`;
@@ -41,5 +41,35 @@ describe('correctionTimeline', () => {
       'withdrawn@14:00',
     ]);
     expect(correctionTimeline(noCorrections())).toEqual([]);
+  });
+});
+describe('tenant clock for date-time answers', () => {
+  it('shows an instant on the tenant clock and reads a typed one back', () => {
+    expect(isoToLocalInput('2026-11-02T05:30:00.000Z', 'Asia/Baku')).toBe('2026-11-02T09:30');
+    expect(isoToLocalInput('2026-11-02T22:15:00.000Z', 'Asia/Baku')).toBe('2026-11-03T02:15');
+    expect(isoToLocalInput('not a date', 'Asia/Baku')).toBe('');
+    expect(localInputToIso('2026-11-02T09:30', 'Asia/Baku')).toBe('2026-11-02T05:30:00.000Z');
+    expect(localInputToIso('2026-11-02', 'Asia/Baku')).toBeNull();
+    expect(localInputToIso('', 'Asia/Baku')).toBeNull();
+  });
+});
+
+describe('the correction payload', () => {
+  it('drops empty fields and an empty answer', () => {
+    expect(pruneAnswer({ optionIds: [], text: '', number: 4, note: undefined })).toEqual({ number: 4 });
+    expect(pruneAnswer({ optionIds: [], text: '' })).toBeUndefined();
+  });
+
+  it('sends each changed item once, without the manual problem, and null for a cleared answer', () => {
+    const problem = { severity: 'critical' as const, note: 'Kondisioner xarabdır', mediaIds: [] };
+    const before = { a: { number: 10, note: 'isti', problem }, b: { text: 'Su axır' }, c: { optionIds: ['o1'] } };
+    const after = { a: { number: 5, note: 'isti', problem }, b: undefined, c: { optionIds: ['o1'] } };
+    expect(correctionAnswer(after.a)).toEqual({ number: 5, note: 'isti' });
+    expect(correctionAnswer({ problem })).toBeNull();
+    expect(correctionAnswer(undefined)).toBeNull();
+    expect(correctionChanges(before, after)).toEqual([
+      { itemId: 'a', answer: { number: 5, note: 'isti' } },
+      { itemId: 'b', answer: null },
+    ]);
   });
 });
