@@ -46,7 +46,7 @@ Push (item 2) needs the SP6 push setup (EAS project, APNs key, a development bui
 
 Use two devices: elvin on the real phone, Leyla or the owner on the simulator.
 
-### Extra runs for one person (items 1, 10, 11, 12)
+### Extra runs for one person (items 1, 10, 11, 12, 13)
 
 The seeded daily "Səhər təmizliyi" run is startable only between 09:00 and 12:00 Baku time. Items 10, 11 and 12 each need a fresh completed run that has not been audited, and the daily assignment makes only one run a day. So create five extra one-off assignments on the web, as the owner (Təyinatlar → "Yeni təyinat"):
 
@@ -54,21 +54,21 @@ The seeded daily "Səhər təmizliyi" run is startable only between 09:00 and 12
 - Təkrarlanma "Bir dəfə", Tarix today, Vaxt növü "Sabit vaxt", Başlama vaxtı `00:00`, and the longest "İcra müddəti (dəqiqə)" and "Gecikmə icazəsi (dəqiqə)" the form allows, so the run is startable at any hour. Check "Başlama … Bağlanır" on the schedule page (İcra cədvəli) for today.
 - Names (the "Ad" field): "SP8 1" to "SP8 5". The occurrences appear after the API cron runs (a minute or so, `JOBS_ENABLED=true`).
 
-Use: "SP8 1" for item 1 when it is outside 09:00-12:00 (items 2 to 9 reuse that one run), "SP8 2" for item 10, "SP8 3" for the "passed" repeat in item 10, "SP8 4" for item 11, "SP8 5" for item 12. Each needs elvin to complete it (a few answers and a photo), and "SP8 2" to "SP8 5" only after the checklist requires audit (next section).
+Use: the seeded daily run, or "SP8 1" outside 09:00-12:00, for item 1 (items 2 to 9 all work on that one run, which each item leaves completed, so run them in order); "SP8 2" for item 10, "SP8 3" for the "passed" repeat in item 10, "SP8 4" for item 11, "SP8 5" for item 12; and "SP8 1" for item 13 if item 1 used the seeded run. Each needs elvin to complete it (a few answers and a photo). Complete "SP8 2" to "SP8 5" only after the checklist requires audit, which item 10 turns on; before that, items 1 to 9 must see a checklist that does not require audit.
 
-### Getting `<token>` and making the checklist require audit (item 10)
+### Getting `<token>` and the checklist id (used by item 10 and section C)
 
 ```bash
 curl -s -X POST http://localhost:3000/api/v1/auth/login/staff -H 'Content-Type: application/json' \
   -d '{"email":"owner@demo.taskop.az","password":"DemoPassword123","client":"web"}'          # read accessToken
-curl -s -H "Authorization: Bearer <token>" "http://localhost:3000/api/v1/checklists" | grep -o '"id":"[^"]*","name":"Gündəlik təmizlik yoxlaması"'
-curl -s -X PATCH -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
-  "http://localhost:3000/api/v1/checklists/<checklist id>" -d '{"requiresAudit":true,"auditReportEmails":["qa@demo.taskop.az"]}'
+curl -s -H "Authorization: Bearer <token>" "http://localhost:3000/api/v1/checklists" | grep -o '"id":"[^"]*","name":"Gündəlik təmizlik yoxlaması"'     # read <checklist id>
 ```
+
+Do not make the checklist require audit yet: items 2 to 9 expect runs without an audit (item 10 does it).
 
 ## B. Checklist
 
-1. **A completed run to work with.** As elvin, start today's "Gündəlik təmizlik yoxlaması" ("Səhər təmizliyi" between 09:00 and 12:00 Baku time, otherwise "SP8 1"), answer everything, add one photo and complete it. Answer "Pis qoxu var?" with "Yox" (items 5 and 7 need it). Wait for the sync indicator to turn green.
+1. **A completed run to work with.** As elvin, start today's "Gündəlik təmizlik yoxlaması" ("Səhər təmizliyi" between 09:00 and 12:00 Baku time, otherwise "SP8 1"), answer everything, add one photo and complete it. Answer "Pis qoxu var?" with "Yox" (item 5 needs it). Wait for the sync indicator to turn green.
 2. **Send back, with a push (real phone for elvin).**
    - Lock elvin's phone. As Leyla: Komanda → "Bu gün" → the run.
    - Expected: the actions "Cavabları düzəlt" and "Düzəlişə qaytar"; no "Auditə başla" (Leyla has no `audits.perform`).
@@ -83,35 +83,44 @@ curl -s -X PATCH -H "Authorization: Bearer <token>" -H 'Content-Type: applicatio
    - Go to the last section and tap "Yenidən təqdim et". The Resubmit screen lists both items as "Hazırdır". Tap "Yenidən təqdim et".
    - Expected: "Düzəlişlər göndərildi." and Home; the card is now under "Bitmiş", and the sync indicator is amber. On the Sync screen, "Fayl qeydiyyatı" and "Cavablar" come before "Yenidən təqdim".
    - Turn airplane mode off. Expected: the indicator turns green within seconds, the Sync screen is empty, and the photo uploads.
-   - As Leyla, open the run again (pull to refresh the list). Expected: "Tamamlanıb" (or "Audit gözləyir" once item 10 made the checklist require audit), the "Düzəliş edilib" marker, and in "Düzəlişlər": round 1 with its comments and "Yenidən təqdim edilib: …", then one rework correction per changed item with elvin's before and after values.
+   - As Leyla, open the run again (pull to refresh the list). Expected: "Tamamlanıb", the "Düzəliş edilib" marker, and in "Düzəlişlər": round 1 with its comments and "Yenidən təqdim edilib: …", then one rework correction per changed item with elvin's before and after values.
    - Leyla's inbox (bell) has the notification "Düzəliş təqdim edildi". Tapping it opens the run on the Komanda tab (Leyla does not hold the run, and she has Team access).
    - Send the same run back again. Expected: the card on elvin's Home reads "Raund 2 · …" and the Sync screen is empty.
-4. **A passed due date.** Send another run back with a due date two minutes ahead. Wait. Expected: elvin's card turns red with "Gecikir" and a red due date. Nothing else happens: the run can still be fixed and resubmitted.
-5. **Only flagged items, and the requirements.** Send a run back with only the photo item flagged. As elvin, remove its only photo. Expected: the progress shows "0/1", and the Resubmit screen shows "Kifayət qədər fayl yoxdur" (or "Foto lazımdır") with the button disabled. Add a photo; the button turns on.
-   - **A follow-up the fix reveals.** Send a run back with only a yes/no question flagged whose other answer opens a follow-up ("Pis qoxu var?" in the seed checklist, answered "Yox" in item 1). As elvin, change the answer to "Bəli". Expected: the follow-up appears with "Yeni sual", editable, with no manager comment, and the progress counts it. Answer it and resubmit: the server accepts it. Change the answer back before resubmitting instead: the follow-up disappears, and the resubmit is still accepted.
+   - Close the loop: with the phone online, elvin opens round 2 ("Düzəliş et"), changes a flagged value and resubmits. As Leyla (pull to refresh), the run is "Tamamlanıb" again. The run is completed for item 4.
+4. **A passed due date.** Send the run back again (from the completed state item 3 left) with a due date two minutes ahead. Wait. Expected: elvin's card turns red with "Gecikir" and a red due date. Nothing else happens: the run can still be fixed and resubmitted. Do that (change a flagged value, resubmit), and the run is completed again.
+5. **Only flagged items, and the requirements.** Send the run back with only the photo item flagged. As elvin, remove its only photo. Expected: the progress shows "0/1", and the Resubmit screen shows "Kifayət qədər fayl yoxdur" (or "Foto lazımdır") with the button disabled. Add a photo; the button turns on. Resubmit, so the run is completed.
+   - **A follow-up the fix reveals.** Send the run back with only a yes/no question flagged whose other answer opens a follow-up ("Pis qoxu var?" in the seed checklist, answered "Yox" in item 1). As elvin, change the answer to "Bəli". Expected: the follow-up appears with "Yeni sual", editable, with no manager comment, and the progress counts it. Answer it and resubmit: the server accepts it, and the run is completed.
+   - **A follow-up the fix hides.** Send the run back again with the same question flagged (now "Bəli", follow-up answered). As elvin, change it to "Yox". Expected: the follow-up disappears, and the resubmit is accepted (the run is completed, back to the answers of item 1).
 6. **Withdraw while the worker is offline (real phone).**
-   - Send a run back. As elvin, open it, turn on airplane mode, change a flagged value and resubmit (the resubmit is queued).
+   - Send the run back. As elvin, open it, turn on airplane mode, change a flagged value and resubmit (the resubmit is queued).
    - As Leyla, open the run → "Qaytarmanı geri götür" → confirm. Expected: "Qaytarma geri götürüldü." and the run's status from before the send-back.
-   - Turn elvin's airplane mode off. Expected within seconds: no red row on the Sync screen; the card shows "Server qəbul etmədi: Bu icra artıq bağlanıb və dəyişdirilə bilməz."; opening the run shows the server's answers, read-only. Those are the answers the run had before the send-back: elvin's half-done change is gone.
-   - Variant (online): send a run back, as elvin change a flagged value without resubmitting, then withdraw as Leyla. After the next sync (pull to refresh, or a few seconds), the card leaves "Düzəliş tələb olunur" and the run shows the pre-send-back answers, not the half-done ones.
+   - Turn elvin's airplane mode off. Expected within seconds: no red row on the Sync screen; the card shows "Server qəbul etmədi: Bu icra artıq bağlanıb və dəyişdirilə bilməz."; opening the run shows the server's answers, read-only. Those are the answers the run had before the send-back: elvin's half-done change is gone. The run is completed.
+   - Variant (online): send the run back again, as elvin change a flagged value without resubmitting, then withdraw as Leyla. After the next sync (pull to refresh, or a few seconds), the card leaves "Düzəliş tələb olunur" and the run shows the pre-send-back answers, not the half-done ones, and is completed (items 7 to 9 use it).
 7. **Correct from the Team tab.**
-   - As Leyla, open a completed run → "Cavabları düzəlt". Expected: "Foto və videolar dəyişdirilmir. …" and the item editors (choices, numbers, text, dates, notes).
+   - As Leyla, open the run (completed after item 6) → "Cavabları düzəlt". Expected: "Foto və videolar dəyişdirilmir. …" and the item editors (choices, numbers, text, dates, notes).
    - Change one value and tap "Davam et". Write a reason and save. Expected: "Düzəliş yadda saxlanıldı.", the "Düzəliş edilib" marker, and a manual correction in "Düzəlişlər" with the reason.
    - Tap "Cavabları düzəlt" again and "Davam et" without changing anything. Expected: "Heç bir cavab dəyişməyib."
-8. **Two managers at once.** Open the same run's Correct mode as Leyla on the phone and as the owner on the web (or a second phone). Save on the web first, then on the phone. Expected on the phone: the conflict message and "Yenidən yüklə". Tapping it shows the web's values; a new correction saves. On the web, the run dialog's Corrections tab lists both.
+8. **Two managers at once.** Open the same run's (still the one from item 1) Correct mode as Leyla on the phone and as the owner on the web (or a second phone). Save on the web first, then on the phone. Expected on the phone: the conflict message and "Yenidən yüklə". Tapping it shows the web's values; a new correction saves. On the web, the run dialog's Corrections tab lists both.
 9. **Offline in a mode.** In Correct mode, change a value, then turn on airplane mode (or Wi-Fi off on the simulator's Mac). Expected: "Komandanı görmək üçün internetə qoşulun", the changed value still there, and saving disabled. Reconnect: saving works with the same value.
 10. **Audit on the phone (owner).**
-    - Make the checklist require audit (section A), and let elvin complete "SP8 2". As the owner: Komanda → the run. Expected: the status "Audit gözləyir" and the button "Auditə başla".
+    - Make the checklist require audit now, with the token from section A (this applies to runs completed from here on; section C reverts it):
+
+      ```bash
+      curl -s -X PATCH -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
+        "http://localhost:3000/api/v1/checklists/<checklist id>" -d '{"requiresAudit":true,"auditReportEmails":["qa@demo.taskop.az"]}'
+      ```
+
+    - Let elvin complete "SP8 2", "SP8 3", "SP8 4" and "SP8 5" now (items 10 to 12 use them). As the owner: Komanda → the run. Expected: the status "Audit gözləyir" and the button "Auditə başla".
     - Start it. Expected: the items with their answers and photos, the progress "0 / N bənd yoxlanılıb", and Finish disabled.
     - Approve all but one item. Reject the last: without a comment the sheet refuses; with a comment it saves. Expected: the progress "N / N" and Finish enabled.
     - Finish with "failed", a comment and `boss@demo.taskop.az` as an extra address. Expected: "Audit bitdi.", the result read-only with the score, and the report status turning ready on a reload.
-    - Mailpit (`http://localhost:8025`) has one message for `qa@demo.taskop.az` and one for `boss@demo.taskop.az`, each with the PDF. On the web the PDF downloads (no PDF on the phone).
+    - Mailpit (`http://localhost:8025`) has one message for `qa@demo.taskop.az` and one for `boss@demo.taskop.az`, each with the PDF ("SP8 3" below adds one more for `qa@demo.taskop.az`). On the web the PDF downloads (no PDF on the phone).
     - The run is now locked: the run screen offers only opening the audit.
     - Notifications ("Audit tamamlandı"): elvin, the executor, is always notified. Leyla, a manager, is notified only because the audit failed (the rule's default result filter is "Yalnız uğursuz auditlər"). Both notifications (and "Düzəliş təqdim edildi" in item 3) are inbox-only by default: their push is off, so look in the bell, not on the lock screen. Tapping it in Leyla's inbox opens the run on the Komanda tab, not Home, although she does not hold the run.
-    - Repeat with "SP8 3" and finish it as "passed". Expected: elvin is notified, Leyla is not.
-11. **A paused audit.** On "SP8 4" (completed by elvin), start an audit and approve some items. As Leyla, send the run back. As the owner, open the audit. Expected: "İcraçıya düzəlişə qaytarılıb — yenidən təqdim gözlənilir", verdicts still editable, and Finish disabled. After elvin resubmits, the verdicts of the changed items are cleared, and Finish becomes possible once they are reviewed again.
-12. **Somebody else's audit.** On "SP8 5" (completed by elvin), start an audit on the web as the owner, then tap "Auditə başla" on the phone as a second auditor (a custom role with `reports.view` and `audits.perform`, created on the web). Expected: the phone opens the existing audit instead of an error.
-13. **Workers see no Team actions, and the worker flow is unchanged.** elvin has no Komanda tab. Start and complete a normal run: options, numbers, notes, dates with "İndi", photos, ⚑ problems and the finish screen behave as before this part.
+    - Repeat with "SP8 3": approve every item and finish it as "passed". Expected: elvin is notified, Leyla is not.
+11. **A paused audit.** On "SP8 4", start an audit and approve some items. As Leyla, send the run back. As the owner, open the audit. Expected: "İcraçıya düzəlişə qaytarılıb — yenidən təqdim gözlənilir", verdicts still editable, and Finish disabled. After elvin resubmits, the verdicts of the changed items are cleared, and Finish becomes possible once they are reviewed again.
+12. **Somebody else's audit.** On "SP8 5", sign in on the phone as a second auditor (a second staff user on a custom role with `reports.view`, `audits.perform` and the `site_subtree` scope, created on the web) and open the run, so "Auditə başla" is showing. Then start an audit on the web as the owner, and tap "Auditə başla" on the phone. Expected: the phone opens the existing audit instead of an error.
+13. **Workers see no Team actions, and the worker flow is unchanged.** elvin has no Komanda tab. Start and complete a normal run ("SP8 1" if item 1 used the seeded run, otherwise tomorrow's seeded run or one more one-off assignment): options, numbers, notes, dates with "İndi", photos, ⚑ problems and the finish screen behave as before this part.
 
 ## C. Revert the checklist settings
 
