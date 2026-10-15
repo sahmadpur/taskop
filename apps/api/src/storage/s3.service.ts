@@ -76,6 +76,22 @@ export class S3Service implements OnModuleDestroy {
     }
   }
 
+  /** Stores a whole object from the server (SP8: the audit report PDF). */
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    await this.internal.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType, ContentLength: body.length }));
+  }
+
+  /** The whole object, or null when it does not exist (SP8: report download and photos for the report). */
+  async getObject(key: string): Promise<Buffer | null> {
+    try {
+      const r = await this.internal.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return r.Body ? Buffer.from(await r.Body.transformToByteArray()) : null;
+    } catch (e) {
+      if (isNotFound(e)) return null;
+      throw e;
+    }
+  }
+
   /** Idempotent: deleting a missing object succeeds. */
   async delete(key: string): Promise<void> {
     await this.internal.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));

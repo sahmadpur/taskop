@@ -209,10 +209,10 @@ describe('report e-mail addresses', () => {
     expect(auditReportEmailsSchema.safeParse(eleven).error?.issues[0]?.message).toBe('audits.issues.tooManyEmails');
   });
 
-  it('merges the checklist list and the extra addresses, checklist first, at most 20', () => {
+  it('merges the checklist list and the extra addresses, checklist first, without truncating', () => {
     expect(reportRecipients(['a@x.az', 'B@x.az'], ['b@x.az', 'C@x.az'])).toEqual(['a@x.az', 'b@x.az', 'c@x.az']);
     const many = Array.from({ length: 30 }, (_, i) => `u${i}@x.az`);
-    expect(reportRecipients(many.slice(0, 10), many.slice(10))).toHaveLength(20);
+    expect(reportRecipients(many.slice(0, 10), many.slice(10))).toEqual(many);
     expect(reportRecipients([], [])).toEqual([]);
   });
 });

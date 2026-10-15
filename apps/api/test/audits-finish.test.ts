@@ -85,6 +85,21 @@ describe('finishing an audit (FR-19.06, spec §6.2)', () => {
     });
   });
 
+  it('refuses a merged recipient list over 20 instead of truncating it, and accepts exactly 20', async () => {
+    const { a, auditId, items } = await audited();
+    const emails = (from: number, n: number) => Array.from({ length: n }, (_, i) => `u${from + i}@acme.az`);
+    await ownerQuery('update checklists set audit_report_emails = $2 where id = $1', [a.w.checklistId, emails(0, 10)]);
+    await markUploaded(a.executionId);
+    await verdictAll(a.auditor.api, auditId, items);
+    const tooMany = await finish(a, auditId, { result: 'passed', extraEmails: emails(10, 11) });
+    expect([tooMany.status, tooMany.body.error.code, tooMany.body.error.fields]).toEqual([400, 'VALIDATION_FAILED', { extraEmails: 'audits.issues.tooManyEmails' }]);
+    expect((await ownerQuery<{ status: string }>('select status from audits where id = $1', [auditId])).rows[0]!.status).toBe('in_progress');
+    // Addresses the checklist already lists do not count twice.
+    const ok = await finish(a, auditId, { result: 'passed', extraEmails: [...emails(0, 3), ...emails(10, 10)] });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.reportRecipients).toEqual(emails(0, 20));
+  });
+
   it('locks the run once audited', async () => {
     const { a, auditId, items } = await audited();
     await markUploaded(a.executionId);

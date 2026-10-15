@@ -1,17 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Answers,
+  AUDIT_LIMITS,
   auditableItemIds,
   type AuditDetail,
   type AuditDto,
   type AuditItemVerdict,
   type AuditVerdictParams,
+  auditReportFileName,
   auditScore,
   canStartAudit,
   type FinishAuditParams,
   isAuditPaused,
   missingVerdicts,
   reportRecipients,
+  type SendAuditReportParams,
   statusAfterAuditCancel,
 } from '@taskop/contracts';
 import { and, asc, count, eq, getTableColumns, inArray, isNull } from 'drizzle-orm';
@@ -32,6 +35,7 @@ import type { Actor } from '../scheduling/actor';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
 import { JobsService } from '../scheduling/jobs.service';
 import { SchedulingScope } from '../scheduling/scheduling-scope';
+import { S3Service } from '../storage/s3.service';
 import { type AuditRow, toAuditDto } from './audit-rows';
 import { AUDIT_JOB_QUEUES, type AuditReportJobData } from './report/queues';
 
@@ -52,6 +56,7 @@ export class AuditsService {
     private readonly auditLookup: AuditLookup,
     private readonly events: DomainEvents,
     private readonly jobs: JobsService,
+    private readonly s3: S3Service,
   ) {}
 
   /**
@@ -165,6 +170,8 @@ export class AuditsService {
     const score = auditScore(verdicts, ids);
     const [checklist] = await tx.select({ emails: checklists.auditReportEmails }).from(checklists).where(eq(checklists.id, o.checklistId));
     const recipients = reportRecipients(checklist!.emails, input.extraEmails ?? []);
+    // Spec §7.2: a longer merged list is refused, never truncated (the checklist's addresses and the extra ones add up).
+    if (recipients.length > AUDIT_LIMITS.recipients) throw new AppError('VALIDATION_FAILED', { fields: { extraEmails: 'audits.issues.tooManyEmails' } });
     const comment = input.comment ? input.comment : null;
     await tx
       .update(audits)
@@ -179,6 +186,36 @@ export class AuditsService {
       after: { result: input.result, score, rejectedItemIds: ids.filter((id) => verdicts.get(id) === 'rejected'), comment, recipients },
     });
     this.queueReport({ tenantId: audit.tenantId, auditId });
+    return this.dto(auditId);
+  }
+
+  /** GET /audits/:id/report.pdf: the stored PDF; REPORT_NOT_READY while it is pending or after it failed. */
+  async report(a: Actor, auditId: string): Promise<{ body: Buffer; filename: string }> {
+    const row = await this.readable(a, auditId);
+    if (row.reportStatus !== 'ready' || !row.reportStorageKey) throw new AppError('REPORT_NOT_READY');
+    const body = await this.s3.getObject(row.reportStorageKey);
+    if (!body) throw new AppError('REPORT_NOT_READY');
+    const [r] = await this.db
+      .tx()
+      .select({ name: checklists.name, localDate: occurrences.localDate })
+      .from(occurrences)
+      .innerJoin(checklists, eq(checklists.id, occurrences.checklistId))
+      .where(eq(occurrences.id, row.occurrenceId));
+    return { body, filename: auditReportFileName(r!.name, r!.localDate) };
+  }
+
+  /**
+   * POST /audits/:id/report/send: queues the report job for the given addresses (at most 20, refused by the input schema) or the stored recipients. A failed
+   * report is rebuilt (spec §7.2). The stored recipients do not change. Audit-logged as audit.report_sent.
+   */
+  async sendReport(a: Actor, auditId: string, input: SendAuditReportParams): Promise<AuditDto> {
+    const { audit } = await this.lockAudit(a, auditId);
+    if (audit.status !== 'finished') throw new AppError('REPORT_NOT_READY');
+    const rebuilt = audit.reportStatus === 'failed';
+    if (rebuilt) await this.db.tx().update(audits).set({ reportStatus: 'pending', reportAttempts: 0, updatedAt: this.clock.now() }).where(eq(audits.id, auditId));
+    const recipients = input.emails ?? audit.reportRecipients;
+    await this.audit.record({ action: 'audit.report_sent', entityType: 'audit', entityId: auditId, after: { recipients, rebuilt } });
+    this.queueReport({ tenantId: audit.tenantId, auditId, ...(input.emails ? { emails: input.emails } : {}) });
     return this.dto(auditId);
   }
 

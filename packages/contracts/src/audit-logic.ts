@@ -200,7 +200,10 @@ export const emailListSchema = (max: number, min = 0) =>
 /** checklists.audit_report_emails: lower-cased, de-duplicated, at most 10. */
 export const auditReportEmailsSchema = emailListSchema(AUDIT_LIMITS.reportEmails);
 
-/** Spec §7.2: the checklist's addresses, then the extra ones; lower-cased, de-duplicated, at most 20. */
+/**
+ * Spec §7.2: the checklist's addresses, then the extra ones; lower-cased and de-duplicated. Not truncated: the caller
+ * refuses a list longer than AUDIT_LIMITS.recipients instead of silently dropping addresses.
+ */
 export function reportRecipients(checklistEmails: readonly string[], extra: readonly string[]): string[] {
-  return dedupe([...checklistEmails, ...extra].map((e) => e.trim().toLowerCase()).filter(Boolean)).slice(0, AUDIT_LIMITS.recipients);
+  return dedupe([...checklistEmails, ...extra].map((e) => e.trim().toLowerCase()).filter(Boolean));
 }
