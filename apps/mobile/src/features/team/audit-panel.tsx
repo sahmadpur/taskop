@@ -66,8 +66,10 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
         <FormError message={mobileErrorText(t, audit.error)} />
         <PrimaryButton variant="outline" title={t('common.retry')} disabled={!online} onPress={() => void audit.refetch()} />
       </View>
-    ) : (
+    ) : online ? (
       <ActivityIndicator color={colors.primary} />
+    ) : (
+      <Text style={styles.offline}>{t('mobile.team.offline')}</Text>
     );
   }
 
@@ -93,18 +95,22 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
       return next;
     });
 
-  const decide = async (itemId: string, body: AuditVerdictInput): Promise<boolean> => {
+  /** Resolves to a refusal the reject sheet shows itself, or null (done, or the panel shows it and the sheet is closed). */
+  const decide = async (itemId: string, body: AuditVerdictInput, fromSheet = false): Promise<string | null> => {
     setProblem(null);
     const r = await command.run(() => api.audits.setVerdict(auditId, itemId, body), { refresh: false, refreshOnError: staleAudit });
-    if (!r) return false;
+    if (!r) return null;
     if (!r.ok) {
-      setProblem(auditErrorText(t, r.error));
-      if (hiddenItem(r.error)) setRejecting(null); // the audit reloads without that item
-      return false;
+      const text = auditErrorText(t, r.error);
+      if (fromSheet && !(r.error instanceof ApiError && staleAudit(r.error))) return text;
+      setProblem(text); // a stale refusal: the audit reloads, so the sheet closes
+      setRejecting(null);
+      return null;
     }
     store(itemId, r.value);
     unhighlight(itemId);
-    return true;
+    setRejecting(null);
+    return null;
   };
   const clear = async (itemId: string) => {
     setProblem(null);
@@ -113,17 +119,22 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
     if (r.ok) store(itemId, null);
     else setProblem(auditErrorText(t, r.error));
   };
-  const finish = async (body: FinishAuditInput) => {
+  /** The sheet stays open, with what was typed, on a refusal the user can fix; a stale one closes it (the audit reloads). */
+  const finish = async (body: FinishAuditInput): Promise<string | null> => {
     setProblem(null);
     const r = await command.run(() => api.audits.finish(auditId, body), { refreshOnError: staleAudit });
-    if (!r) return;
-    setFinishing(false);
+    if (!r) return null;
     if (r.ok) {
+      setFinishing(false);
       Alert.alert(t('mobile.team.audit.finished')); // the refresh brings the finished audit
-      return;
+      return null;
     }
-    if (r.error instanceof ApiError && r.error.code === 'AUDIT_INCOMPLETE') setHighlight(new Set(r.error.itemIds ?? []));
-    setProblem(auditErrorText(t, r.error));
+    const text = auditErrorText(t, r.error);
+    if (!(r.error instanceof ApiError && staleAudit(r.error))) return text;
+    if (r.error.code === 'AUDIT_INCOMPLETE') setHighlight(new Set(r.error.itemIds ?? []));
+    setFinishing(false);
+    setProblem(text);
+    return null;
   };
 
   return (
@@ -152,10 +163,13 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
         return (
           <View key={item.id} testID={`audit-item-${item.id}`} style={[styles.item, { marginLeft: depth * spacing.md }, highlight.has(item.id) ? styles.itemMissing : null]}>
             <ReadOnlyItem item={item} answer={a.execution.answers[item.id]} media={a.execution.media} flagged={problemItems.has(item.id)} load={loadMedia} />
-            <View style={styles.badges}>
+            <View
+              style={styles.badges}
+              {...(highlight.has(item.id) ? { accessible: true, accessibilityLabel: `${t('audits.verdicts.unreviewed')}: ${t('errors.AUDIT_INCOMPLETE')}` } : {})}
+            >
               <Badge
                 text={v ? t(`audits.verdicts.${v.verdict}`) : t('audits.verdicts.unreviewed')}
-                tone={v?.verdict === 'approved' ? 'success' : v?.verdict === 'rejected' ? 'danger' : 'neutral'}
+                tone={v?.verdict === 'approved' ? 'success' : v?.verdict === 'rejected' ? 'danger' : highlight.has(item.id) ? 'warning' : 'neutral'}
               />
             </View>
             {v?.comment ? <Text style={styles.value}>{v.comment}</Text> : null}
@@ -173,7 +187,10 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
                   title={t('audits.actions.reject')}
                   accessibilityLabel={`${t('audits.actions.reject')}: ${item.label}`}
                   disabled={off}
-                  onPress={() => setRejecting(item.id)}
+                  onPress={() => {
+                    setProblem(null);
+                    setRejecting(item.id);
+                  }}
                 />
                 {v ? (
                   <PrimaryButton
@@ -193,7 +210,10 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
       {!online ? <Text style={styles.offline}>{t('mobile.team.offline')}</Text> : null}
       <View style={styles.actions}>
         <PrimaryButton variant="outline" title={t('common.close')} onPress={onClose} />
-        {editable ? <PrimaryButton title={t('audits.actions.finish')} disabled={off || !canFinish} onPress={() => setFinishing(true)} /> : null}
+        {editable ? <PrimaryButton title={t('audits.actions.finish')} disabled={off || !canFinish} onPress={() => {
+                setProblem(null);
+                setFinishing(true);
+              }} /> : null}
       </View>
       {rejecting ? (
         <VerdictSheet
@@ -201,17 +221,12 @@ export function AuditPanel({ viewerId, auditId, online, command, onClose }: Prop
           initial={verdicts.get(rejecting)?.comment ?? ''}
           online={online}
           busy={command.busy}
-          serverError={problem}
-          onSave={(comment) =>
-            void decide(rejecting, { verdict: 'rejected', comment }).then((ok) => {
-              if (ok) setRejecting(null);
-            })
-          }
+          onSave={(comment) => decide(rejecting, { verdict: 'rejected', comment }, true)}
           onClose={() => setRejecting(null)}
         />
       ) : null}
       {finishing ? (
-        <FinishAuditSheet reportEmails={a.checklistReportEmails} online={online} busy={command.busy} onSave={(body) => void finish(body)} onClose={() => setFinishing(false)} />
+        <FinishAuditSheet reportEmails={a.checklistReportEmails} online={online} busy={command.busy} onSave={finish} onClose={() => setFinishing(false)} />
       ) : null}
     </View>
   );

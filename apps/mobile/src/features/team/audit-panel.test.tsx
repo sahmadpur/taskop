@@ -223,25 +223,103 @@ describe('Audit (spec §8.2, FR-19.02–06)', () => {
     expect(await screen.findByTestId('audit-paused')).toBeTruthy();
   });
 
-  it('finish while media is still uploading says so and does not reload', async () => {
+  it('finish while media is still uploading keeps the sheet open with what was typed, shows the message and does not reload', async () => {
     mockGet.mockResolvedValue(auditDetail(c, { verdicts: allApproved() }));
     mockFinish.mockRejectedValue(new ApiError(422, 'MEDIA_NOT_FOUND_IN_STORAGE', 'errors.MEDIA_NOT_FOUND_IN_STORAGE'));
     await open();
     await fireEvent.press(await screen.findByRole('button', { name: tr('audits.actions.finish') }));
-    await fireEvent.press(within(screen.getByTestId('finish-sheet')).getByRole('button', { name: tr('audits.actions.finish') }));
-    expect(await screen.findByText(tr('errors.MEDIA_NOT_FOUND_IN_STORAGE'))).toBeTruthy();
+    const sheet = within(screen.getByTestId('finish-sheet'));
+    await fireEvent.press(sheet.getByRole('radio', { name: tr('audits.results.failed') }));
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.comment')), 'İki bənd uyğun deyil');
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.extraEmails')), 'boss@demo.az');
+    await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.finish') }));
+    expect(await sheet.findByText(tr('errors.MEDIA_NOT_FOUND_IN_STORAGE'))).toBeTruthy();
+    expect(screen.getByTestId('finish-sheet')).toBeTruthy();
+    expect(sheet.getByLabelText(tr('audits.fields.comment')).props.value).toBe('İki bənd uyğun deyil');
+    expect(sheet.getByLabelText(tr('audits.fields.extraEmails')).props.value).toBe('boss@demo.az');
+    expect(sheet.getByRole('radio', { name: tr('audits.results.failed') }).props.accessibilityState).toMatchObject({ selected: true });
     expect(mockGet).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses more than 20 merged addresses in the sheet', async () => {
+  it('refuses a merged list over 20: the checklist address plus 20 extras', async () => {
     mockGet.mockResolvedValue(auditDetail(c, { verdicts: allApproved() }));
     await open();
     await fireEvent.press(await screen.findByRole('button', { name: tr('audits.actions.finish') }));
     const sheet = within(screen.getByTestId('finish-sheet'));
-    const many = Array.from({ length: 21 }, (_, i) => `u${i}@demo.az`).join(', ');
-    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.extraEmails')), many);
+    const twenty = Array.from({ length: 20 }, (_, i) => `u${i}@demo.az`).join(', ');
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.extraEmails')), twenty);
     await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.finish') }));
     expect(await sheet.findByText(tr('audits.issues.tooManyEmails'))).toBeTruthy();
     expect(mockFinish).not.toHaveBeenCalled();
+  });
+
+  it('accepts 20 extras when one repeats the checklist address (the merge de-duplicates)', async () => {
+    const finished = auditDetail(c, { status: 'finished', result: 'passed', reportStatus: 'pending', verdicts: allApproved() });
+    mockGet.mockResolvedValueOnce(auditDetail(c, { verdicts: allApproved() })).mockResolvedValue(finished);
+    mockFinish.mockResolvedValue(finished);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await open();
+    await fireEvent.press(await screen.findByRole('button', { name: tr('audits.actions.finish') }));
+    const sheet = within(screen.getByTestId('finish-sheet'));
+    const list = ['AUDIT@demo.taskop.az', ...Array.from({ length: 19 }, (_, i) => `u${i}@demo.az`)].join(' ');
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.extraEmails')), list);
+    await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.finish') }));
+    await eventually(async () => expect(mockFinish).toHaveBeenCalledTimes(1));
+    alert.mockRestore();
+  });
+
+  it('a stale refusal of a verdict (the audit ended) closes the reject sheet, shows the message and reloads', async () => {
+    mockGet.mockResolvedValue(auditDetail(c));
+    mockSetVerdict.mockRejectedValue(new ApiError(409, 'AUDIT_NOT_IN_PROGRESS', 'errors.AUDIT_NOT_IN_PROGRESS'));
+    await open();
+    await fireEvent.press(await screen.findByRole('button', { name: `${tr('audits.actions.reject')}: Temperatur` }));
+    const sheet = within(screen.getByTestId('verdict-sheet'));
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.comment')), 'Yoxlanmayıb');
+    await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.reject') }));
+    expect(await screen.findByText(tr('errors.AUDIT_NOT_IN_PROGRESS'))).toBeTruthy();
+    expect(screen.queryByTestId('verdict-sheet')).toBeNull();
+    await eventually(async () => expect(mockGet).toHaveBeenCalledTimes(2));
+  });
+
+  it('a reject sheet error is cleared when the sheet is edited, closed or reopened', async () => {
+    mockGet.mockResolvedValue(auditDetail(c));
+    mockSetVerdict.mockRejectedValue(new ApiError(0, 'NETWORK', 'errors.NETWORK'));
+    await open();
+    const reject = () => screen.getByRole('button', { name: `${tr('audits.actions.reject')}: Temperatur` });
+    await fireEvent.press(await screen.findByRole('button', { name: `${tr('audits.actions.reject')}: Temperatur` }));
+    let sheet = within(screen.getByTestId('verdict-sheet'));
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.comment')), 'Yoxlanmayıb');
+    await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.reject') }));
+    expect(await sheet.findByText(tr('errors.NETWORK'))).toBeTruthy();
+    await fireEvent.changeText(sheet.getByLabelText(tr('audits.fields.comment')), 'Yoxlanmayıb!');
+    expect(sheet.queryByText(tr('errors.NETWORK'))).toBeNull();
+    await fireEvent.press(sheet.getByRole('button', { name: tr('audits.actions.reject') }));
+    expect(await sheet.findByText(tr('errors.NETWORK'))).toBeTruthy();
+    await fireEvent.press(sheet.getByRole('button', { name: tr('common.cancel') }));
+    await fireEvent.press(reject());
+    sheet = within(screen.getByTestId('verdict-sheet'));
+    expect(sheet.queryByText(tr('errors.NETWORK'))).toBeNull();
+    expect(screen.queryByText(tr('errors.NETWORK'))).toBeNull();
+  });
+
+  it('AUDIT_INCOMPLETE reloads the audit and the named item says it is unreviewed', async () => {
+    mockGet.mockResolvedValue(auditDetail(c, { verdicts: allApproved() }));
+    mockFinish.mockRejectedValue(Object.assign(new ApiError(422, 'AUDIT_INCOMPLETE', 'errors.AUDIT_INCOMPLETE'), { itemIds: [c.note.id] }));
+    await open();
+    await fireEvent.press(await screen.findByRole('button', { name: tr('audits.actions.finish') }));
+    await fireEvent.press(within(screen.getByTestId('finish-sheet')).getByRole('button', { name: tr('audits.actions.finish') }));
+    expect(await screen.findByText(tr('errors.AUDIT_INCOMPLETE'))).toBeTruthy();
+    expect(screen.queryByTestId('finish-sheet')).toBeNull();
+    await eventually(async () => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(card(c.note.id).getByLabelText(`${tr('audits.verdicts.unreviewed')}: ${tr('errors.AUDIT_INCOMPLETE')}`)).toBeTruthy();
+    expect(card(c.temp.id).queryByLabelText(`${tr('audits.verdicts.unreviewed')}: ${tr('errors.AUDIT_INCOMPLETE')}`)).toBeNull();
+  });
+
+  it('offline with the audit not yet loaded says to connect, not a bare spinner', async () => {
+    mockGet.mockResolvedValue(auditDetail(c));
+    const t = await createTestServices({ online: true });
+    await renderTeam(t.services, ui(false));
+    expect(await screen.findByText('Komandanı görmək üçün internetə qoşulun')).toBeTruthy();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { AUDIT_LIMITS, AUDIT_RESULTS, type AuditResult, type FinishAuditInput, finishAuditInputSchema } from '@taskop/contracts';
+import { AUDIT_LIMITS, AUDIT_RESULTS, type AuditResult, type FinishAuditInput, finishAuditInputSchema, reportRecipients } from '@taskop/contracts';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -15,7 +15,8 @@ interface Props {
   reportEmails: readonly string[];
   online: boolean;
   busy: boolean;
-  onSave: (body: FinishAuditInput) => void;
+  /** Resolves to the server's refusal to show here, or null when the sheet is done. */
+  onSave: (body: FinishAuditInput) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -26,12 +27,13 @@ export function FinishAuditSheet({ reportEmails, online, busy, onSave, onClose }
   const [comment, setComment] = useState('');
   const [emails, setEmails] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const save = () => {
+  const save = async () => {
     const extraEmails = parseEmails(emails);
-    if (extraEmails.length > AUDIT_LIMITS.recipients) return setError(t('audits.issues.tooManyEmails'));
+    // The server refuses the merged list (the checklist's addresses plus these), not just the extras.
+    if (reportRecipients(reportEmails, extraEmails.map((e) => e.toLowerCase())).length > AUDIT_LIMITS.recipients) return setError(t('audits.issues.tooManyEmails'));
     const parsed = finishAuditInputSchema.safeParse({ result, comment: comment.trim() ? comment : null, extraEmails });
     if (!parsed.success) return setError(t('mobile.team.audit.invalidEmails'));
-    onSave(parsed.data);
+    setError(await onSave(parsed.data));
   };
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -75,7 +77,7 @@ export function FinishAuditSheet({ reportEmails, online, busy, onSave, onClose }
           {!online ? <Text style={styles.muted}>{t('mobile.team.offline')}</Text> : null}
           <View style={styles.actions}>
             <PrimaryButton variant="outline" title={t('common.cancel')} onPress={onClose} />
-            <PrimaryButton title={t('audits.actions.finish')} disabled={!online || busy} onPress={save} />
+            <PrimaryButton title={t('audits.actions.finish')} disabled={!online || busy} onPress={() => void save()} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

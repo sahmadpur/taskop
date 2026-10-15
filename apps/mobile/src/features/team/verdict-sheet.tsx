@@ -11,21 +11,20 @@ interface Props {
   initial: string;
   online: boolean;
   busy: boolean;
-  /** The server's refusal of the last save, shown here because the sheet covers the panel's own message. */
-  serverError?: string | null;
-  onSave: (comment: string) => void;
+  /** Resolves to the server's refusal to show here (the sheet covers the panel's own message), or null when it is done. */
+  onSave: (comment: string) => Promise<string | null>;
   onClose: () => void;
 }
 
 /** FR-19.05: rejecting an item needs a comment (`auditVerdictInputSchema`). */
-export function VerdictSheet({ itemLabel, initial, online, busy, serverError = null, onSave, onClose }: Props) {
+export function VerdictSheet({ itemLabel, initial, online, busy, onSave, onClose }: Props) {
   const { t } = useTranslation();
   const [comment, setComment] = useState(initial);
   const [error, setError] = useState<string | null>(null);
-  const save = () => {
+  const save = async () => {
     const parsed = auditVerdictInputSchema.safeParse({ verdict: 'rejected', comment });
     if (!parsed.success || !parsed.data.comment) return setError(t('audits.issues.commentRequired'));
-    onSave(parsed.data.comment);
+    setError(await onSave(parsed.data.comment));
   };
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -45,11 +44,11 @@ export function VerdictSheet({ itemLabel, initial, online, busy, serverError = n
             placeholderTextColor={colors.muted}
             style={styles.input}
           />
-          <FormError message={error ?? serverError} />
+          <FormError message={error} />
           {!online ? <Text style={styles.muted}>{t('mobile.team.offline')}</Text> : null}
           <View style={styles.actions}>
             <PrimaryButton variant="outline" title={t('common.cancel')} onPress={onClose} />
-            <PrimaryButton title={t('audits.actions.reject')} disabled={!online || busy} onPress={save} />
+            <PrimaryButton title={t('audits.actions.reject')} disabled={!online || busy} onPress={() => void save()} />
           </View>
         </View>
       </KeyboardAvoidingView>
