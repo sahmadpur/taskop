@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type Answers, answersEqual, type AuditResult, type AuditScore, type ScoreResult, visibleItems } from '@taskop/contracts';
 import { and, asc, eq, isNull } from 'drizzle-orm';
+import PDFDocument from 'pdfkit';
 import { sanitiseForLog } from '../../common/error.filter';
 import { DbService } from '../../db/db.service';
 import { auditItemVerdicts, audits, checklists, checklistVersions, executionCorrections, executionMedia, executionProblems, executions, occurrences, sites, tenants, users } from '../../db/schema';
@@ -27,11 +28,21 @@ interface Media {
 /** At most this many photos are fetched from storage at once: 40 photos of 1.5 MB must not be held in flight together. */
 export const PHOTO_FETCH_CONCURRENCY = 4;
 
-/** A `data:` URL for a PNG or JPEG, by its magic bytes; null for anything pdfmake cannot decode (it throws on those). */
+/**
+ * A `data:` URL for a PNG or JPEG, or null for anything pdfmake would fail to embed (which would fail the whole report).
+ * The magic bytes come first; then pdfkit, which pdfmake embeds with, opens the image in a throwaway document: that
+ * rejects a PNG or JPEG signature followed by garbage or cut short. It parses the headers and does not decode the pixels.
+ */
 export function imageDataUrl(body: Buffer): string | null {
   const png = body.length > 4 && body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47;
   const jpeg = body.length > 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
   if (!png && !jpeg) return null;
+  try {
+    // openImage is public in pdfkit but missing from @types/pdfkit.
+    (new PDFDocument() as unknown as { openImage(src: Buffer): unknown }).openImage(body);
+  } catch {
+    return null;
+  }
   return `data:${png ? 'image/png' : 'image/jpeg'};base64,${body.toString('base64')}`;
 }
 

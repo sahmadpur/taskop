@@ -1,5 +1,6 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, type S3ClientConfig } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { MEDIA_LIMITS } from '@taskop/contracts';
 import { APP_CONFIG, type AppConfig } from '../config/config';
@@ -86,6 +87,17 @@ export class S3Service implements OnModuleDestroy {
     try {
       const r = await this.internal.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
       return r.Body ? Buffer.from(await r.Body.transformToByteArray()) : null;
+    } catch (e) {
+      if (isNotFound(e)) return null;
+      throw e;
+    }
+  }
+
+  /** The object as a stream with its length, or null when it does not exist (SP8: the report download never buffers the PDF). */
+  async getStream(key: string): Promise<{ stream: Readable; contentLength: number | undefined } | null> {
+    try {
+      const r = await this.internal.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return r.Body ? { stream: r.Body as Readable, contentLength: r.ContentLength } : null;
     } catch (e) {
       if (isNotFound(e)) return null;
       throw e;

@@ -10,4 +10,10 @@ describe('auditReportMail', () => {
     expect(m.text).toContain('Auditor: Auditor.');
     expect(m.attachments).toEqual([{ filename: 'x.pdf', content: pdf, contentType: 'application/pdf' }]);
   });
+
+  it('keeps the subject on one line when a name contains line breaks or runs of spaces', () => {
+    const m = auditReportMail({ to: 'qa@acme.az', checklistName: 'Açılış\r\nBcc: x@evil.az', siteName: ' Filial\n 1 ', localDate: '2026-11-02', result: 'passed', auditorName: 'Auditor', pdf: Buffer.from('%PDF'), filename: 'x.pdf' });
+    expect(m.subject).toBe('Audit hesabatı: Açılış Bcc: x@evil.az — Filial 1, 02.11.2026');
+    expect(m.subject).not.toMatch(/[\r\n]/);
+  });
 });

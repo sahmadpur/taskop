@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import type { PresignedPut, StoredObject } from '../src/storage/s3.service';
 
 /** An in-memory stand-in for S3Service, so job tests need no SeaweedFS. `failPut` makes every put throw. */
@@ -12,6 +13,11 @@ export class MemoryStorage {
 
   async getObject(key: string): Promise<Buffer | null> {
     return this.objects.get(key)?.body ?? null;
+  }
+
+  async getStream(key: string): Promise<{ stream: Readable; contentLength: number } | null> {
+    const body = this.objects.get(key)?.body;
+    return body ? { stream: Readable.from([body]), contentLength: body.length } : null;
   }
 
   async head(key: string): Promise<StoredObject | null> {

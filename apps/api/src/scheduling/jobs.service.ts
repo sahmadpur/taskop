@@ -30,6 +30,10 @@ export interface WorkerOptions {
   pollingIntervalSeconds?: number;
   /** Workers this node runs for the queue, each taking one job at a time. Defaults to 1. */
   localConcurrency?: number;
+  /** Seconds one attempt may run before pg-boss expires it and retries it. Defaults to pg-boss's 15 minutes. */
+  expireInSeconds?: number;
+  /** Runs for every job that reaches the dead-letter queue (after it is logged), e.g. to mark the work failed. A throw retries it. */
+  onDead?: (data: object) => Promise<void>;
 }
 
 interface WorkerDefinition {
@@ -142,6 +146,7 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
         retryBackoff: true,
         ...(w.opts.retryDelay !== undefined && { retryDelay: w.opts.retryDelay }),
         ...(w.opts.retryDelayMax !== undefined && { retryDelayMax: w.opts.retryDelayMax }),
+        ...(w.opts.expireInSeconds !== undefined && { expireInSeconds: w.opts.expireInSeconds }),
         deadLetter: w.opts.deadLetter,
       });
       // batchSize stays 1: the handler takes one job, so a larger batch would complete the others unprocessed.
@@ -157,8 +162,12 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
       for (const j of jobs) this.logger.error(`Job ${j.name} (${j.id}) failed after all retries`);
     });
     for (const dl of deadLetters) {
+      const onDead = this.workers.filter((w) => w.opts.deadLetter === dl && w.opts.onDead).map((w) => w.opts.onDead!);
       await boss.work<object>(dl, async (jobs) => {
-        for (const j of jobs) this.logger.error(`Job ${j.id} reached ${dl} after all retries: ${JSON.stringify(j.data)}`);
+        for (const j of jobs) {
+          this.logger.error(`Job ${j.id} reached ${dl} after all retries: ${JSON.stringify(j.data)}`);
+          for (const handle of onDead) await handle(j.data);
+        }
       });
     }
     if (this.config.JOBS_CRON) {

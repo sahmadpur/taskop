@@ -73,7 +73,11 @@ export function auditsControllerFor(mode: RouteMode) {
     @ApiOkResponse({ description: 'The audit report', schema: { type: 'string', format: 'binary' } })
     async report(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<StreamableFile> {
       const file = await this.audits.report(a, id);
-      return new StreamableFile(file.body, { type: AUDIT_REPORT_CONTENT_TYPE, disposition: `attachment; filename="${file.filename}"`, length: file.body.length });
+      return new StreamableFile(file.stream, {
+        type: AUDIT_REPORT_CONTENT_TYPE,
+        disposition: `attachment; filename="${file.filename}"`,
+        ...(file.length !== undefined ? { length: file.length } : {}),
+      });
     }
 
     @Post(':id/report/send')

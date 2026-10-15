@@ -1,3 +1,4 @@
+import type { Readable } from 'node:stream';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Answers,
@@ -190,18 +191,18 @@ export class AuditsService {
   }
 
   /** GET /audits/:id/report.pdf: the stored PDF; REPORT_NOT_READY while it is pending or after it failed. */
-  async report(a: Actor, auditId: string): Promise<{ body: Buffer; filename: string }> {
+  async report(a: Actor, auditId: string): Promise<{ stream: Readable; length: number | undefined; filename: string }> {
     const row = await this.readable(a, auditId);
     if (row.reportStatus !== 'ready' || !row.reportStorageKey) throw new AppError('REPORT_NOT_READY');
-    const body = await this.s3.getObject(row.reportStorageKey);
-    if (!body) throw new AppError('REPORT_NOT_READY');
+    const file = await this.s3.getStream(row.reportStorageKey);
+    if (!file) throw new AppError('REPORT_NOT_READY');
     const [r] = await this.db
       .tx()
       .select({ name: checklists.name, localDate: occurrences.localDate })
       .from(occurrences)
       .innerJoin(checklists, eq(checklists.id, occurrences.checklistId))
       .where(eq(occurrences.id, row.occurrenceId));
-    return { body, filename: auditReportFileName(r!.name, r!.localDate) };
+    return { stream: file.stream, length: file.contentLength, filename: auditReportFileName(r!.name, r!.localDate) };
   }
 
   /**
@@ -212,7 +213,12 @@ export class AuditsService {
     const { audit } = await this.lockAudit(a, auditId);
     if (audit.status !== 'finished') throw new AppError('REPORT_NOT_READY');
     const rebuilt = audit.reportStatus === 'failed';
-    if (rebuilt) await this.db.tx().update(audits).set({ reportStatus: 'pending', reportAttempts: 0, updatedAt: this.clock.now() }).where(eq(audits.id, auditId));
+    // A new request starts a fresh attempt count, so earlier failures never shorten its retries; a failed report is rebuilt.
+    await this.db
+      .tx()
+      .update(audits)
+      .set({ reportAttempts: 0, ...(rebuilt ? { reportStatus: 'pending' as const } : {}), updatedAt: this.clock.now() })
+      .where(eq(audits.id, auditId));
     const recipients = input.emails ?? audit.reportRecipients;
     await this.audit.record({ action: 'audit.report_sent', entityType: 'audit', entityId: auditId, after: { recipients, rebuilt } });
     this.queueReport({ tenantId: audit.tenantId, auditId, ...(input.emails ? { emails: input.emails } : {}) });

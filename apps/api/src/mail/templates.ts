@@ -42,7 +42,8 @@ export function auditReportMail(p: {
   const vars = { checklist: p.checklistName, site: p.siteName, date: p.localDate.split('-').reverse().join('.'), result: az.audits.results[p.result], auditor: p.auditorName };
   return {
     to: p.to,
-    subject: interpolate(az.audits.email.subject, vars),
+    // A header must stay on one line: a name with a line break would otherwise end the subject early (header injection).
+    subject: interpolate(az.audits.email.subject, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v.replace(/\s+/g, ' ').trim()]))),
     text: interpolate(az.audits.email.body, vars),
     attachments: [{ filename: p.filename, content: p.pdf, contentType: AUDIT_REPORT_CONTENT_TYPE }],
   };
