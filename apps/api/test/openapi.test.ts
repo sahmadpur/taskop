@@ -74,4 +74,27 @@ describe('OpenAPI', () => {
       expect.arrayContaining(['text/csv; charset=utf-8', 'application/pdf']),
     );
   });
+
+  it('documents the audit and correction paths', async () => {
+    const res = await t.http().get('/api/docs-json');
+    expect(Object.keys(res.body.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/v1/audits',
+        '/api/v1/audits/{id}',
+        '/api/v1/audits/{id}/items/{itemId}',
+        '/api/v1/audits/{id}/finish',
+        '/api/v1/audits/{id}/cancel',
+        '/api/v1/audits/{id}/report.pdf',
+        '/api/v1/audits/{id}/report/send',
+        '/api/v1/executions/{id}/audits',
+        '/api/v1/executions/{id}/corrections',
+        '/api/v1/executions/{id}/send-back',
+        '/api/v1/executions/{id}/send-back/cancel',
+        '/api/v1/executions/{id}/resubmit',
+        '/api/v1/platform/tenants/{tenantId}/audits/{id}',
+        '/api/v1/platform/tenants/{tenantId}/executions/{id}/corrections',
+      ]),
+    );
+    expect(Object.keys(res.body.paths['/api/v1/audits/{id}/report.pdf'].get.responses['200'].content)).toContain('application/pdf');
+  });
 });
