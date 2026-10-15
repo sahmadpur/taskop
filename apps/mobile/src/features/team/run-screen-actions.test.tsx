@@ -4,7 +4,6 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-
 import { Alert } from 'react-native';
 import i18n from '@/lib/i18n';
 import { checklist, OCC } from '@/offline/testing/fixtures';
-import { eventually } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
 import { TeamRunScreen } from './run-screen';
 import {
@@ -95,7 +94,7 @@ describe('Team run screen actions (spec §8.2)', () => {
     expect(mockAudit).toHaveBeenCalledWith(AUDIT);
     await fireEvent.press(screen.getByRole('button', { name: tr('common.close') }));
     await fireEvent.press(await screen.findByRole('button', { name: tr('audits.actions.start') }));
-    await eventually(async () => expect(mockAudit).toHaveBeenCalledWith(AUDIT2));
+    await waitFor(() => expect(mockAudit).toHaveBeenCalledWith(AUDIT2));
     expect(screen.queryByText(tr('errors.AUDIT_EXISTS'))).toBeNull();
   });
 
@@ -147,8 +146,8 @@ describe('Team run screen actions (spec §8.2)', () => {
     await act(async () => {
       alert.mock.calls[0]![2]![1]!.onPress!();
     });
-    await eventually(async () => expect(mockWithdraw).toHaveBeenCalledWith(EXECUTION));
-    await eventually(async () => expect(alert).toHaveBeenCalledWith('Qaytarma geri götürüldü.'));
+    await waitFor(() => expect(mockWithdraw).toHaveBeenCalledWith(EXECUTION));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('Qaytarma geri götürüldü.'));
     expect(mockOccurrence.mock.calls.length).toBeGreaterThan(before); // the run was refreshed
     alert.mockRestore();
   });
