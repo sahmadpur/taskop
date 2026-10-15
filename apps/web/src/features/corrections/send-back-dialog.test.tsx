@@ -104,7 +104,7 @@ describe('Send back', () => {
     expect(screen.queryByRole('button', { name: SEND_BACK })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: az.corrections.actions.correct })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: az.corrections.actions.withdraw }));
-    const confirm = await screen.findByRole('dialog', { name: 'Geri qaytarmanı ləğv et' });
+    const confirm = await screen.findByRole('dialog', { name: 'Qaytarmanı geri götür' });
     expect(confirm).toHaveTextContent('İcra əvvəlki statusuna qayıdacaq.');
     await userEvent.click(within(confirm).getByRole('button', { name: 'Təsdiqlə' }));
     expect(mocks.api.corrections.withdraw).toHaveBeenCalledWith('x1');

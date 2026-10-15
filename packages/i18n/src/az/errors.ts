@@ -68,7 +68,7 @@ export default {
   ITEM_NOT_IN_REWORK: 'Bu bənd düzəlişə qaytarılmayıb; onu dəyişmək olmaz.',
   MEDIA_NOT_CORRECTABLE: 'Düzəlişdə yalnız mövcud foto və videoları çıxarmaq olar; yenisini əlavə etmək olmaz.',
   AUDIT_EXISTS: 'Bu icra üçün artıq audit var.',
-  AUDIT_PAUSED: 'İcra düzəlişə qaytarılıb. Audit yenidən təqdim olunandan sonra bitirilə bilər.',
+  AUDIT_PAUSED: 'İcra düzəlişə qaytarılıb. İcra yenidən təqdim olunandan sonra audit bitirilə bilər.',
   AUDIT_INCOMPLETE: 'Bütün bəndlər üzrə qərar verin.',
   AUDIT_NOT_IN_PROGRESS: 'Bu audit artıq bitib və ya ləğv edilib.',
   REPORT_NOT_READY: 'Audit hesabatı hələ hazırlanır.',

@@ -26,9 +26,9 @@ export default {
     done: 'İcra icraçıya qaytarıldı',
   },
   withdraw: {
-    title: 'Geri qaytarmanı ləğv et',
-    description: 'İcra əvvəlki statusuna qayıdacaq. Cavablar geri qaytarmadan əvvəlki halına bərpa olunacaq, icraçının yarımçıq düzəlişləri ləğv ediləcək.',
-    done: 'Geri qaytarma ləğv edildi',
+    title: 'Qaytarmanı geri götür',
+    description: 'İcra əvvəlki statusuna qayıdacaq. Cavablar qaytarmadan əvvəlki halına bərpa olunacaq, icraçının yarımçıq düzəlişləri ləğv ediləcək.',
+    done: 'Qaytarma geri götürüldü',
   },
   rework: {
     requestedBy: '{{name}} · {{time}}',
@@ -38,7 +38,7 @@ export default {
     title: 'Tarixçə',
     sentBack: '{{name}} icranı düzəlişə qaytardı',
     resubmitted: 'İcraçı düzəlişləri təqdim etdi',
-    withdrawn: '{{name}} geri qaytarmanı ləğv etdi',
+    withdrawn: '{{name}} qaytarmanı geri götürdü',
     reason: 'Səbəb: {{reason}}',
     comment: 'Şərh: {{comment}}',
   },

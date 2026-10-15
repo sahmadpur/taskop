@@ -595,7 +595,7 @@ describe('audit and correction web translations', () => {
     expect(az.corrections.web.edit.reasonTitle).toBe('Düzəlişin səbəbi');
     expect(az.corrections.web.sendBack.title).toBe('İcranı düzəlişə qaytar');
     expect(az.corrections.web.sendBack.comment).toBe('{{item}} — şərh');
-    expect(az.corrections.web.withdraw.title).toBe('Geri qaytarmanı ləğv et');
+    expect(az.corrections.web.withdraw.title).toBe('Qaytarmanı geri götür');
     expect(az.corrections.web.timeline.sentBack).toBe('{{name}} icranı düzəlişə qaytardı');
     expect(az.corrections.web.score.original).toBe('İlkin bal: {{value}}');
     expect(az.corrections.web.showCleared).toBe('Aradan qaldırılanları göstər');

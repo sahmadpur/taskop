@@ -104,6 +104,6 @@ describe('CorrectionsTab', () => {
       reworkRequests: [reworkRequest({ withdrawnAt: '2026-11-02T11:00:00.000Z', withdrawnBy: null, items: [{ itemId: f.note.id, comment: 'Qeydi doldurun' }] })],
     });
     renderWithProviders(<CorrectionsTab occurrence={occurrenceDetail({ execution: summary() })} />);
-    expect(await screen.findByText(/Taskop dəstəyi geri qaytarmanı ləğv etdi/)).toBeInTheDocument();
+    expect(await screen.findByText(/Taskop dəstəyi qaytarmanı geri götürdü/)).toBeInTheDocument();
   });
 });

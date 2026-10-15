@@ -76,7 +76,7 @@ export default {
     sent: 'Hesabat göndərilir',
   },
   emails: {
-    placeholder: 'ad@nümunə.az',
+    placeholder: 'ad@numune.az',
     add: 'Əlavə et',
     remove: 'Sil: {{email}}',
     none: 'Ünvan yoxdur',
