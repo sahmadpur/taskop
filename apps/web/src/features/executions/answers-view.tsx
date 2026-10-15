@@ -63,7 +63,9 @@ function AnswerRow(props: {
   const { item, answer, problems } = props;
   const value = answerValue(t, item, answer, formatDateTime);
   const evidence = [...(answer?.photos ?? []), ...(answer?.videos ?? [])];
-  const worst = problems.some((p) => p.severity === 'critical') ? 'critical' : problems.length ? 'normal' : undefined;
+  // A problem a correction cleared stays visible but no longer marks the item (SP8 spec §4.1).
+  const active = problems.filter((p) => p.clearedAt === null);
+  const worst = active.some((p) => p.severity === 'critical') ? 'critical' : active.length ? 'normal' : undefined;
   const note = answer?.note?.trim();
 
   return (
@@ -84,10 +86,11 @@ function AnswerRow(props: {
       <MediaStrip ids={evidence} media={props.media} onOpen={props.onOpen} />
       {note && <p className="text-muted-foreground">{t('executions.note', { note })}</p>}
       {problems.map((p) => (
-        <div key={p.id} className="grid gap-1">
+        <div key={p.id} data-cleared={p.clearedAt ? 'true' : undefined} className={cn('grid gap-1', p.clearedAt && 'opacity-60')}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={severityVariant(p.severity)}>{t(`executions.severities.${p.severity}`)}</Badge>
             <span className="text-muted-foreground text-xs">{t(`executions.problemSources.${p.source}`)}</span>
+            {p.clearedAt && <Badge variant="outline">{t('corrections.cleared')}</Badge>}
             {p.taskId ? (
               <Badge asChild variant={resolutionVariant(p.resolution)}>
                 <Link to="/tasks" search={{ task: p.taskId }}>

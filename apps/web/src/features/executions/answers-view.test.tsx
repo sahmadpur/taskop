@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { az } from '@taskop/i18n';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { renderWithRouter } from '@/test/router';
@@ -16,6 +17,18 @@ beforeEach(() => {
 });
 
 describe('AnswersView', () => {
+  it('shows a problem a correction cleared, muted, without colouring its item', () => {
+    const f = executionFixture();
+    const problems = f.problems.map((p) => (p.id === 'pr1' ? { ...p, clearedAt: '2026-11-02T09:00:00.000Z' } : p));
+    renderWithProviders(<AnswersView content={f.content} answers={f.answers} media={f.media} problems={problems} />);
+    const question = screen.getByRole('listitem', { name: 'Problem varmı?' });
+    expect(question).not.toHaveAttribute('data-problem');
+    expect(within(question).getByText(az.corrections.cleared)).toBeInTheDocument();
+    expect(within(question).getByText('Kritik').closest('[data-cleared]')).toHaveAttribute('data-cleared', 'true');
+    // The temperature's problems are still active.
+    expect(screen.getByRole('listitem', { name: 'Temperatur' })).toHaveAttribute('data-problem', 'critical');
+  });
+
   it('renders answers in the pinned layout with indented follow-ups and highlighted problems', () => {
     const f = executionFixture();
     renderWithProviders(<AnswersView content={f.content} answers={f.answers} media={f.media} problems={f.problems} />);
