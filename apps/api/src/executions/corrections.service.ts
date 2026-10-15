@@ -107,6 +107,7 @@ export class CorrectionsService {
       .where(eq(executions.id, e.id));
     // Spec R20: only directly corrected items link their cleared problem to a correction row.
     const { score } = await this.recalculator.recalculate({ execution: e, occurrence: o, content, answers: after, clearedBy: new Map(rows.map((r) => [r.itemId, r.id])), now });
+    await this.resetAuditVerdicts(e.id, changed);
     await this.audit.record({
       action: 'execution.corrected',
       entityType: 'execution',
@@ -191,6 +192,7 @@ export class CorrectionsService {
       .set({ state: 'completed', answers: restored, answersRev: e.answersRev + 1, updatedAt: now })
       .where(eq(executions.id, e.id));
     await this.recalculator.recalculate({ execution: e, occurrence: o, content, answers: restored, clearedBy: new Map(), now });
+    await this.resetAuditVerdicts(e.id, reverted);
     const back = await this.statusAfterWithdraw(open.statusBefore, o.checklistId, e.id);
     await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: back, at: now }]);
     await this.audit.record({
@@ -201,6 +203,16 @@ export class CorrectionsService {
       after: { status: back, ...(reverted.length ? { answers: pickAnswers(restored, reverted) } : {}) },
     });
     return (await this.requests.toDtos([row!]))[0]!;
+  }
+
+  /**
+   * Ruling F2: like a resubmit (spec decision 7), a correction or a withdrawal that changes items under an audit in
+   * progress clears their verdicts, so the auditor never approves a value they did not see.
+   */
+  private async resetAuditVerdicts(executionId: string, itemIds: readonly string[]): Promise<void> {
+    if (!itemIds.length) return;
+    const audit = await this.audits.openAudit(executionId);
+    if (audit?.status === 'in_progress') await this.audits.resetVerdicts(audit.id, itemIds);
   }
 
   /** Spec decision 22: audit_pending only while an audit exists or the checklist requires one. */

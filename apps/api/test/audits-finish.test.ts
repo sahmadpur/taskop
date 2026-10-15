@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { DomainEvents } from '../src/common/domain-events';
 import { JobsService } from '../src/scheduling/jobs.service';
 import { createTestApp, type TestApp } from './app';
-import { type AuditWorld, auditLogOf, auditWorld, correct, markUploaded, resubmit, sendBack, startAudit, verdictAll } from './audit-fixtures';
+import { type AuditWorld, auditLogOf, auditWorld, correct, markUploaded, resubmit, sendBack, startAudit, verdictAll, withdraw } from './audit-fixtures';
 import { answersBody, historyOf, statusOf } from './execution-fixtures';
 import { FakeClock } from './fake-clock';
 import { ownerQuery } from './owner-db';
@@ -128,6 +128,39 @@ describe('finishing an audit (FR-19.06, spec §6.2)', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.score).toEqual({ approved: 4, rejected: 0, reviewed: 4, percent: 100 });
     expect((await auditLogOf(auditId)).at(-1)!.after).toMatchObject({ rejectedItemIds: [] });
+  });
+
+  const verdictsOf = async (auditId: string) =>
+    (await ownerQuery<{ item_id: string }>('select item_id from audit_item_verdicts where audit_id = $1', [auditId])).rows.map((r) => r.item_id).sort();
+
+  it('a direct correction during the audit clears the verdicts of the changed items (ruling F2)', async () => {
+    const { a, auditId, items } = await audited();
+    await markUploaded(a.executionId);
+    await verdictAll(a.auditor.api, auditId, items);
+    const res = await correct(a.manager.api, a.executionId, { answersRev: 1, changes: [{ itemId: a.w.c.temp.id, answer: { number: 5 } }], reason: 'Səhv yazılıb' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await verdictsOf(auditId)).toEqual(items.filter((id) => id !== a.w.c.temp.id).sort());
+    const incomplete = await finish(a, auditId, { result: 'passed' });
+    expect([incomplete.body.error.code, incomplete.body.error.itemIds]).toEqual(['AUDIT_INCOMPLETE', [a.w.c.temp.id]]);
+    await verdictAll(a.auditor.api, auditId, [a.w.c.temp.id]);
+    expect((await finish(a, auditId, { result: 'passed' })).status).toBe(200);
+  });
+
+  it('a withdrawal during the audit clears the verdicts of the items whose answers it reverts (ruling F2)', async () => {
+    const { a, auditId, items } = await audited();
+    await markUploaded(a.executionId);
+    await verdictAll(a.auditor.api, auditId, items);
+    await sendBack(a.manager.api, a.executionId, { items: [{ itemId: a.w.c.temp.id, comment: 'Yenidən ölçün' }, { itemId: a.w.c.note.id, comment: 'Qeyd yazın' }] });
+    const later = '2026-11-02T12:00:00.000Z';
+    clock.set(later);
+    // The worker changes the temperature only; the auditor reviews it while the audit is paused.
+    const saved = await a.worker.api.put(`/api/v1/executions/${a.executionId}/answers`, answersBody(2, { ...a.answers, [a.w.c.temp.id]: { number: 5 } }, later));
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    await verdictAll(a.auditor.api, auditId, [a.w.c.temp.id]);
+    expect((await withdraw(a.manager.api, a.executionId)).status).toBe(200);
+    expect(await verdictsOf(auditId)).toEqual(items.filter((id) => id !== a.w.c.temp.id).sort());
+    const incomplete = await finish(a, auditId, { result: 'passed' });
+    expect([incomplete.body.error.code, incomplete.body.error.itemIds]).toEqual(['AUDIT_INCOMPLETE', [a.w.c.temp.id]]);
   });
 
   it('resumes after a resubmit: the changed item needs a new verdict, then the audit finishes', async () => {
