@@ -5,7 +5,7 @@ import { noisePng } from './png';
 const MB = 1024 * 1024;
 
 /** Spec §7.2: 200 items and 40 photos of about 1.5 MB build in under 10 s and under 300 MB of memory growth
- * (heapUsed + external + arrayBuffers, before and after, no forced GC; heapUsed alone leaves out Buffers, and a sampler cannot fire during synchronous work). */
+ * (heapUsed + external, before and after, no forced GC; heapUsed alone leaves out Buffers, and a sampler cannot fire during synchronous work). */
 describe('audit report performance', () => {
   it('builds 200 items with 40 photos of 1.5 MB in under 10 s and 300 MB of memory', async () => {
     const photos = Array.from({ length: 40 }, (_, i) => noisePng(708, 708, i + 1));
@@ -41,7 +41,8 @@ describe('audit report performance', () => {
       auditScore: { approved: 171, rejected: 29, reviewed: 200, percent: 85.5 }, runScore: 90, originalScore: 80, comment: null,
       sections, generatedAt: new Date('2026-11-02T06:01:00Z'),
     };
-    const footprint = (m: NodeJS.MemoryUsage): number => m.heapUsed + m.external + m.arrayBuffers;
+    // arrayBuffers (every Buffer) is already inside external, so adding it would count each Buffer twice.
+    const footprint = (m: NodeJS.MemoryUsage): number => m.heapUsed + m.external;
     const before = process.memoryUsage();
     const started = performance.now();
     const pdf = await buildAuditReport(data);
@@ -50,7 +51,7 @@ describe('audit report performance', () => {
     const growth = footprint(after) - footprint(before);
     const mb = (n: number): number => Math.round(n / MB);
     console.info(
-      `audit report: ${Math.round(ms)} ms, memory +${mb(growth)} MB (heapUsed +${mb(after.heapUsed - before.heapUsed)}, external +${mb(after.external - before.external)}, arrayBuffers +${mb(after.arrayBuffers - before.arrayBuffers)}), rss ${mb(after.rss)} MB, ${mb(pdf.length)} MB PDF`,
+      `audit report: ${Math.round(ms)} ms, memory +${mb(growth)} MB = heapUsed + external (heapUsed +${mb(after.heapUsed - before.heapUsed)}, external +${mb(after.external - before.external)}, arrayBuffers +${mb(after.arrayBuffers - before.arrayBuffers)}), rss ${mb(after.rss)} MB, ${mb(pdf.length)} MB PDF`,
     );
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect((pdf.toString('latin1').match(/\/Subtype \/Image/g) ?? []).length).toBe(40);
