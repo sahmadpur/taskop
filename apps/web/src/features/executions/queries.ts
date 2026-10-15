@@ -44,8 +44,8 @@ export const useChecklistOptions = () =>
 
 /**
  * After a correction, a send-back, a withdrawal or an audit change (SP8): every view that shows a run's state, answers,
- * audit, problems or report numbers asks again.
+ * audit, problems or report numbers asks again, tasks included (a task view shows its problem's cleared mark).
  */
 export async function refreshRunViews(qc: QueryClient): Promise<void> {
-  await Promise.all(['occurrences', 'executions', 'corrections', 'audits', 'problems', 'reports'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  await Promise.all(['occurrences', 'executions', 'corrections', 'audits', 'problems', 'reports', 'tasks'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
 }
