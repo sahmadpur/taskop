@@ -27,7 +27,7 @@ export default {
   },
   withdraw: {
     title: 'Geri qaytarmanı ləğv et',
-    description: 'İcra əvvəlki statusuna qayıdacaq. İcraçının artıq göndərdiyi cavablar qalacaq.',
+    description: 'İcra əvvəlki statusuna qayıdacaq. Cavablar geri qaytarmadan əvvəlki halına bərpa olunacaq, icraçının yarımçıq düzəlişləri ləğv ediləcək.',
     done: 'Geri qaytarma ləğv edildi',
   },
   rework: {

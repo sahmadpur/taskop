@@ -82,3 +82,6 @@ export function correctionAnswer(a: Answer | undefined): CorrectionChange['answe
 /** One change per item whose answer differs (Part 1's `changedItemIds`), in its order. */
 export const correctionChanges = (before: Answers, after: Answers): CorrectionChange[] =>
   changedItemIds(before, after).map((itemId) => ({ itemId, answer: correctionAnswer(after[itemId]) }));
+
+/** Whether an ISO instant is not after now: a send-back's due date must still lie ahead. */
+export const isNotInFuture = (iso: string): boolean => Date.parse(iso) <= Date.now();

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CorrectAnswers } from '@/features/corrections/correct-answers';
+import { ReworkBanner } from '@/features/corrections/rework-banner';
 import { RunActions } from '@/features/corrections/run-actions';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
@@ -40,6 +41,7 @@ function CountedExecution({ summary, status }: { summary: ExecutionSummary; stat
   return (
     <div className="grid gap-4">
       <SummaryView summary={summary} detail={d} />
+      {d && <ReworkBanner detail={d} />}
       {d && !correcting && <RunActions status={status} detail={d} onCorrect={() => setCorrecting(true)} />}
       {d && correcting ? (
         // Keyed by the revision: an ANSWERS_CONFLICT reload starts the edit over from the newest answers.
