@@ -1,0 +1,33 @@
+---
+import type { Language } from '../lib/site';
+import { fill, localePath, strings } from '../lib/site';
+import Base from '../layouts/Base.astro';
+import Footer from './Footer.astro';
+import Header from './Header.astro';
+interface Props {
+  lang: Language;
+  kind: 'privacy' | 'terms';
+}
+const { lang, kind } = Astro.props;
+const t = strings(lang);
+const title = kind === 'privacy' ? t.legal.privacyTitle : t.legal.termsTitle;
+---
+
+<Base lang={lang} path={`${kind}/`} title={`${title} — Taskop`}>
+  <Header lang={lang} path={`${kind}/`} sections={false} />
+  <main id="main" class="wrap section legal">
+    <h1>{title}</h1>
+    <p class="lead">{fill(t.legal.placeholder, { email: t.footer.email })}</p>
+    <a href={localePath(lang)}>{t.legal.back}</a>
+  </main>
+  <Footer lang={lang} />
+</Base>
+
+<style>
+  .legal {
+    display: grid;
+    gap: 1.25rem;
+    min-height: 50vh;
+    align-content: start;
+  }
+</style>

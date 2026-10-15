@@ -1,0 +1,27 @@
+---
+import type { Language } from '../lib/site';
+import Base from '../layouts/Base.astro';
+import Faq from './Faq.astro';
+import Features from './Features.astro';
+import Footer from './Footer.astro';
+import Header from './Header.astro';
+import Hero from './Hero.astro';
+import HowItWorks from './HowItWorks.astro';
+import MobileApp from './MobileApp.astro';
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props;
+---
+
+<Base lang={lang}>
+  <Header lang={lang} />
+  <main id="main">
+    <Hero lang={lang} />
+    <Features lang={lang} />
+    <HowItWorks lang={lang} />
+    <MobileApp lang={lang} />
+    <Faq lang={lang} />
+  </main>
+  <Footer lang={lang} />
+</Base>

@@ -1,0 +1,70 @@
+---
+import type { Language } from '../lib/site';
+import { strings } from '../lib/site';
+interface Props {
+  lang: Language;
+}
+const t = strings(Astro.props.lang).how;
+const steps = [t.step1, t.step2, t.step3];
+---
+
+<section id="how" class="section how">
+  <div class="wrap">
+    <h2>{t.title}</h2>
+    <ol class="steps">
+      {steps.map((s, i) => (
+        <li>
+          <span class="n" aria-hidden="true">{i + 1}</span>
+          <h3>{s.title}</h3>
+          <p>{s.body}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<style>
+  .how {
+    background: var(--tp-surface);
+    border-block: 1px solid var(--tp-line);
+  }
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 2.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 2rem;
+  }
+  li {
+    position: relative;
+    display: grid;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 3px solid var(--tp-primary-soft);
+  }
+  li::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 0;
+    width: 3.5rem;
+    height: 3px;
+    background: var(--tp-saffron);
+  }
+  .n {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--tp-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  p {
+    color: var(--tp-ink2);
+  }
+  @media (min-width: 48rem) {
+    .steps {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2.5rem;
+    }
+  }
+</style>

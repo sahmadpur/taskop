@@ -33,6 +33,7 @@ jobs:
           - { name: api, filter: '@taskop/api' }
           - { name: web, filter: '@taskop/web' }
           - { name: mobile, filter: '@taskop/mobile' }
+          - { name: landing, filter: '@taskop/landing' }
           - { name: packages, filter: './packages/*' }
     name: test (${{ matrix.suite.name }})
     steps:

@@ -1,0 +1,83 @@
+---
+import type { Language } from '../lib/site';
+import { platformUrl, strings } from '../lib/site';
+import PhoneMock from './PhoneMock.astro';
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props;
+const t = strings(lang).hero;
+---
+
+<section class="hero">
+  <div class="wrap grid">
+    <div class="copy">
+      <h1>{t.title}</h1>
+      <p class="lead">{t.lead}</p>
+      <div class="cta">
+        <a class="btn btn-primary" href={platformUrl('login')} data-testid="hero-login">{t.login}</a>
+        <a class="btn btn-outline" href={platformUrl('signup')} data-testid="hero-signup">{t.signup}</a>
+      </div>
+      <p class="audience">{t.audience}</p>
+    </div>
+    <div class="visual">
+      <PhoneMock lang={lang} />
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding-block: clamp(3rem, 2rem + 5vw, 6.5rem) clamp(2.5rem, 2rem + 3vw, 5rem);
+    position: relative;
+    overflow: hidden;
+  }
+  .grid {
+    display: grid;
+    gap: 3rem;
+    align-items: center;
+  }
+  .copy {
+    display: grid;
+    gap: 1.5rem;
+    max-width: 38rem;
+  }
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .cta .btn {
+    min-height: 3.2rem;
+    padding-inline: 1.5rem;
+    font-size: 1.05rem;
+  }
+  .audience {
+    color: var(--tp-ink2);
+    font-size: 0.95rem;
+  }
+  .visual {
+    display: flex;
+    justify-content: center;
+    animation: rise 600ms ease-out both;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (min-width: 60rem) {
+    .grid {
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: 4rem;
+    }
+    .visual {
+      justify-content: flex-end;
+    }
+  }
+</style>

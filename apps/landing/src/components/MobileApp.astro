@@ -1,0 +1,99 @@
+---
+import type { Language } from '../lib/site';
+import { strings } from '../lib/site';
+import PhoneMock from './PhoneMock.astro';
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props;
+const t = strings(lang).mobile;
+---
+
+<section id="mobile" class="section mobile">
+  <div class="wrap grid">
+    <div class="copy">
+      <h2>{t.title}</h2>
+      <p class="lead">{t.lead}</p>
+      <ul class="points">
+        <li>{t.point1}</li>
+        <li>{t.point2}</li>
+        <li>{t.point3}</li>
+      </ul>
+      <div class="badges">
+        <!-- Store badges arrive with the store listings; until then the names, marked "coming soon". -->
+        <span class="badge" aria-disabled="true"><strong>{t.appStore}</strong><small>{t.soon}</small></span>
+        <span class="badge" aria-disabled="true"><strong>{t.googlePlay}</strong><small>{t.soon}</small></span>
+      </div>
+    </div>
+    <div class="visual"><PhoneMock lang={lang} variant="home" /></div>
+  </div>
+</section>
+
+<style>
+  .mobile {
+    background: var(--tp-deep);
+    color: var(--tp-on-deep);
+  }
+  .grid {
+    display: grid;
+    gap: 3rem;
+    align-items: center;
+  }
+  .copy {
+    display: grid;
+    gap: 1.25rem;
+  }
+  .mobile .lead {
+    color: var(--tp-on-deep-muted);
+  }
+  .points {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .points li {
+    padding-left: 1.6rem;
+    position: relative;
+  }
+  .points li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+    background: var(--tp-saffron);
+  }
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .badge {
+    display: inline-grid;
+    gap: 0.1rem;
+    min-width: 10rem;
+    padding: 0.6rem 1rem;
+    border: 1px solid rgb(255 255 255 / 0.25);
+    border-radius: var(--tp-radius-control);
+    color: var(--tp-on-deep);
+  }
+  .badge small {
+    color: var(--tp-on-deep-muted);
+    font-size: 0.8rem;
+  }
+  .visual {
+    display: flex;
+    justify-content: center;
+  }
+  @media (min-width: 60rem) {
+    .grid {
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: 4rem;
+    }
+  }
+</style>

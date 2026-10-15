@@ -1,0 +1,93 @@
+---
+import type { Language } from '../lib/site';
+import { localePath, platformUrl, strings } from '../lib/site';
+import LanguageSwitch from './LanguageSwitch.astro';
+import Logo from './Logo.astro';
+interface Props {
+  lang: Language;
+  path?: string;
+  /** Section links (the home page only). */
+  sections?: boolean;
+}
+const { lang, path = '', sections = true } = Astro.props;
+const t = strings(lang);
+const home = localePath(lang);
+---
+
+<header class="header">
+  <div class="wrap bar">
+    <a href={home} class="home" aria-label="Taskop">
+      <Logo />
+    </a>
+    {sections && (
+      <nav class="sections" aria-label={t.nav.menu}>
+        <a href={`${home}#features`}>{t.nav.features}</a>
+        <a href={`${home}#how`}>{t.nav.how}</a>
+        <a href={`${home}#mobile`}>{t.nav.mobile}</a>
+        <a href={`${home}#faq`}>{t.nav.faq}</a>
+      </nav>
+    )}
+    <div class="actions">
+      <LanguageSwitch lang={lang} path={path} />
+      <a class="btn btn-primary login" href={platformUrl('login')} data-testid="login">{t.nav.login}</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--tp-surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--tp-line);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    min-height: 4rem;
+  }
+  .home {
+    color: var(--tp-ink);
+    text-decoration: none;
+  }
+  .sections {
+    display: none;
+    gap: 1.5rem;
+    margin-inline: auto;
+  }
+  .sections a {
+    color: var(--tp-ink2);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  .sections a:hover {
+    color: var(--tp-ink);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+  }
+  .login {
+    min-height: 2.5rem;
+    padding-inline: 1rem;
+  }
+  @media (min-width: 56rem) {
+    .sections {
+      display: flex;
+    }
+    .actions {
+      margin-left: 0;
+    }
+  }
+  @media (max-width: 30rem) {
+    .login {
+      display: none;
+    }
+  }
+</style>
