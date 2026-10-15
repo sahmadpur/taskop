@@ -101,6 +101,8 @@ describe('NotificationRulesTab', () => {
     renderWithProviders(<NotificationRulesTab />);
     const filter = await screen.findByRole('combobox', { name: ctl('audit.finished', 'Audit nəticəsi') });
     expect(within(filter).getAllByRole('option').map((o) => o.textContent)).toEqual([az.notifications.resultFilters.any, az.notifications.resultFilters.failed]);
+    // Ruling R11: the filter narrows role recipients only; the hint says so.
+    expect(filter).toHaveAccessibleDescription(az.notifications.rules.resultFilterHint);
     await userEvent.selectOptions(filter, 'any');
     await userEvent.click(screen.getByRole('button', { name: ctl('audit.finished', 'Yadda saxla') }));
     await waitFor(() => expect(mocks.api.notificationRules.update).toHaveBeenCalledWith('audit.finished', expect.objectContaining({ resultFilter: 'any', leadMinutes: null })));

@@ -76,6 +76,8 @@ export default {
     noRoles: 'Rol seçilməyib',
     rolesCount: '{{count}} rol',
     rolesUnavailable: 'Rolların siyahısı yüklənmədi; seçilmiş rollar dəyişməz qalır.',
+    /** Under audit.finished's result filter (ruling R11). */
+    resultFilterHint: 'Filtr yalnız rollar üzrə alıcılara aiddir; icraçı həmişə bildiriş alır.',
   },
   messages: {
     compose: 'Yeni mesaj',

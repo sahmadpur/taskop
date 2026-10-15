@@ -189,18 +189,24 @@ function RuleRow({ rule, roles }: { rule: NotificationRuleDto; roles: RoleDto[] 
       </TableCell>
       <TableCell>
         {meta.hasResultFilter ? (
-          <NativeSelect
-            aria-label={name(t('audits.web.resultFilter'))}
-            value={draft.resultFilter ?? ''}
-            onChange={(e) => set('resultFilter', e.target.value as AuditResultFilter)}
-            className="w-40"
-          >
-            {AUDIT_RESULT_FILTERS.map((f) => (
-              <option key={f} value={f}>
-                {t(`notifications.resultFilters.${f}`)}
-              </option>
-            ))}
-          </NativeSelect>
+          <div className="grid gap-1">
+            <NativeSelect
+              aria-label={name(t('audits.web.resultFilter'))}
+              aria-describedby={`result-filter-hint-${rule.type}`}
+              value={draft.resultFilter ?? ''}
+              onChange={(e) => set('resultFilter', e.target.value as AuditResultFilter)}
+              className="w-40"
+            >
+              {AUDIT_RESULT_FILTERS.map((f) => (
+                <option key={f} value={f}>
+                  {t(`notifications.resultFilters.${f}`)}
+                </option>
+              ))}
+            </NativeSelect>
+            <p id={`result-filter-hint-${rule.type}`} className="text-muted-foreground max-w-40 text-xs">
+              {t('notifications.rules.resultFilterHint')}
+            </p>
+          </div>
         ) : (
           <span aria-hidden>—</span>
         )}
