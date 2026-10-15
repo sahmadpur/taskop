@@ -1,4 +1,6 @@
+import { ApiError } from '@taskop/api-client';
 import type { ChecklistDetail } from '@taskop/contracts';
+import { az } from '@taskop/i18n';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -125,5 +127,62 @@ describe('ChecklistDetailPage', () => {
     ]) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
+  });
+
+  it('saves the audit requirement and the report addresses', async () => {
+    const ws = fakeWorkspace();
+    ws.checklists.get.mockResolvedValueOnce(detail({ auditReportEmails: ['rehber@acme.az'] })).mockResolvedValue(
+      detail({ requiresAudit: true, auditReportEmails: ['rehber@acme.az', 'audit@acme.az'] }),
+    );
+    ws.checklists.update.mockResolvedValue({});
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    const audit = await screen.findByRole('region', { name: 'Audit' });
+    const toggle = within(audit).getByRole('switch', { name: az.audits.fields.requiresAudit });
+    expect(toggle).not.toBeChecked();
+    expect(within(audit).getByText('rehber@acme.az')).toBeInTheDocument();
+    const save = within(audit).getByRole('button', { name: 'Yadda saxla' });
+    expect(save).toBeDisabled();
+    await userEvent.click(toggle);
+    await userEvent.type(within(audit).getByLabelText(az.audits.fields.reportEmails), 'Audit@Acme.az{Enter}');
+    await userEvent.click(save);
+    await waitFor(() => expect(ws.checklists.update).toHaveBeenCalledWith(ID, { requiresAudit: true, auditReportEmails: ['rehber@acme.az', 'audit@acme.az'] }));
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Audit' })).getByRole('switch', { name: az.audits.fields.requiresAudit })).toBeChecked());
+    expect(within(screen.getByRole('region', { name: 'Audit' })).getByRole('button', { name: 'Yadda saxla' })).toBeDisabled();
+  });
+
+  it('shows the API’s reason for one refused address', async () => {
+    const ws = fakeWorkspace();
+    ws.checklists.get.mockResolvedValue(detail());
+    ws.checklists.update.mockRejectedValue(new ApiError(400, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { 'auditReportEmails.0': 'errors.validation.email' }));
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    const audit = await screen.findByRole('region', { name: 'Audit' });
+    await userEvent.click(within(audit).getByRole('switch', { name: az.audits.fields.requiresAudit }));
+    await userEvent.click(within(audit).getByRole('button', { name: 'Yadda saxla' }));
+    expect(await within(audit).findByText('Düzgün e-poçt ünvanı daxil edin.')).toBeInTheDocument();
+  });
+
+  it('shows the API’s reason for a refused address list', async () => {
+    const ws = fakeWorkspace();
+    ws.checklists.get.mockResolvedValue(detail());
+    ws.checklists.update.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { auditReportEmails: 'audits.issues.tooManyEmails' }),
+    );
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    const audit = await screen.findByRole('region', { name: 'Audit' });
+    await userEvent.click(within(audit).getByRole('switch', { name: az.audits.fields.requiresAudit }));
+    await userEvent.click(within(audit).getByRole('button', { name: 'Yadda saxla' }));
+    expect(await within(audit).findByText(az.audits.issues.tooManyEmails)).toBeInTheDocument();
+  });
+
+  it('shows the audit settings read-only without checklists.manage or on a deactivated checklist', async () => {
+    const ws = fakeWorkspace({ can: { manage: false, publish: false, templates: false } });
+    ws.checklists.get.mockResolvedValue(detail({ requiresAudit: true, auditReportEmails: ['rehber@acme.az'] }));
+    renderInWorkspace(<ChecklistDetailPage checklistId={ID} />, ws);
+    const audit = await screen.findByRole('region', { name: 'Audit' });
+    expect(within(audit).getByRole('switch', { name: az.audits.fields.requiresAudit })).toBeDisabled();
+    expect(within(audit).getByRole('switch', { name: az.audits.fields.requiresAudit })).toBeChecked();
+    expect(within(audit).getByText('rehber@acme.az')).toBeInTheDocument();
+    expect(within(audit).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(within(audit).queryByRole('button', { name: 'Yadda saxla' })).not.toBeInTheDocument();
   });
 });
