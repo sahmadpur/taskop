@@ -2,6 +2,7 @@ import appJson from '../app.json';
 import pkg from '../package.json';
 import eas from '../eas.json';
 import { googleServicesFile, withGoogleServices } from '../app.config';
+import { adoptSceneLifecycle, withSceneManifest } from '../plugins/with-scene-lifecycle';
 
 type Plugin = string | [string, Record<string, unknown>];
 const plugins = appJson.expo.plugins as Plugin[];
@@ -55,5 +56,74 @@ describe('native configuration', () => {
     expect(withGoogleServices(base, './google-services.json').android).toEqual({ package: 'az.taskop.app', googleServicesFile: './google-services.json' });
     expect(withGoogleServices(base, undefined).android).toEqual({ package: 'az.taskop.app' });
     expect(withGoogleServices(base, undefined).name).toBe('Taskop');
+  });
+});
+
+// The part of expo-template-bare-minimum@57.0.32's AppDelegate.swift that the scene plugin rewrites.
+const templateAppDelegate = `@main
+class AppDelegate: ExpoAppDelegate {
+  var window: UIWindow?
+
+  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
+  var reactNativeFactory: RCTReactNativeFactory?
+
+  public override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    let delegate = ReactNativeDelegate()
+    let factory = ExpoReactNativeFactory(delegate: delegate)
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+
+    reactNativeDelegate = delegate
+    reactNativeFactory = factory
+
+#if os(iOS) || os(tvOS)
+    window = UIWindow(frame: UIScreen.main.bounds)
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: launchOptions)
+#endif
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}
+`;
+
+describe('iOS scene life cycle (required by iOS 27)', () => {
+  it('registers the plugin', () => {
+    expect(plugins).toContain('./plugins/with-scene-lifecycle.js');
+  });
+
+  it("names Expo's scene delegate in a single-scene manifest, keeping other Info.plist keys", () => {
+    const plist = withSceneManifest({ CFBundleName: 'Taskop' });
+    expect(plist.CFBundleName).toBe('Taskop');
+    expect(plist.UIApplicationSceneManifest).toEqual({
+      UIApplicationSupportsMultipleScenes: false,
+      UISceneConfigurations: {
+        UIWindowSceneSessionRoleApplication: [
+          { UISceneConfigurationName: 'Default Configuration', UISceneDelegateClassName: 'EXExpoAppSceneDelegate' },
+        ],
+      },
+    });
+    expect(withSceneManifest(plist)).toEqual(plist);
+  });
+
+  it('lets the scene delegate create the window and start React Native', () => {
+    const swift = adoptSceneLifecycle(templateAppDelegate);
+    expect(swift).toContain('class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {');
+    expect(swift).not.toContain('UIWindow(frame:');
+    expect(swift).not.toContain('startReactNative');
+    expect(swift).not.toContain('#if os(iOS)');
+    expect(swift).toContain('    reactNativeFactory = factory\n');
+    expect(swift).toContain('    return super.application(application, didFinishLaunchingWithOptions: launchOptions)');
+    expect(adoptSceneLifecycle(swift)).toBe(swift);
+  });
+
+  it('fails the prebuild on an AppDelegate it does not recognise', () => {
+    expect(() => adoptSceneLifecycle('class AppDelegate: RCTAppDelegate {}')).toThrow(/unexpected shape/);
+    const startsElsewhere = templateAppDelegate.replace('#if os(iOS) || os(tvOS)\n    window = UIWindow(frame: UIScreen.main.bounds)\n', '');
+    expect(() => adoptSceneLifecycle(startsElsewhere)).toThrow(/unexpected shape/);
   });
 });

@@ -46,7 +46,8 @@
         "expo-notifications",
         { "icon": "./assets/android-icon-monochrome.png", "color": "#1D5BD8", "defaultChannel": "default" }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/with-scene-lifecycle.js"
     ],
     "experiments": {
       "typedRoutes": true
