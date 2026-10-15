@@ -1,5 +1,7 @@
 import { ApiError } from '@taskop/api-client';
 import {
+  AUDIT_RESULT_FILTERS,
+  type AuditResultFilter,
   LEAD_MINUTES,
   type LeadMinutes,
   NOTIFICATION_GROUPS,
@@ -58,6 +60,7 @@ export function NotificationRulesTab() {
                 <TableHead>{t('notifications.audiences.creator')}</TableHead>
                 <TableHead>{t('notifications.rules.columns.roles')}</TableHead>
                 <TableHead>{t('notifications.rules.columns.leadTime')}</TableHead>
+                <TableHead>{t('audits.web.resultFilter')}</TableHead>
                 <TableHead>
                   <span className="sr-only">{t('common.actions')}</span>
                 </TableHead>
@@ -177,6 +180,24 @@ function RuleRow({ rule, roles }: { rule: NotificationRuleDto; roles: RoleDto[] 
             {LEAD_MINUTES.map((m) => (
               <option key={m} value={m}>
                 {t('notifications.leadMinutes', { count: m })}
+              </option>
+            ))}
+          </NativeSelect>
+        ) : (
+          <span aria-hidden>—</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {meta.hasResultFilter ? (
+          <NativeSelect
+            aria-label={name(t('audits.web.resultFilter'))}
+            value={draft.resultFilter ?? ''}
+            onChange={(e) => set('resultFilter', e.target.value as AuditResultFilter)}
+            className="w-40"
+          >
+            {AUDIT_RESULT_FILTERS.map((f) => (
+              <option key={f} value={f}>
+                {t(`notifications.resultFilters.${f}`)}
               </option>
             ))}
           </NativeSelect>

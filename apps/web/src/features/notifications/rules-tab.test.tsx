@@ -30,7 +30,7 @@ beforeEach(() => {
 describe('NotificationRulesTab', () => {
   it('groups the rules, offers only the audiences and the lead time each type has, and marks customised rows', async () => {
     renderWithProviders(<NotificationRulesTab />);
-    for (const g of ['checklist', 'problem', 'task'] as const) {
+    for (const g of ['checklist', 'problem', 'task', 'audit'] as const) {
       expect(await screen.findByRole('region', { name: az.notifications.groups[g] })).toBeInTheDocument();
     }
     // Header row + problem.recorded + problem.critical.
@@ -40,7 +40,9 @@ describe('NotificationRulesTab', () => {
     expect(screen.getByRole('checkbox', { name: ctl('task.overdue', audiences.creator) })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: ctl('checklist.missed', channels.push) })).not.toBeChecked();
     expect(screen.getByRole('switch', { name: ctl('task.assigned', 'Aktiv') })).toBeChecked();
-    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    // The lead time of due_soon and the result filter of audit.finished are the only selects.
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    expect(screen.getByRole('combobox', { name: ctl('audit.finished', 'Audit nəticəsi') })).toHaveValue('failed');
     expect(screen.getByRole('combobox', { name: ctl('checklist.due_soon', 'Xatırlatma vaxtı') })).toHaveValue('30');
     // Until GET /roles answers the button is a disabled count; then it names the roles.
     await waitFor(() => expect(screen.getByRole('button', { name: ctl('problem.critical', 'Rollar') })).toHaveTextContent('Administrator, Menecer'));
@@ -87,10 +89,32 @@ describe('NotificationRulesTab', () => {
         notifyCreator: false,
         roleIds: [ROLE_IDS.admin],
         leadMinutes: 60,
+        resultFilter: null,
       }),
     );
     expect(await within(save.closest('tr')!).findByText('Dəyişdirilib')).toBeInTheDocument();
     expect(save).toBeDisabled();
+  });
+
+  it('saves the result filter of the audit-finished rule', async () => {
+    mocks.api.notificationRules.update.mockImplementation(answer);
+    renderWithProviders(<NotificationRulesTab />);
+    const filter = await screen.findByRole('combobox', { name: ctl('audit.finished', 'Audit nəticəsi') });
+    expect(within(filter).getAllByRole('option').map((o) => o.textContent)).toEqual([az.notifications.resultFilters.any, az.notifications.resultFilters.failed]);
+    await userEvent.selectOptions(filter, 'any');
+    await userEvent.click(screen.getByRole('button', { name: ctl('audit.finished', 'Yadda saxla') }));
+    await waitFor(() => expect(mocks.api.notificationRules.update).toHaveBeenCalledWith('audit.finished', expect.objectContaining({ resultFilter: 'any', leadMinutes: null })));
+    expect(screen.getByRole('region', { name: az.notifications.groups.audit })).toContainElement(filter);
+  });
+
+  it('shows the refusal of a result filter on another type under its row', async () => {
+    mocks.api.notificationRules.update.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'errors.VALIDATION_FAILED', { resultFilter: 'notifications.issues.resultFilterNotApplicable' }),
+    );
+    renderWithProviders(<NotificationRulesTab />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: ctl('checklist.due_soon', channels.email) }));
+    await userEvent.click(screen.getByRole('button', { name: ctl('checklist.due_soon', 'Yadda saxla') }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(az.notifications.issues.resultFilterNotApplicable);
   });
 
   it('puts a customised rule back to the default', async () => {
