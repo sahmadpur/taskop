@@ -91,7 +91,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 ```
 
 - **`docker-compose.prod.yml`** services: `caddy`, `api`, `postgres`, `seaweedfs`, and a one-off `migrate` that runs `node dist/db/scripts/setup.js`.
-- **The landing page** (`taskop.app`) is a static site that Caddy serves from the same server. How it is built is still open (§13).
+- **The landing page** (`taskop.app`) is `apps/landing`, an Astro static site. `apps/landing/Dockerfile` builds it (build stage on the build machine's architecture, `PLATFORM_URL=https://admin.taskop.app` as a build argument) and copies `dist/` into a `caddy:2.11-alpine` image (`taskop-landing`) whose own `Caddyfile` serves the files on port 80 with `Cache-Control: public, max-age=31536000, immutable` for the hashed `/_astro/*` files and `public, max-age=300, must-revalidate` for HTML and the other unhashed files. The edge Caddy (`deploy/Caddyfile`) has the site blocks `taskop.app` (HSTS, `reverse_proxy landing:80`) and `www.taskop.app` (permanent redirect to the apex); Caddy issues the certificates. `deploy/docker-compose.prod.yml` holds both services; `SITE_SCHEME=http` in `.env` turns off HTTPS for a local run (`deploy/README.md`).
 - **The web app** is built with Vite. Its `dist/` is baked into a small Caddy-based image (`taskop-web`), so Caddy serves the files directly.
 - **pg-boss runs inside the API process** (sub-project 3). One API container is enough. pg-boss locks jobs in Postgres, so a second replica later would be safe.
 - **Health check:** `GET /api/v1/health`, used by Docker, the deploy script and the uptime monitor.
@@ -145,7 +145,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 **Workflow `deploy.yml`, triggered on push to `main`:**
 
 1. **Check:** `pnpm install`, then lint, typecheck and test (the integration tests use a Postgres service container), then Playwright end-to-end tests.
-2. **Build images:** `taskop-api` and `taskop-web`, for `linux/arm64`, tagged `sha-<commit>` and `latest`, pushed to `ghcr.io/sahmadpur/…`.
+2. **Build images:** `taskop-api`, `taskop-web` and `taskop-landing`, for `linux/arm64`, tagged `sha-<commit>` and `latest`, pushed to `ghcr.io/sahmadpur/…`.
 3. **Deploy over SSH:**
    - `docker compose pull`
    - `pg_dump` (pre-deploy backup)
@@ -165,6 +165,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 **Dockerfiles:**
 - `apps/api/Dockerfile`: multi-stage, `node:24-slim` base, runs as a non-root user, `CMD node --enable-source-maps dist/main.js`, includes `drizzle/` for migrations.
 - `apps/web/Dockerfile`: Vite build, then copies `dist/` into a `caddy` image.
+- `apps/landing/Dockerfile` (done): Astro build with `PLATFORM_URL` as a build argument, then copies `dist/` and `apps/landing/Caddyfile` into a `caddy` image. CI builds it on every pull request.
 
 ## 10. Backups and monitoring
 
@@ -221,7 +222,7 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 | 3 | **The public host for presigned uploads** (`files.taskop.app` vs a path on `admin.taskop.app`). | Sub-project 4 design |
 | 4 | **Is GitHub's native Arm runner available on the private repo?** If not, use the QEMU fallback (§9). | First CI run |
 | 5 | **Uptime and alert tools:** UptimeRobot vs Better Stack, healthchecks.io vs email only. | Deployment |
-| 6 | **Landing page:** what builds it (a separate static site in the monorepo, e.g. `apps/landing`, vs a hosted site builder) and whether it lives on the same server. The plan assumes static files served by Caddy. | Before launch |
+| 6 | ~~**Landing page:** what builds it and whether it lives on the same server.~~ Answered: `apps/landing` (Astro) in the monorepo, served by Caddy on the same server as the `taskop-landing` image (§5). | Done |
 
 ## 14. Your checklist (needs your accounts)
 
@@ -237,11 +238,11 @@ If the pilot grows, a staging stack can be added as a second Compose project on 
 
 ## 15. Implementation work (Claude, after the last sub-project)
 
-1. `apps/api/Dockerfile` and `apps/web/Dockerfile` (multi-stage, arm64 final stage, non-root).
+1. `apps/api/Dockerfile` and `apps/web/Dockerfile` (multi-stage, arm64 final stage, non-root). `apps/landing/Dockerfile` is done.
 2. Compiled entry points for the setup and `create-platform-admin` scripts in the production image.
 3. `deploy/` folder:
-   - `docker-compose.prod.yml` and `Caddyfile`
-   - `.env.example.prod`
+   - `docker-compose.prod.yml` and `Caddyfile` (started: the `caddy` and `landing` services and the `taskop.app` site blocks)
+   - `.env.example` (started)
    - `bootstrap.sh`: server hardening, Docker, `deploy` user, log rotation, cron jobs
    - `backup.sh`: `pg_dump`, `rclone` to the Storage Box, retention
    - `restore.md`: restore steps
