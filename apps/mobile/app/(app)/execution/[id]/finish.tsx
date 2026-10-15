@@ -1,8 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
-import { FinishScreen } from '@/features/execution/finish-screen';
+import { FinishOrResubmit } from '@/features/execution/resubmit-screen';
 
-/** `id` is the OCCURRENCE id; the screen resolves the occurrence's current execution itself. */
+/** `id` is the OCCURRENCE id; the screen resolves the occurrence's current execution itself. A run sent back ends on the Resubmit screen. */
 export default function FinishRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <FinishScreen key={id} occurrenceId={id} />;
+  return <FinishOrResubmit key={id} occurrenceId={id} />;
 }
