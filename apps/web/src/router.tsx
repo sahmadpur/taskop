@@ -12,6 +12,8 @@ import {
 import { AuditPage } from '@/features/audit/audit-page';
 import { ProblemsPage } from '@/features/executions/problems-page';
 import { AuditRoute } from '@/features/audits/audit-screen';
+import { AuditsPage } from '@/features/audits/audits-page';
+import { auditsSearch } from '@/features/audits/labels';
 import { AcceptInvitePage } from '@/features/auth/accept-invite-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -120,6 +122,7 @@ const shiftsRoute = createRoute({ getParentRoute: () => appLayout, path: '/shift
 const scheduleRoute = createRoute({ getParentRoute: () => appLayout, path: '/schedule', component: ScheduleRoute, validateSearch: scheduleSearch });
 const problemsRoute = createRoute({ getParentRoute: () => appLayout, path: '/problems', component: () => <ProblemsPage /> });
 const tasksRoute = createRoute({ getParentRoute: () => appLayout, path: '/tasks', component: TasksPage, validateSearch: tasksSearch });
+const auditsRoute = createRoute({ getParentRoute: () => appLayout, path: '/audits', component: AuditsPage, validateSearch: auditsSearch });
 const auditScreenRoute = createRoute({ getParentRoute: () => appLayout, path: '/audits/$auditId', component: AuditRoute });
 const notificationsRoute = createRoute({ getParentRoute: () => appLayout, path: '/notifications', component: NotificationsPage });
 const messagesRoute = createRoute({ getParentRoute: () => appLayout, path: '/messages', component: MessagesPage, validateSearch: messagesSearch });
@@ -248,6 +251,7 @@ export const routeTree = rootRoute.addChildren([
     scheduleRoute,
     problemsRoute,
     tasksRoute,
+    auditsRoute,
     auditScreenRoute,
     notificationsRoute,
     messagesRoute,

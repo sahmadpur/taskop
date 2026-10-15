@@ -1,6 +1,6 @@
 import type { PermissionKey } from '@taskop/contracts';
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Building2, CalendarCheck, CalendarClock, CalendarDays, ChartColumn, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Megaphone, Settings, Shield, TriangleAlert, Users, UsersRound } from 'lucide-react';
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ChartColumn, ClipboardCheck, ClipboardList, Clock, Home, LayoutTemplate, ListChecks, LogOut, type LucideIcon, Megaphone, Settings, Shield, ShieldCheck, TriangleAlert, Users, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Logo } from '@/components/logo';
@@ -11,7 +11,7 @@ import { UserMenu } from './user-menu';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 export interface NavItem {
-  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/messages' | '/reports' | '/shifts' | '/roster';
+  to: '/' | '/users' | '/roles' | '/sites' | '/teams' | '/audit' | '/settings' | '/checklists' | '/templates' | '/assignments' | '/schedule' | '/problems' | '/tasks' | '/audits' | '/messages' | '/reports' | '/shifts' | '/roster';
   labelKey: string;
   icon: LucideIcon;
   /** One key, or a list of which any one suffices. */
@@ -27,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/schedule', labelKey: 'nav.schedule', icon: CalendarClock, permission: 'assignments.view' },
   { to: '/problems', labelKey: 'nav.problems', icon: TriangleAlert, permission: 'assignments.view' },
   { to: '/tasks', labelKey: 'nav.tasks', icon: ClipboardCheck, permission: ['tasks.view', 'tasks.manage'] },
+  { to: '/audits', labelKey: 'nav.audits', icon: ShieldCheck, permission: 'audits.perform' },
   { to: '/messages', labelKey: 'nav.messages', icon: Megaphone, permission: 'notifications.send' },
   { to: '/shifts', labelKey: 'nav.shifts', icon: Clock, permission: 'shifts.view' },
   { to: '/roster', labelKey: 'nav.roster', icon: CalendarDays, permission: 'shifts.view' },

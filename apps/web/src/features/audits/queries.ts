@@ -1,7 +1,9 @@
 import { ApiError } from '@taskop/api-client';
 import type { AuditDetail } from '@taskop/contracts';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { refreshRunViews } from '@/features/executions/queries';
 import { api } from '@/lib/session';
 import { type AuditQueueFilters, REPORT_POLL_LIMIT_MS, REPORT_POLL_MS } from './labels';
 
@@ -63,4 +65,17 @@ export async function startOrOpenAudit(executionId: string): Promise<string> {
     if (e instanceof ApiError && e.code === 'AUDIT_EXISTS' && e.auditId) return e.auditId;
     throw e;
   }
+}
+
+/** Start (or join) the audit of a run and open it; the run's status changes, so every view of it refreshes. */
+export function useStartAudit() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  return useMutation({
+    mutationFn: startOrOpenAudit,
+    onSuccess: async (auditId) => {
+      void refreshRunViews(qc);
+      await navigate({ to: '/audits/$auditId', params: { auditId } });
+    },
+  });
 }
