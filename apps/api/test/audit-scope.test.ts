@@ -132,6 +132,7 @@ describe('audit and correction scope, permissions and platform admins (spec §5,
     expect(await writes(a.worker.api, a, auditId)).toEqual(none);
     const reader = await custom(a, ['reports.view'], null);
     expect(await writes(reader, a, auditId)).toEqual(none);
+    await unchanged(a, auditId);
     // Each key opens only its own group: audits.perform alone cannot correct or send back; executions.correct alone cannot audit.
     const auditOnly = await custom(a, ['audits.perform'], null);
     expect(await writes(auditOnly, a, auditId)).toMatchObject({ correct: 403, sendBack: 403, withdraw: 403 });

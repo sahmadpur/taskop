@@ -91,7 +91,12 @@ describe('OpenAPI', () => {
         '/api/v1/executions/{id}/send-back',
         '/api/v1/executions/{id}/send-back/cancel',
         '/api/v1/executions/{id}/resubmit',
+        '/api/v1/platform/tenants/{tenantId}/audits',
         '/api/v1/platform/tenants/{tenantId}/audits/{id}',
+        '/api/v1/platform/tenants/{tenantId}/audits/{id}/finish',
+        '/api/v1/platform/tenants/{tenantId}/executions/{id}/audits',
+        '/api/v1/platform/tenants/{tenantId}/executions/{id}/send-back',
+        '/api/v1/platform/tenants/{tenantId}/executions/{id}/send-back/cancel',
         '/api/v1/platform/tenants/{tenantId}/executions/{id}/corrections',
       ]),
     );
