@@ -411,6 +411,31 @@ export function createExecutionStore(deps: StoreDeps) {
     return out.kind === 'missing' ? { ok: false, missing: out.missing } : { ok: true };
   }
 
+  /**
+   * Spec §8.1 "Yenidən təqdim et": the run turns read-only at once and `resubmit` is queued behind its answers and
+   * media (`nextCommand`). The command carries the round being closed (captured now, Part 1 R21); the completion
+   * times stay the first completion's (spec §3.2). The request stays until the server answers (Spec decision 3).
+   */
+  async function resubmit(executionId: string): Promise<{ ok: true } | { ok: false; missing: Missing[] }> {
+    const now = clock.now();
+    type Outcome = { kind: 'locked'; state: string } | { kind: 'missing'; missing: Missing[] } | { kind: 'done' };
+    const out = await db.transaction(async (tx): Promise<Outcome> => {
+      const row = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [executionId]);
+      if (!row) throw new Error(`Unknown execution ${executionId}`);
+      const e = toExecution(row);
+      // A run in rework without its request has no round to close: nothing to resubmit until the next pull brings it.
+      if (e.state !== 'rework' || !e.rework) return { kind: 'locked', state: e.state };
+      const missing = requirements(await usableContent(tx, e.checklistVersionId), e.answers);
+      if (missing.length) return { kind: 'missing', missing };
+      await tx.run(`UPDATE executions SET state = 'completed', updated_at = ? WHERE id = ?`, [iso(now), executionId]);
+      await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'resubmit', payload: { round: e.rework.round, resubmittedAt: iso(now) }, createdAt: iso(now) });
+      return { kind: 'done' };
+    });
+    changed('change');
+    if (out.kind === 'locked') throw new ExecutionLockedError(out.state);
+    return out.kind === 'missing' ? { ok: false, missing: out.missing } : { ok: true };
+  }
+
   /** Runs before each sync and on screen ticks: open executions past closes_at become partial locally. */
   async function lockExpired(): Promise<number> {
     const now = iso(clock.now());
@@ -478,6 +503,7 @@ export function createExecutionStore(deps: StoreDeps) {
     attachMedia,
     removeMedia,
     complete,
+    resubmit,
     lockExpired,
   };
 }

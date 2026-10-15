@@ -3,7 +3,7 @@ import { ApiError, type ExecutionsApi, type TasksApi } from '@taskop/api-client'
 /** The slice of the API client the offline layer uses. `api` from '@/lib/session' satisfies it. */
 export interface SyncApi {
   sync: Pick<ExecutionsApi['sync'], 'pull'>;
-  executions: Pick<ExecutionsApi['executions'], 'claim' | 'saveAnswers' | 'complete' | 'registerMedia'>;
+  executions: Pick<ExecutionsApi['executions'], 'claim' | 'saveAnswers' | 'complete' | 'registerMedia' | 'resubmit'>;
   media: Pick<ExecutionsApi['media'], 'confirmUploaded'>;
   tasks: Pick<TasksApi['tasks'], 'accept' | 'start' | 'submit' | 'registerMedia'>;
   taskMedia: Pick<TasksApi['taskMedia'], 'confirmUploaded'>;

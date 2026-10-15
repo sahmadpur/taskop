@@ -6,6 +6,8 @@ import type {
   MediaConfirmResult,
   MediaUploadTicket,
   RegisterMediaCommand,
+  ResubmitCommand,
+  ResubmitResult,
   SaveAnswersCommand,
   SaveAnswersResult,
   SubmissionInput,
@@ -23,6 +25,7 @@ export interface ApiHandlers {
   claim(body: ClaimCommand): Promise<ClaimResult>;
   saveAnswers(id: string, body: SaveAnswersCommand): Promise<SaveAnswersResult>;
   complete(id: string, body: CompleteCommand): Promise<CompleteResult>;
+  resubmit(id: string, body: ResubmitCommand): Promise<ResubmitResult>;
   registerMedia(executionId: string, body: RegisterMediaCommand): Promise<MediaUploadTicket>;
   confirmUploaded(id: string): Promise<MediaConfirmResult>;
   taskAccept(taskId: string, body: TaskActionCommand): Promise<TaskDetail>;
@@ -91,6 +94,7 @@ export function createFakeApi(): FakeApi {
       }),
       saveAnswers: async (id, b) => ({ executionId: id, rev: b.rev, stale: false, state: 'active', progress }),
       complete: async (id, b) => ({ executionId: id, state: 'completed', completedAt: b.completedAt, late: false, progress, score: null }),
+      resubmit: async (id) => ({ executionId: id, state: 'completed', status: 'completed', progress, score: null }),
       registerMedia: async (_executionId, b) => ticketFor(b),
       confirmUploaded: async (id) => ({ mediaId: id, status: 'uploaded', uploadedAt: UPLOADED_AT }),
       taskAccept: async (id, b) => serverTask(id, (t) => ({ status: 'accepted', assignee: t.assignee ?? ME_REF, acceptedAt: b.at })),
@@ -120,6 +124,7 @@ export function createFakeApi(): FakeApi {
         claim: async (b) => call('claim', null, b)(b),
         saveAnswers: async (id, b) => call('saveAnswers', id, b)(id, b),
         complete: async (id, b) => call('complete', id, b)(id, b),
+        resubmit: async (id, b) => call('resubmit', id, b)(id, b),
         registerMedia: async (executionId, b) => call('registerMedia', executionId, b)(executionId, b),
       },
       media: {

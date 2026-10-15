@@ -6,6 +6,8 @@ import {
   type CompleteResult,
   type MediaUploadTicket,
   type RegisterMediaCommand,
+  type ResubmitCommand,
+  type ResubmitResult,
   type SaveAnswersCommand,
   type SaveAnswersResult,
   type SubmissionInput,
@@ -103,11 +105,11 @@ export interface SyncEngine {
 
 type Outcome = 'ok' | 'retry' | 'auth';
 
-/** An execution has finished syncing when it left `active` and none of its commands is left (decision 8). */
+/** An execution has finished syncing when it left `active` (and `rework`, SP8) and none of its commands is left (decision 8). */
 export async function markFinishedSynced(db: Db, now: number): Promise<void> {
   await db.run(
     `UPDATE executions SET finished_synced_at = ?
-     WHERE state <> 'active' AND finished_synced_at IS NULL
+     WHERE state NOT IN ('active', 'rework') AND finished_synced_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM outbox WHERE outbox.entity_type = 'execution' AND outbox.entity_id = executions.id)`,
     [iso(now)],
   );
@@ -223,6 +225,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         return api.executions.saveAnswers(cmd.entityId, body as SaveAnswersCommand);
       case 'complete':
         return api.executions.complete(cmd.entityId, body as CompleteCommand);
+      case 'resubmit':
+        return api.executions.resubmit(cmd.entityId, body as ResubmitCommand);
       case 'task.accept':
         return api.tasks.accept(cmd.entityId, { at: serverTime((cmd.payload as TaskActionCommand).at, offset) });
       case 'task.start':
@@ -282,6 +286,16 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
           'UPDATE executions SET state = ?, completed_at = coalesce(?, completed_at), synced_rev = max(synced_rev, ?), updated_at = ? WHERE id = ?',
           [r.state, r.completedAt ? normIso(r.completedAt) : null, cmd.rev, iso(now), cmd.entityId],
         );
+        return null;
+      }
+      case 'resubmit': {
+        const r = result as ResubmitResult;
+        // A replay answers with the run's current state (Part 1): a newer round means this one was already closed elsewhere.
+        // Nothing is taken from that body (not progress, not score); the acked command goes and the pull brings the new round.
+        if (r.state !== 'completed') return null;
+        // Spec decision 3: the run leaves rework; the occurrence takes the server's status (completed or audit_pending).
+        await tx.run('UPDATE executions SET state = ?, rework = NULL, updated_at = ? WHERE id = ?', [r.state, iso(now), cmd.entityId]);
+        await tx.run('UPDATE occurrences SET status = ? WHERE id = (SELECT occurrence_id FROM executions WHERE id = ?)', [r.status, cmd.entityId]);
         return null;
       }
       case 'task.accept':

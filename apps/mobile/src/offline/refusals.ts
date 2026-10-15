@@ -130,6 +130,46 @@ export async function reopenRefusedCompletion(tx: Db, cmd: OutboxCommand, now: n
   return reopened > 0;
 }
 
+/** Whether this phone holds a rework copy of the run: in rework, or resubmitted here and not yet answered. */
+async function holdsRework(tx: Db, executionId: string): Promise<boolean> {
+  return (await tx.first('SELECT 1 AS one FROM executions WHERE id = ? AND rework IS NOT NULL', [executionId])) !== null;
+}
+
+/**
+ * A resubmit refused for unmet requirements, or one the worker discards after it failed: the run is back in rework to
+ * fix and resubmit again (not limited by closes_at, spec §3.2). The command goes. Returns whether it reopened.
+ */
+export async function reopenRefusedRework(tx: Db, cmd: Pick<OutboxCommand, 'seq' | 'entityId'>, now: number, note: string | null = null): Promise<boolean> {
+  const reopened = await tx.run(
+    `UPDATE executions SET state = 'rework', finished_synced_at = NULL, sync_note = coalesce(?, sync_note), updated_at = ?
+     WHERE id = ? AND state = 'completed' AND rework IS NOT NULL`,
+    [note, iso(now), cmd.entityId],
+  );
+  await tx.run('DELETE FROM outbox WHERE seq = ?', [cmd.seq]);
+  return reopened > 0;
+}
+
+/**
+ * Part 1 "Rework on the phone": EXECUTION_NOT_ACTIVE on a rework command means the send-back was withdrawn or the run
+ * was resubmitted elsewhere. The rework copy goes: every queued command of the run, its media never registered (their
+ * files are returned for deletion), and the request. The run shows completed with the note; the note makes the next
+ * pull take the server's answers (`mergeExecution`), which a withdrawal has restored to the round's starting ones.
+ */
+export async function dropRework(tx: Db, executionId: string, now: number, note: string): Promise<string[]> {
+  await tx.run(`DELETE FROM outbox WHERE entity_type = 'execution' AND entity_id = ?`, [executionId]);
+  const unregistered = await tx.all<{ id: string; local_uri: string; file_deleted_at: string | null }>(
+    `SELECT id, local_uri, file_deleted_at FROM media WHERE owner_type = 'execution' AND owner_id = ? AND registered_at IS NULL`,
+    [executionId],
+  );
+  for (const m of unregistered) await tx.run('DELETE FROM media WHERE id = ?', [m.id]);
+  await tx.run(`UPDATE executions SET state = 'completed', rework = NULL, synced_rev = rev, sync_note = ?, updated_at = ? WHERE id = ?`, [note, iso(now), executionId]);
+  await tx.run(
+    `UPDATE occurrences SET status = 'completed' WHERE status = 'correction_required' AND id = (SELECT occurrence_id FROM executions WHERE id = ?)`,
+    [executionId],
+  );
+  return unregistered.filter((m) => m.file_deleted_at === null).map((m) => m.local_uri);
+}
+
 /**
  * Refusals no retry can ever fix are resolved instead of parked (spec §7.2 as amended by the final review):
  * a claim the server cannot find or that is not mine, answers or a completion for an execution no longer active, and
@@ -182,6 +222,9 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
       await tx.run('UPDATE executions SET synced_rev = rev WHERE id = ?', [row.entity_id]);
       return [];
     }
+    case 'resubmit':
+      await reopenRefusedRework(tx, { seq, entityId: row.entity_id }, now, note);
+      return [];
     case 'task.accept':
     case 'task.start':
     case 'task.submit':
@@ -193,12 +236,19 @@ export async function discardFailedCommand(tx: Db, seq: number, now: number): Pr
 
 /** SP4's permanent-refusal path for an execution command: resolved when no retry can fix it, otherwise parked as failed. Returns files to delete. */
 export async function resolveExecutionRefusal(tx: Db, cmd: OutboxCommand, code: string, messageKey: string, now: number): Promise<string[]> {
+  if (code === 'EXECUTION_NOT_ACTIVE' && (cmd.kind === 'answers' || cmd.kind === 'media' || cmd.kind === 'resubmit') && (await holdsRework(tx, cmd.entityId))) {
+    return dropRework(tx, cmd.entityId, now, messageKey);
+  }
   if (cmd.kind === 'media') {
     await ackCommand(tx, cmd.seq);
     const uri = cmd.refId ? await dropMedium(tx, cmd.refId, now, messageKey) : null;
     return uri ? [uri] : [];
   }
   if (cmd.kind === 'complete' && code === 'REQUIREMENTS_UNMET' && (await reopenRefusedCompletion(tx, cmd, now))) return [];
+  if (cmd.kind === 'resubmit' && code === 'REQUIREMENTS_UNMET') {
+    await reopenRefusedRework(tx, cmd, now);
+    return [];
+  }
   const resolved = await resolveTerminalRefusal(tx, cmd, code, messageKey, now);
   if (resolved) return resolved;
   await failCommand(tx, cmd.seq, code, messageKey);
