@@ -34,12 +34,12 @@ describe('report exports (spec §5.4)', () => {
     expect([...f.body.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const rows = csvRows(f.body);
     expect(rows[0]).toEqual([
-      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli',
+      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli', 'Audit', 'Düzəliş edilib',
     ]);
     expect(rows).toHaveLength(17);
     // r7: done on the phone at 11:00 Baku on Monday, received by the server on Wednesday at 09:00 (FR-10.14).
     expect(rows.find((r) => r[9] === '04.11.2026 09:00')).toEqual([
-      '02.11.2026', '02.11.2026 10:00', 'Açılış yoxlaması', 'Zona A1', 'Tamamlanıb', 'Aynur Quliyeva', 'Aynur Quliyeva', '02.11.2026 08:10', '02.11.2026 11:00', '04.11.2026 09:00', '90.0', '0', '0', 'Bəli', 'Xeyr',
+      '02.11.2026', '02.11.2026 10:00', 'Açılış yoxlaması', 'Zona A1', 'Tamamlanıb', 'Aynur Quliyeva', 'Aynur Quliyeva', '02.11.2026 08:10', '02.11.2026 11:00', '04.11.2026 09:00', '90.0', '0', '0', 'Bəli', 'Xeyr', '', 'Xeyr',
     ]);
   });
 
@@ -89,7 +89,7 @@ describe('report exports (spec §5.4)', () => {
       {
         entity_type: 'report',
         entity_id: null,
-        after: { kind: 'runs', format: 'csv', filters: { from: '2026-11-02', to: '2026-11-04', siteId: w.sites.branchA, userId: null, checklistId: null, bucket: 'missed', severity: null }, rows: 2 },
+        after: { kind: 'runs', format: 'csv', filters: { from: '2026-11-02', to: '2026-11-04', siteId: w.sites.branchA, userId: null, checklistId: null, bucket: 'missed', auditState: null, severity: null }, rows: 2 },
       },
     ]);
   });

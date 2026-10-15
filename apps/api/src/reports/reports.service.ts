@@ -67,7 +67,7 @@ export class ReportsService {
   }
 
   runs(p: Principal, q: ReportRunsParams): Promise<Page<ReportRun>> {
-    return this.guarded(q, (f) => this.queries.runs(f, this.scheduling.occurrences(p), q.bucket, { cursor: q.cursor, limit: REPORT_LIMITS.pageSize }));
+    return this.guarded(q, (f) => this.queries.runs(f, this.scheduling.occurrences(p), q.bucket, { cursor: q.cursor, limit: REPORT_LIMITS.pageSize, auditState: q.auditState }));
   }
 
   problems(p: Principal, q: ReportProblemsParams): Promise<ReportProblems> {

@@ -77,6 +77,9 @@ export function runsTable(rows: ReportRun[], title: string): ReportTable {
       { label: C.criticalCount, type: 'int' },
       { label: C.late, type: 'bool' },
       { label: C.clockSuspect, type: 'bool' },
+      // SP8 spec §8.3.
+      { label: az.audits.audit, type: 'text', width: 16 },
+      { label: az.corrections.corrected, type: 'bool' },
     ],
     rows: rows.map((r) => [
       r.localDate,
@@ -94,6 +97,8 @@ export function runsTable(rows: ReportRun[], title: string): ReportTable {
       r.criticalCount,
       r.late,
       r.clockSuspect,
+      r.auditState ? az.audits.runAuditStates[r.auditState] : null,
+      r.corrected,
     ]),
   };
 }

@@ -31,16 +31,16 @@ describe('report tables', () => {
       checklist: { id: ID, name: 'Açılış yoxlaması' }, site: { id: ID, name: 'Zona A1' }, status: 'completed',
       assignees: [{ id: ID, fullName: 'Aynur' }, { id: ID, fullName: 'Kamran' }], executor: { id: ID, fullName: 'Kamran' },
       startedAt: '2026-11-02T04:10:00.000Z', completedAt: '2026-11-02T05:40:00.000Z', completedReceivedAt: '2026-11-04T05:00:00.000Z',
-      score: 100, problemCount: 1, criticalCount: 0, late: false, clockSuspect: true, auditState: null, corrected: false,
+      score: 100, problemCount: 1, criticalCount: 0, late: false, clockSuspect: true, auditState: 'passed', corrected: true,
     };
     const t = runsTable([run], runsTitle('all'));
     expect(t.title).toBe('İcralar');
     expect(t.columns.map((c) => c.label)).toEqual([
-      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli',
+      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli', 'Audit', 'Düzəliş edilib',
     ]);
     expect(t.rows[0]).toEqual([
       '2026-11-02', '2026-11-02T06:00:00.000Z', 'Açılış yoxlaması', 'Zona A1', 'Tamamlanıb', 'Aynur, Kamran', 'Kamran',
-      '2026-11-02T04:10:00.000Z', '2026-11-02T05:40:00.000Z', '2026-11-04T05:00:00.000Z', 100, 1, 0, false, true,
+      '2026-11-02T04:10:00.000Z', '2026-11-02T05:40:00.000Z', '2026-11-04T05:00:00.000Z', 100, 1, 0, false, true, 'Audit uğurlu', true,
     ]);
     expect(runsTitle('missed')).toBe('İcralar (Buraxılmış)');
   });
