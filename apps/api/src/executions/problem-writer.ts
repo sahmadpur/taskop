@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Answers, type ChecklistContent, deriveProblems } from '@taskop/contracts';
-import { and, eq, notInArray, sql } from 'drizzle-orm';
+import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { actorColumns } from '../checklists/actor';
 import { DomainEvents } from '../common/domain-events';
 import { DbService } from '../db/db.service';
@@ -48,6 +48,8 @@ export class ProblemWriter {
         )
         .onConflictDoUpdate({
           target: [executionProblems.executionId, executionProblems.itemId, executionProblems.source],
+          // The partial unique index execution_problems_active_item_uq.
+          targetWhere: sql`cleared_at is null`,
           set: { severity: sql`excluded.severity`, note: sql`excluded.note`, mediaIds: sql`excluded.media_ids`, updatedAt: now },
         })
         // xmax = 0 only for rows this statement inserted; an updated (re-saved) row carries this transaction's id.
@@ -63,6 +65,7 @@ export class ProblemWriter {
       .delete(executionProblems)
       .where(
         and(
+          isNull(executionProblems.clearedAt),
           eq(executionProblems.executionId, e.id),
           keep.length ? notInArray(sql<string>`${executionProblems.itemId}::text || ':' || ${executionProblems.source}::text`, keep) : undefined,
           // A problem turned into a task stays (spec §5): a late answers sync on a swept run may no longer derive it.
