@@ -59,6 +59,10 @@ describe('ProblemsPage', () => {
     expect(within(cleared).getByText(az.corrections.cleared)).toBeInTheDocument();
     const active = screen.getByRole('link', { name: 'Temperatur' }).closest('tr')!;
     expect(active).not.toHaveAttribute('data-cleared');
+    // Ruling F3: no task starts from a cleared problem.
+    expect(within(cleared).queryByRole('button', { name: 'Tapşırıq yarat' })).not.toBeInTheDocument();
+    expect(within(cleared).getByText(az.tasks.resolutions.none)).toBeInTheDocument();
+    expect(within(active).getByRole('button', { name: 'Tapşırıq yarat' })).toBeEnabled();
   });
 
   it('lists problems with place, item, severity and source, and links a row to the occurrence drawer', async () => {

@@ -176,7 +176,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
                 <TableCell>{p.executorName}</TableCell>
                 <TableCell>{p.mediaIds.length ? t('executions.problemsPage.mediaCount', { count: p.mediaIds.length }) : '—'}</TableCell>
                 <TableCell>
-                  <ResolutionCell problem={p} canCreate={canManageTasks} onCreate={() => setCreatingFrom(p)} />
+                  <ResolutionCell problem={p} canCreate={canManageTasks && !p.clearedAt} onCreate={() => setCreatingFrom(p)} />
                 </TableCell>
               </TableRow>
             ))}
