@@ -8,6 +8,8 @@ import { useFormatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { answerValue, severityVariant } from './labels';
 import { MediaLightbox, MediaStrip } from './media';
+import { useLocale } from '@/lib/i18n';
+import { EmptyState } from '@/components/states';
 
 /**
  * Answers in the pinned version's layout (spec §8): only items visible for these answers, in order, follow-ups
@@ -19,7 +21,7 @@ export function AnswersView(props: { content: ChecklistContent; answers: Answers
   const media = useMemo(() => new Map(props.media.map((m) => [m.id, m])), [props.media]);
   const visible = useMemo(() => visibleItems(props.content, props.answers), [props.content, props.answers]);
 
-  if (Object.keys(props.answers).length === 0) return <p className="text-muted-foreground">{t('executions.noAnswers')}</p>;
+  if (Object.keys(props.answers).length === 0) return <EmptyState title={t('executions.noAnswers')} />;
 
   return (
     <div className="grid gap-4">
@@ -59,9 +61,10 @@ function AnswerRow(props: {
   onOpen: (m: ExecutionMediaDto) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const formatDateTime = useFormatDateTime();
   const { item, answer, problems } = props;
-  const value = answerValue(t, item, answer, formatDateTime);
+  const value = answerValue(t, item, answer, formatDateTime, locale);
   const evidence = [...(answer?.photos ?? []), ...(answer?.videos ?? [])];
   // A problem a correction cleared stays visible but no longer marks the item (SP8 spec §4.1).
   const active = problems.filter((p) => p.clearedAt === null);

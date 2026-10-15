@@ -19,7 +19,7 @@ export function PermissionGrid({ catalog, value, onChange, held, disabled }: Pro
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {catalog.map((group) => (
-        <fieldset key={group.group} className="grid gap-2 rounded-md border p-3">
+        <fieldset key={group.group} className="grid gap-2 bg-card shadow-card rounded-xl p-3">
           <legend className="px-1 text-sm font-semibold">{t(`roles.groups.${group.group}`)}</legend>
           {group.keys.map((key) => {
             const checked = value.includes(key);

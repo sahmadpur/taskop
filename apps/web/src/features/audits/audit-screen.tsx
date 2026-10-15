@@ -12,13 +12,15 @@ import { buttonVariants } from '@/components/ui/button';
 import { formatPercent } from '@/features/executions/labels';
 import { formatLocalDate } from '@/features/scheduling/labels';
 import { errorText } from '@/lib/errors';
-import { api, useCan, useMe } from '@/lib/session';
+import { api, useCan } from '@/lib/session';
 import { AuditActions } from './audit-actions';
 import { ItemList } from './item-list';
 import { ItemPanel } from './item-panel';
 import { auditItems, resultVariant, stepItem, upsertVerdict, verdictMap } from './labels';
 import { auditKeys, useAuditDetail } from './queries';
 import { ReportPanel } from './report-panel';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 /** `/audits/$auditId`. A new id remounts the screen, so selection and drafts never leak between audits. */
 export function AuditRoute() {
@@ -29,7 +31,7 @@ export function AuditRoute() {
 export function AuditScreen({ id }: { id: string }) {
   const { t } = useTranslation();
   const { query, timedOut, restartPolling } = useAuditDetail(id);
-  if (query.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (query.isPending) return <LoadingState />;
   if (query.isError) return <p className="text-destructive">{errorText(t, query.error)}</p>;
   return <AuditView audit={query.data} report={{ timedOut, restart: restartPolling }} />;
 }
@@ -40,7 +42,7 @@ const isTyping = (target: EventTarget | null): boolean =>
 
 function AuditView({ audit, report }: { audit: AuditDetail; report: { timedOut: boolean; restart: () => void } }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const qc = useQueryClient();
   const canPerform = useCan('audits.perform');
   const canOpenRun = useCan('assignments.view');
@@ -144,12 +146,12 @@ function AuditView({ audit, report }: { audit: AuditDetail; report: { timedOut: 
         }
       />
       <div className="text-muted-foreground -mt-4 flex flex-wrap items-center gap-2 text-sm">
-        <span>{[o.siteName, formatLocalDate(o.localDate, tenant.locale), t('audits.web.screen.executor', { name: e.executor.fullName })].join(' · ')}</span>
+        <span>{[o.siteName, formatLocalDate(o.localDate, locale), t('audits.web.screen.executor', { name: e.executor.fullName })].join(' · ')}</span>
         <Badge variant="secondary">{t(`audits.statuses.${audit.status}`)}</Badge>
         {audit.result && <Badge variant={resultVariant(audit.result)}>{t(`audits.results.${audit.result}`)}</Badge>}
         {audit.score?.percent != null && (
           <span>
-            {t('audits.score')}: {t('executions.percent', { value: formatPercent(audit.score.percent, tenant.locale) })}
+            {t('audits.score')}: {t('executions.percent', { value: formatPercent(audit.score.percent, locale) })}
           </span>
         )}
       </div>
@@ -164,7 +166,7 @@ function AuditView({ audit, report }: { audit: AuditDetail; report: { timedOut: 
         </Alert>
       )}
       {audit.status === 'finished' && <ReportPanel audit={audit} timedOut={report.timedOut} onRestart={report.restart} />}
-      {!canPerform && <p className="text-muted-foreground text-sm">{t('audits.web.screen.readOnly')}</p>}
+      {!canPerform && <EmptyState title={t('audits.web.screen.readOnly')} />}
       <div className="grid gap-1">
         <p id="audit-progress" className="text-sm">
           {t('audits.progress', { reviewed, total })}

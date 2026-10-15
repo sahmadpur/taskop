@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { errorText } from '@/lib/errors';
 import { TemplatePicker } from './template-picker';
 import { useWorkspace } from './workspace';
+import { EmptyState } from '@/components/states';
 
 export type NewChecklistMode = 'blank' | 'template' | 'copy';
 
@@ -108,7 +109,7 @@ export function NewChecklistDialog({ open, onOpenChange, initialMode = 'blank', 
                   </option>
                 ))}
               </NativeSelect>
-              {published.data?.length === 0 && <p className="text-muted-foreground text-sm">{t('checklists.create.noPublished')}</p>}
+              {published.data?.length === 0 && <EmptyState title={t('checklists.create.noPublished')} />}
             </div>
           </TabsContent>
         </Tabs>

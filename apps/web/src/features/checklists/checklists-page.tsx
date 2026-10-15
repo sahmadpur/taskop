@@ -12,9 +12,11 @@ import { categoryLabel } from './labels';
 import { NewChecklistDialog } from './new-checklist-dialog';
 import { useChecklistPages } from './queries';
 import { useWorkspace, WsLink } from './workspace';
+import { useLocale } from '@/lib/i18n';
 
 export function ChecklistsPage() {
   const { t } = useTranslation();
+  const locale = useLocale();
   const ws = useWorkspace();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ChecklistStatus | ''>('active');
@@ -68,7 +70,7 @@ export function ChecklistsPage() {
               <TableCell>
                 <Badge variant={c.status === 'active' ? 'default' : 'secondary'}>{t(`checklists.statuses.${c.status}`)}</Badge>
               </TableCell>
-              <TableCell>{formatDateTime(c.updatedAt, { locale: 'az', timeZone: ws.timeZone })}</TableCell>
+              <TableCell>{formatDateTime(c.updatedAt, { locale, timeZone: ws.timeZone })}</TableCell>
             </TableRow>
           ))}
           {pages.isSuccess && rows.length === 0 && (

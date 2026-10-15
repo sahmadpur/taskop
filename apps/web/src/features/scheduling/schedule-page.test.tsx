@@ -99,7 +99,7 @@ describe('SchedulePage', () => {
     for (const text of ['Tamamlanıb', 'Aysel', '9/10', '87,5%', 'Gecikib', 'Telefon saatı şübhəlidir']) expect(done).toHaveTextContent(text);
     for (const text of ['Murad', '2/10']) expect(partial).toHaveTextContent(text);
     expect(partial).not.toHaveTextContent('%');
-    expect(within(partial!).getByText('Yarımçıq')).toHaveAttribute('data-variant', 'destructive');
+    expect(within(partial!).getByText('Yarımçıq')).toHaveAttribute('data-variant', 'warning');
   });
 
   it('opens the occurrence named in a link on its execution tab', async () => {

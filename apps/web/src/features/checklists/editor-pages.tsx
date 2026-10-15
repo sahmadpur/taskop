@@ -9,10 +9,10 @@ import { errorText } from '@/lib/errors';
 import { Builder } from './builder/builder';
 import { useChecklist } from './queries';
 import { useWorkspace } from './workspace';
+import { LoadingState } from '@/components/states';
 
 function Loading() {
-  const { t } = useTranslation();
-  return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  return <LoadingState />;
 }
 
 export function ChecklistDraftPage({ checklistId }: { checklistId: string }) {

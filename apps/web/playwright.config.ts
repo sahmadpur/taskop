@@ -4,7 +4,8 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
-  use: { baseURL: 'http://localhost:5173', trace: 'retain-on-failure' },
+  // The specs assert the Azerbaijani UI; the browser's own language would pick English otherwise.
+  use: { baseURL: 'http://localhost:5173', trace: 'retain-on-failure', locale: 'az-AZ' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {

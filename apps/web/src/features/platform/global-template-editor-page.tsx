@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Builder } from '@/features/checklists/builder/builder';
 import { errorText } from '@/lib/errors';
 import { platformApi } from './platform-session';
+import { LoadingState } from '@/components/states';
 
 export function GlobalTemplateEditorPage() {
   const { t } = useTranslation();
@@ -21,7 +22,7 @@ export function GlobalTemplateEditorPage() {
     gcTime: 0,
   });
   const [reloadKey, setReloadKey] = useState(0);
-  if (tpl.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (tpl.isPending) return <LoadingState />;
   if (tpl.error) return <p className="text-destructive">{errorText(t, tpl.error)}</p>;
   const g = tpl.data;
   const toggle = async () => {

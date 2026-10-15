@@ -8,14 +8,16 @@ import { Button } from '@/components/ui/button';
 import { formatPercent } from '@/features/executions/labels';
 import { useSites } from '@/features/sites/queries';
 import { errorText } from '@/lib/errors';
-import { useMe } from '@/lib/session';
 import { formatLocalDate, occurrenceVariant, useTenantToday, useTimeFormat } from './labels';
 import { OccurrenceDialog, type OccurrenceTab } from './occurrence-dialog';
 import { useOccurrences } from './queries';
 import { weekStartOf } from './roster-grid';
+import { useLocale } from '@/lib/i18n';
+import { EmptyState } from '@/components/states';
 
 export function SchedulePage(props: { initialDate?: string; initialOccurrenceId?: string; initialTab?: OccurrenceTab }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const today = useTenantToday();
   const time = useTimeFormat();
   const sites = useSites();
@@ -53,7 +55,7 @@ export function SchedulePage(props: { initialDate?: string; initialOccurrenceId?
         <Button variant="outline" onClick={() => setAnchor(addDays(anchor, step))}>
           {t('scheduling.schedule.next')}
         </Button>
-        <span className="text-sm">{from === to ? formatLocalDate(from) : `${formatLocalDate(from)} – ${formatLocalDate(to)}`}</span>
+        <span className="text-sm">{from === to ? formatLocalDate(from, locale) : `${formatLocalDate(from, locale)} – ${formatLocalDate(to, locale)}`}</span>
         <NativeSelect aria-label={t('scheduling.schedule.site')} value={siteId} onChange={(e) => setSiteId(e.target.value)} className="w-56">
           <option value="">{t('scheduling.schedule.allSites')}</option>
           {(sites.data ?? []).map((s) => (
@@ -72,19 +74,19 @@ export function SchedulePage(props: { initialDate?: string; initialOccurrenceId?
         </NativeSelect>
       </div>
       {occurrences.error && <p className="text-destructive">{errorText(t, occurrences.error)}</p>}
-      {occurrences.isSuccess && groups.length === 0 && <p className="text-muted-foreground">{t('scheduling.schedule.empty')}</p>}
+      {occurrences.isSuccess && groups.length === 0 && <EmptyState title={t('scheduling.schedule.empty')} />}
       {groups.map(([date, items]) => (
-        <section key={date} aria-label={formatLocalDate(date)} className="grid gap-2">
-          <h2 className="font-semibold">{formatLocalDate(date)}</h2>
+        <section key={date} aria-label={formatLocalDate(date, locale)} className="grid gap-2">
+          <h2 className="font-semibold">{formatLocalDate(date, locale)}</h2>
           <ul className="grid gap-1">
             {items.map((o) => (
               <li key={o.id}>
                 <button
                   type="button"
                   onClick={() => setSelected(o.id)}
-                  className="hover:bg-muted flex w-full flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-left text-sm"
+                  className="bg-card shadow-card hover:bg-muted/60 flex w-full flex-wrap items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm"
                 >
-                  <span className="font-mono">
+                  <span className="tabular-nums">
                     {time(o.startsAt)}–{time(o.dueAt)}
                   </span>
                   <span className="font-medium">{o.checklistName}</span>
@@ -113,15 +115,15 @@ export function SchedulePage(props: { initialDate?: string; initialOccurrenceId?
 /** The counted execution on a schedule row (spec §8): who, how far, the score, and the flags. */
 function ExecutionCells({ brief }: { brief: ExecutionBrief }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   return (
     <>
       <span>{brief.executorName}</span>
-      <span title={t('executions.progress')} className="font-mono">
+      <span title={t('executions.progress')} className="tabular-nums">
         {t('executions.progressShort', { answered: brief.progress.answered, total: brief.progress.total })}
       </span>
       {brief.scorePercent !== null && (
-        <span title={t('executions.score')}>{t('executions.percent', { value: formatPercent(brief.scorePercent, tenant.locale) })}</span>
+        <span title={t('executions.score')}>{t('executions.percent', { value: formatPercent(brief.scorePercent, locale) })}</span>
       )}
       {brief.late && <Badge variant="destructive">{t('executions.flags.late')}</Badge>}
       {brief.clockSuspect && <Badge variant="outline">{t('executions.flags.clockSuspect')}</Badge>}

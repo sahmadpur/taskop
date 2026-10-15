@@ -19,9 +19,9 @@ import type { Variant } from '@/features/scheduling/labels';
 
 export const OPEN_TASK_STATUSES = TASK_STATUSES.filter((s) => !isFinalTaskStatus(s));
 
-export const taskStatusVariant = (s: TaskStatus): Variant => (s === 'completed' ? 'default' : s === 'cancelled' ? 'outline' : 'secondary');
+export const taskStatusVariant = (s: TaskStatus): Variant => (s === 'completed' ? 'default' : s === 'cancelled' ? 'outline' : s === 'new' ? 'outline' : 'secondary');
 
-export const resolutionVariant = (r: ProblemResolution): Variant => (r === 'resolved' ? 'default' : r === 'open' ? 'secondary' : 'outline');
+export const resolutionVariant = (r: ProblemResolution): Variant => (r === 'resolved' ? 'default' : r === 'open' ? 'warning' : 'outline');
 
 /** A due date without a time means "by the end of that day". */
 export const END_OF_DAY = '23:59';

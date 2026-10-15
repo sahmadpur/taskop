@@ -7,21 +7,29 @@ import {
   type Recurrence,
   type Timing,
 } from '@taskop/contracts';
-import { intlLocale } from '@taskop/i18n';
+import { formatLocalDate as formatLocalDateIn, formatTime } from '@taskop/i18n';
 import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useState } from 'react';
 import { useMe } from '@/lib/session';
+import { useLocale } from '@/lib/i18n';
 
-export type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
+/** Badge variants: default = done/positive, secondary = in progress, warning = late/partial/rework, destructive = missed/failed, audit = audit, outline = neutral. */
+export type Variant = 'default' | 'secondary' | 'warning' | 'destructive' | 'audit' | 'outline';
 
 export const occurrenceVariant = (s: OccurrenceStatus): Variant =>
-  s === 'overdue' || s === 'missed' || s === 'partial' || s === 'correction_required'
+  s === 'missed'
     ? 'destructive'
-    : s === 'cancelled'
-      ? 'outline'
-      : s === 'pending' || s === 'started' || s === 'in_progress'
-        ? 'secondary'
-        : 'default';
+    : s === 'overdue' || s === 'partial' || s === 'correction_required'
+      ? 'warning'
+      : s === 'cancelled'
+        ? 'outline'
+        : s === 'pending'
+          ? 'outline'
+          : s === 'started' || s === 'in_progress'
+            ? 'secondary'
+            : s === 'audit_pending'
+              ? 'audit'
+              : 'default';
 
 export const assignmentVariant = (s: AssignmentStatus): Variant => (s === 'active' ? 'default' : s === 'paused' ? 'secondary' : 'outline');
 
@@ -32,21 +40,15 @@ export const scheduleSummary = (t: TFunction, r: Recurrence, timing: Timing, shi
 export const cancelReasonText = (t: TFunction, reason: string | null): string | null =>
   reason !== null && (CANCEL_REASON_CODES as readonly string[]).includes(reason) ? t(`scheduling.cancelReasons.${reason}`) : reason;
 
-/** 'YYYY-MM-DD' as a short date with weekday; formatted in UTC so it never moves a day. */
+/** 'YYYY-MM-DD' as a short date with the weekday, in the UI language; never shifted by a time zone. */
 export function formatLocalDate(date: string, locale = 'az'): string {
-  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(intlLocale(locale), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(Date.UTC(y, m - 1, d)),
-  );
+  return formatLocalDateIn(date, locale, { weekday: true });
 }
 
 export function useTimeFormat(): (iso: string) => string {
   const { tenant } = useMe();
-  return useCallback(
-    (iso: string) =>
-      new Intl.DateTimeFormat(intlLocale(tenant.locale), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tenant.timezone }).format(new Date(iso)),
-    [tenant.locale, tenant.timezone],
-  );
+  const locale = useLocale();
+  return useCallback((iso: string) => formatTime(iso, { locale, timeZone: tenant.timezone }), [locale, tenant.timezone]);
 }
 
 export function useTenantToday(): string {

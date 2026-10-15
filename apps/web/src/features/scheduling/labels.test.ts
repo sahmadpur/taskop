@@ -20,12 +20,12 @@ describe('scheduling labels', () => {
     expect(formatLocalDate('2026-11-02')).toContain('2026');
     expect(formatLocalDate('2026-11-02')).toContain('2');
     expect(occurrenceVariant('missed')).toBe('destructive');
-    expect(occurrenceVariant('pending')).toBe('secondary');
-    expect(occurrenceVariant('partial')).toBe('destructive');
+    expect(occurrenceVariant('pending')).toBe('outline');
+    expect(occurrenceVariant('partial')).toBe('warning');
     expect(occurrenceVariant('in_progress')).toBe('secondary');
     expect(occurrenceVariant('started')).toBe('secondary');
     expect(occurrenceVariant('completed')).toBe('default');
-    expect(occurrenceVariant('correction_required')).toBe('destructive');
-    expect(occurrenceVariant('audit_pending')).toBe('default');
+    expect(occurrenceVariant('correction_required')).toBe('warning');
+    expect(occurrenceVariant('audit_pending')).toBe('audit');
   });
 });

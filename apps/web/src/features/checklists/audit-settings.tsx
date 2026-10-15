@@ -41,7 +41,7 @@ export function AuditSettings({ checklist, editable, onSave }: { checklist: Chec
   };
 
   return (
-    <section aria-labelledby="audit-settings-title" className="grid max-w-xl gap-3 rounded-lg border p-4">
+    <section aria-labelledby="audit-settings-title" className="grid max-w-xl gap-3 bg-card shadow-card rounded-xl p-4">
       <h2 id="audit-settings-title" className="text-lg font-semibold">
         {t('audits.web.settings.title')}
       </h2>

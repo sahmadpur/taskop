@@ -87,7 +87,7 @@ export function UsersPage() {
                 <div className="font-medium">{u.fullName}</div>
                 <div className="text-muted-foreground text-xs">{u.jobTitle ?? t(`users.kinds.${u.kind}`)}</div>
               </TableCell>
-              <TableCell className="font-mono text-sm">{loginLabel(u)}</TableCell>
+              <TableCell className="tabular-nums text-sm">{loginLabel(u)}</TableCell>
               <TableCell>{roleDisplayName(t, { name: u.role.name, systemKey: u.role.systemKey })}</TableCell>
               <TableCell>
                 <Badge variant={statusVariant(u.status)}>{t(`users.statuses.${u.status}`)}</Badge>

@@ -8,11 +8,12 @@ import { severityVariant } from '@/features/executions/labels';
 import { formatLocalDate } from '@/features/scheduling/labels';
 import { resolutionVariant } from '@/features/tasks/labels';
 import { errorText } from '@/lib/errors';
-import { useMe } from '@/lib/session';
 import { ChipGroup } from './chip-group';
 import { ReportTaskDrawer, RunDrawer } from './drawers';
 import { useReportProblems } from './queries';
 import { StatList } from './stat-list';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const COLUMNS = ['date', 'item', 'checklist', 'site', 'severity', 'source', 'note', 'executor', 'resolution'] as const;
 type SeverityChip = ProblemSeverity | 'all';
@@ -23,7 +24,7 @@ type SeverityChip = ProblemSeverity | 'all';
  */
 export function ProblemsTab({ filters, severity, onSeverity }: { filters: ReportFilters; severity: ProblemSeverity | null; onSeverity: (s: ProblemSeverity | null) => void }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const problems = useReportProblems(filters, severity);
   const [run, setRun] = useState<string | null>(null);
   const [task, setTask] = useState<string | null>(null);
@@ -48,8 +49,8 @@ export function ProblemsTab({ filters, severity, onSeverity }: { filters: Report
       )}
       <ChipGroup label={t('reports.filters.severity')} options={chips} value={severity ?? 'all'} onChange={(v) => onSeverity(v === 'all' ? null : v)} />
       {problems.error && <p className="text-destructive">{errorText(t, problems.error)}</p>}
-      {problems.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
-      {problems.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('reports.empty')}</p>}
+      {problems.isPending && <LoadingState />}
+      {problems.isSuccess && items.length === 0 && <EmptyState title={t('reports.empty')} />}
       {items.length > 0 && (
         <Table>
           <TableHeader>
@@ -62,7 +63,7 @@ export function ProblemsTab({ filters, severity, onSeverity }: { filters: Report
           <TableBody>
             {items.map((p) => (
               <TableRow key={p.id}>
-                <TableCell>{formatLocalDate(p.localDate, tenant.locale)}</TableCell>
+                <TableCell>{formatLocalDate(p.localDate, locale)}</TableCell>
                 <TableCell>
                   <button type="button" className="font-medium underline-offset-4 hover:underline" onClick={() => setRun(p.occurrenceId)}>
                     {p.itemLabel ?? p.checklistName}

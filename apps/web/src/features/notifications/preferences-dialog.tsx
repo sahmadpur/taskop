@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { errorText } from '@/lib/errors';
 import { api, session, useMe } from '@/lib/session';
+import { EmptyState } from '@/components/states';
 
 /** Spec §8, B-12: the user's only notification setting is the e-mail opt-out; push is muted in the phone's settings. */
 export function NotificationPreferencesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -50,7 +51,7 @@ function EmailSwitch() {
           onCheckedChange={(v) => save.mutate({ emailNotifications: v, userId: me.user.id })}
         />
       </div>
-      {!me.user.email && <p className="text-muted-foreground text-sm">{t('notifications.preferences.noEmail')}</p>}
+      {!me.user.email && <EmptyState title={t('notifications.preferences.noEmail')} />}
       <FormError message={save.isError ? errorText(t, save.error) : null} />
     </div>
   );

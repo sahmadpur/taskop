@@ -85,7 +85,7 @@ export function AuditPage() {
               <TableRow>
                 <TableCell className="text-sm whitespace-nowrap">{formatDateTime(e.occurredAt)}</TableCell>
                 <TableCell>{actorName(e)}</TableCell>
-                <TableCell className="font-mono text-sm">{e.action}</TableCell>
+                <TableCell className="tabular-nums text-sm">{e.action}</TableCell>
                 <TableCell>{t(`audit.entityTypes.${e.entityType}`, { defaultValue: e.entityType })}</TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="ghost" aria-expanded={open === e.id} onClick={() => setOpen(open === e.id ? null : e.id)}>

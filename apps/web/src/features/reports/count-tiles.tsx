@@ -4,12 +4,12 @@ import { Link } from '@tanstack/react-router';
 import { Info } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMe } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { percentText, type TileKey, tileSearch } from './labels';
 import type { ReportSearch } from './search';
+import { useLocale } from '@/lib/i18n';
 
-const TILE = 'grid content-start gap-1 rounded-lg border p-4';
+const TILE = 'bg-card shadow-card grid content-start gap-1 rounded-xl p-4';
 
 /**
  * Spec §6.1: one link per count to `/reports?tab=runs&bucket=…` with the same filters, then completion % and average
@@ -17,9 +17,9 @@ const TILE = 'grid content-start gap-1 rounded-lg border p-4';
  */
 export function CountTiles({ summary, search, keys }: { summary: ReportSummary; search: ReportSearch; keys: readonly TileKey[] }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const hintId = useId();
-  const count = new Intl.NumberFormat(intlLocale(tenant.locale));
+  const count = new Intl.NumberFormat(intlLocale(locale));
   const completion = t('reports.measures.completionPercent');
   const average = t('reports.measures.averageScore');
   const hint = t('reports.measures.completionHint');
@@ -37,7 +37,7 @@ export function CountTiles({ summary, search, keys }: { summary: ReportSummary; 
             className={cn(TILE, 'hover:bg-muted focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none')}
           >
             <span className="text-muted-foreground text-sm">{label}</span>
-            <span className="text-2xl font-semibold tabular-nums">{value}</span>
+            <span className="text-[28px] leading-none font-semibold tabular-nums">{value}</span>
           </Link>
         );
       })}
@@ -49,14 +49,14 @@ export function CountTiles({ summary, search, keys }: { summary: ReportSummary; 
             <Info className="size-3.5" aria-hidden />
           </span>
         </span>
-        <span className="text-2xl font-semibold tabular-nums">{percentText(t, summary.completionPercent, tenant.locale)}</span>
+        <span className="text-[28px] leading-none font-semibold tabular-nums">{percentText(t, summary.completionPercent, locale)}</span>
         <span id={hintId} className="sr-only">
           {hint}
         </span>
       </div>
       <div role="group" aria-label={average} className={TILE}>
         <span className="text-muted-foreground text-sm">{average}</span>
-        <span className="text-2xl font-semibold tabular-nums">{percentText(t, summary.averageScore, tenant.locale)}</span>
+        <span className="text-[28px] leading-none font-semibold tabular-nums">{percentText(t, summary.averageScore, locale)}</span>
       </div>
     </div>
   );

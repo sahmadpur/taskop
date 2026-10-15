@@ -28,13 +28,14 @@ import { errorText } from '@/lib/errors';
 import { api } from '@/lib/session';
 import { notificationKeys, useNotificationRules } from './queries';
 import { draftOf, type RuleDraft, ruleBody, sameDraft } from './rules-form';
+import { LoadingState } from '@/components/states';
 
 /** Spec §8, FR-15.09: the tenant's rules, grouped Checklist / Problem / Task; each row saves on its own. */
 export function NotificationRulesTab() {
   const { t } = useTranslation();
   const rules = useNotificationRules();
   const roles = useRoles();
-  if (rules.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (rules.isPending) return <LoadingState />;
   if (rules.isError) return <p className="text-destructive">{errorText(t, rules.error)}</p>;
   return (
     <div className="grid gap-6">

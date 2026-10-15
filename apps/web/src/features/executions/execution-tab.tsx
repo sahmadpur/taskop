@@ -9,10 +9,11 @@ import { ReworkBanner } from '@/features/corrections/rework-banner';
 import { RunActions } from '@/features/corrections/run-actions';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
-import { useMe } from '@/lib/session';
 import { AnswersView } from './answers-view';
 import { executionStateVariant, formatPercent, receiptDiffers } from './labels';
 import { useExecution } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState } from '@/components/states';
 
 /** The schedule drawer's "İcra" tab (spec §8): the counted execution, then the rejected ones, collapsed. */
 export function ExecutionTab({ occurrence }: { occurrence: OccurrenceDetail }) {
@@ -57,7 +58,7 @@ function ExecutionAnswers({ id }: { id: string }) {
   const { t } = useTranslation();
   const detail = useExecution(id);
   if (detail.isError) return <p className="text-destructive">{errorText(t, detail.error)}</p>;
-  if (!detail.data) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (!detail.data) return <LoadingState />;
   const d = detail.data;
   return <AnswersView content={d.content} answers={d.answers} media={d.media} problems={d.problems} />;
 }
@@ -81,7 +82,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function SummaryView({ summary, detail }: { summary: ExecutionSummary; detail?: ExecutionDetail }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const formatDateTime = useFormatDateTime();
   const { answered, total, requiredMissing } = summary.progress;
   // Device time decides the status (BR-11); the server receipt is only shown when it tells a different story.
@@ -113,7 +114,7 @@ function SummaryView({ summary, detail }: { summary: ExecutionSummary; detail?: 
           <dd>
             {summary.scorePercent === null
               ? t('executions.noScore')
-              : t('executions.percent', { value: formatPercent(summary.scorePercent, tenant.locale) })}
+              : t('executions.percent', { value: formatPercent(summary.scorePercent, locale) })}
           </dd>
         </Field>
         <Field label={t('executions.progress')}>
@@ -149,7 +150,7 @@ function RejectedExecution({ summary }: { summary: ExecutionSummary }) {
   const { t } = useTranslation();
   const [show, setShow] = useState(false);
   return (
-    <li aria-label={summary.executor.fullName} className="grid gap-2 rounded-md border p-3">
+    <li aria-label={summary.executor.fullName} className="grid gap-2 bg-card shadow-card rounded-xl p-3">
       <SummaryView summary={summary} />
       {summary.rejectedReason && (
         <p>{t('executions.rejected.reason', { reason: t(`executions.claimRejections.${summary.rejectedReason}`) })}</p>

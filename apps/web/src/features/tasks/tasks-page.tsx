@@ -20,6 +20,7 @@ import { useTasks } from './queries';
 import type { TasksSearch } from './routes';
 import { TaskDialog } from './task-dialog';
 import { TaskDrawer } from './task-drawer';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const COLUMNS = ['title', 'status', 'assignee', 'site', 'due', 'source'] as const;
 
@@ -96,9 +97,9 @@ export function TasksPage() {
         </div>
       </div>
       {inverted && <p className="text-destructive text-sm">{t('tasks.page.dueRangeInverted')}</p>}
-      {!inverted && tasks.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {!inverted && tasks.isPending && <LoadingState />}
       {!inverted && tasks.error && <p className="text-destructive">{errorText(t, tasks.error)}</p>}
-      {!inverted && tasks.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('tasks.page.empty')}</p>}
+      {!inverted && tasks.isSuccess && items.length === 0 && <EmptyState title={t('tasks.page.empty')} />}
       {!inverted && items.length > 0 && (
         <Table>
           <TableHeader>

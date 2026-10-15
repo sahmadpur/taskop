@@ -23,8 +23,8 @@ describe('audit badges', () => {
   it('colours results, run audit states and verdicts', () => {
     expect(resultVariant('passed')).toBe('default');
     expect(resultVariant('failed')).toBe('destructive');
-    expect(runAuditStateVariant('waiting')).toBe('outline');
-    expect(runAuditStateVariant('in_progress')).toBe('secondary');
+    expect(runAuditStateVariant('waiting')).toBe('audit');
+    expect(runAuditStateVariant('in_progress')).toBe('audit');
     expect(runAuditStateVariant('passed')).toBe('default');
     expect(runAuditStateVariant('failed')).toBe('destructive');
     expect(verdictVariant('approved')).toBe('default');

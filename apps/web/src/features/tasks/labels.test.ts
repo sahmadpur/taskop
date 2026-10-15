@@ -78,7 +78,7 @@ describe('task labels', () => {
     expect(taskStatusVariant('cancelled')).toBe('outline');
     expect(taskStatusVariant('awaiting_review')).toBe('secondary');
     expect(resolutionVariant('resolved')).toBe('default');
-    expect(resolutionVariant('open')).toBe('secondary');
+    expect(resolutionVariant('open')).toBe('warning');
     expect(resolutionVariant('none')).toBe('outline');
   });
 });

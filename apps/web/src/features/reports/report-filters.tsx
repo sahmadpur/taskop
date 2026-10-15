@@ -7,10 +7,11 @@ import { Label } from '@/components/ui/label';
 import { formatLocalDate } from '@/features/scheduling/labels';
 import { useSites } from '@/features/sites/queries';
 import { indentedName } from '@/features/sites/tree';
-import { useCan, useMe } from '@/lib/session';
+import { useCan } from '@/lib/session';
 import { checklistOptions, employeeOptions, siteOptions } from './labels';
 import { useEmployeeOptions, useReportChecklistOptions } from './queries';
 import { cleanSearch, DEFAULT_PERIOD, FILTER_ISSUE_KEYS, PERIOD_CHOICES, type PeriodChoice, type ReportSearch, resolveReportFilters, withPeriod } from './search';
+import { useLocale } from '@/lib/i18n';
 
 /**
  * The filter bar of the dashboard and the Reports page (spec §6.1). Controlled: the page keeps `value` in the URL.
@@ -18,7 +19,7 @@ import { cleanSearch, DEFAULT_PERIOD, FILTER_ISSUE_KEYS, PERIOD_CHOICES, type Pe
  */
 export function ReportFilters({ value, today, onChange }: { value: ReportSearch; today: string; onChange: (next: ReportSearch) => void }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const canSeeSites = useCan('sites.view');
   const canSeeChecklists = useCan('checklists.view');
   const sites = useSites(canSeeSites);
@@ -50,7 +51,7 @@ export function ReportFilters({ value, today, onChange }: { value: ReportSearch;
   let range: string | null = null;
   if (resolved.ok) {
     const { from, to } = resolved.filters;
-    range = from === to ? formatLocalDate(from, tenant.locale) : t('reports.range.label', { from: formatLocalDate(from, tenant.locale), to: formatLocalDate(to, tenant.locale) });
+    range = from === to ? formatLocalDate(from, locale) : t('reports.range.label', { from: formatLocalDate(from, locale), to: formatLocalDate(to, locale) });
   }
 
   return (

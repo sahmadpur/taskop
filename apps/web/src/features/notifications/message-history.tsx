@@ -9,6 +9,7 @@ import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
 import { deliverySummary } from './labels';
 import { useMessage, useMessages } from './queries';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const COLUMNS = ['sentAt', 'sender', 'title', 'recipients', 'read', 'push', 'email'] as const;
 
@@ -28,9 +29,9 @@ export function MessageHistory() {
   const items = messages.data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <div className="grid gap-3">
-      {messages.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {messages.isPending && <LoadingState />}
       {messages.error && <p className="text-destructive">{errorText(t, messages.error)}</p>}
-      {messages.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('notifications.messages.emptyHistory')}</p>}
+      {messages.isSuccess && items.length === 0 && <EmptyState title={t('notifications.messages.emptyHistory')} />}
       {items.length > 0 && (
         <Table>
           <TableHeader>

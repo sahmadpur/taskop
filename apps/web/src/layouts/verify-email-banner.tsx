@@ -11,7 +11,7 @@ export function VerifyEmailBanner() {
   const [busy, setBusy] = useState(false);
   if (me.user.kind !== 'staff' || me.user.emailVerified) return null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-amber-50 px-6 py-2 text-sm text-amber-900">
+    <div className="bg-status-late-soft text-status-late-text flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-sm lg:px-6">
       <span>{t('auth.verifyBanner.text')}</span>
       <Button
         size="sm"

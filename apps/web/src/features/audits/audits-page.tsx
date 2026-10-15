@@ -18,9 +18,11 @@ import { useSites } from '@/features/sites/queries';
 import { indentedName } from '@/features/sites/tree';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
-import { useCan, useMe } from '@/lib/session';
+import { useCan } from '@/lib/session';
 import { actorName, type AuditsSearch, auditsSearch, DEFAULT_QUEUE, queueFilters, queueRangeIssue, RANGE_ISSUE_KEYS, resultVariant } from './labels';
 import { useAuditorOptions, useAuditQueue, useStartAudit } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 type Column = 'date' | 'checklist' | 'site' | 'executor' | 'completedAt' | 'auditor' | 'startedAt' | 'status' | 'finishedAt' | 'result' | 'score';
 const COLUMNS: Record<AuditQueue, readonly Column[]> = {
@@ -115,9 +117,9 @@ export function AuditsPage() {
         </TabsList>
         {AUDIT_QUEUES.map((q) => (
           <TabsContent key={q} value={q} className="grid gap-4 pt-2">
-            {!issue && rows.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+            {!issue && rows.isPending && <LoadingState />}
             {!issue && rows.isError && <p className="text-destructive">{errorText(t, rows.error)}</p>}
-            {!issue && rows.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t(`audits.web.page.empty.${q}`)}</p>}
+            {!issue && rows.isSuccess && items.length === 0 && <EmptyState title={t(`audits.web.page.empty.${q}`)} />}
             {!issue && items.length > 0 && <QueueTable queue={q} items={items} />}
             {!issue && rows.hasNextPage && (
               <Button variant="outline" className="w-fit" disabled={rows.isFetchingNextPage} onClick={() => void rows.fetchNextPage()}>
@@ -133,7 +135,7 @@ export function AuditsPage() {
 
 function QueueTable({ queue, items }: { queue: AuditQueue; items: AuditQueueRow[] }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const formatDateTime = useFormatDateTime();
   const start = useStartAudit();
   const when = (iso: string | null) => (iso ? formatDateTime(iso) : '—');
@@ -141,7 +143,7 @@ function QueueTable({ queue, items }: { queue: AuditQueue; items: AuditQueueRow[
   const cell = (r: AuditQueueRow, c: Column) => {
     switch (c) {
       case 'date':
-        return formatLocalDate(r.localDate, tenant.locale);
+        return formatLocalDate(r.localDate, locale);
       case 'checklist':
         return r.auditId ? (
           <Link to="/audits/$auditId" params={{ auditId: r.auditId }} className="font-medium underline-offset-4 hover:underline">
@@ -172,7 +174,7 @@ function QueueTable({ queue, items }: { queue: AuditQueue; items: AuditQueueRow[
       case 'result':
         return r.result ? <Badge variant={resultVariant(r.result)}>{t(`audits.results.${r.result}`)}</Badge> : '—';
       case 'score':
-        return r.percent === null ? '—' : t('executions.percent', { value: formatPercent(r.percent, tenant.locale) });
+        return r.percent === null ? '—' : t('executions.percent', { value: formatPercent(r.percent, locale) });
     }
   };
 

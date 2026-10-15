@@ -5,6 +5,7 @@ import { NativeSelect } from '@/components/native-select';
 import { cn } from '@/lib/utils';
 import { categoryLabel } from './labels';
 import { useTemplates } from './queries';
+import { EmptyState } from '@/components/states';
 
 export function TemplatePicker({ value, onPick }: { value: TemplateSummary | null; onPick: (t: TemplateSummary) => void }) {
   const { t } = useTranslation();
@@ -37,7 +38,7 @@ export function TemplatePicker({ value, onPick }: { value: TemplateSummary | nul
             </span>
           </button>
         ))}
-        {templates.data?.length === 0 && <p className="text-muted-foreground text-sm">{t('checklists.templates.empty')}</p>}
+        {templates.data?.length === 0 && <EmptyState title={t('checklists.templates.empty')} />}
       </div>
     </div>
   );

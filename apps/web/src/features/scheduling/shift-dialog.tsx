@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { applyFieldErrors, errorText } from '@/lib/errors';
+import { EmptyState } from '@/components/states';
 
 const schema = z
   .object({ name: z.string().trim().min(1).max(100), startTime: localTimeSchema, endTime: localTimeSchema, siteId: z.string() })
@@ -71,7 +72,7 @@ export function ShiftDialog({ shift, sites, onClose, onSubmit }: Props) {
               </div>
             ))}
           </div>
-          {start && end && end < start && <p className="text-muted-foreground text-sm">{t('scheduling.shifts.nextDay')}</p>}
+          {start && end && end < start && <EmptyState title={t('scheduling.shifts.nextDay')} />}
           <div className="grid gap-1.5">
             <Label htmlFor="siteId">{t('scheduling.shifts.site')}</Label>
             <NativeSelect id="siteId" {...form.register('siteId')}>

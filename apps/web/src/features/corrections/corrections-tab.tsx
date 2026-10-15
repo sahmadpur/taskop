@@ -6,20 +6,21 @@ import { actorName } from '@/features/audits/labels';
 import { useExecution } from '@/features/executions/queries';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
-import { useMe } from '@/lib/session';
 import { answerSummary, correctionTimeline, scoreText, type TimelineEntry } from './labels';
 import { useCorrections } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 /** The run dialog's "Düzəlişlər" tab (spec §8.3, NFR-07.05): original against current, then what happened when. */
 export function CorrectionsTab({ occurrence }: { occurrence: OccurrenceDetail }) {
   const { t } = useTranslation();
-  if (!occurrence.execution) return <p className="text-muted-foreground">{t('executions.notStarted')}</p>;
+  if (!occurrence.execution) return <EmptyState title={t('executions.notStarted')} />;
   return <RunCorrections executionId={occurrence.execution.id} />;
 }
 
 function RunCorrections({ executionId }: { executionId: string }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const formatDateTime = useFormatDateTime();
   const detail = useExecution(executionId);
   const history = useCorrections(executionId);
@@ -30,22 +31,22 @@ function RunCorrections({ executionId }: { executionId: string }) {
   }, [detail.data]);
 
   if (detail.isError || history.isError) return <p className="text-destructive">{errorText(t, detail.error ?? history.error)}</p>;
-  if (!detail.data || !history.data) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (!detail.data || !history.data) return <LoadingState />;
   const c = history.data;
   const timeline = correctionTimeline(c);
-  if (!c.original && timeline.length === 0) return <p className="text-muted-foreground">{t('corrections.noCorrections')}</p>;
+  if (!c.original && timeline.length === 0) return <EmptyState title={t('corrections.noCorrections')} />;
   const label = (itemId: string) => items.get(itemId)?.label ?? t('executions.problemsPage.unknownItem');
   const summaryOf = (itemId: string, a: Parameters<typeof answerSummary>[2]) => {
     const item = items.get(itemId);
-    return item ? answerSummary(t, item, a, formatDateTime) : '—';
+    return item ? answerSummary(t, item, a, formatDateTime, locale) : '—';
   };
 
   return (
     <div className="grid gap-5">
       {c.original && (
         <p className="text-sm">
-          {t('corrections.web.score.original', { value: scoreText(t, c.original.score, tenant.locale) })} ·{' '}
-          {t('corrections.web.score.current', { value: scoreText(t, detail.data.score, tenant.locale) })}
+          {t('corrections.web.score.original', { value: scoreText(t, c.original.score, locale) })} ·{' '}
+          {t('corrections.web.score.current', { value: scoreText(t, detail.data.score, locale) })}
         </p>
       )}
       {c.diff.length > 0 && (
