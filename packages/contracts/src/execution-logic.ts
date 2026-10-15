@@ -3,7 +3,7 @@ import { type ChecklistContent, PROBLEM_SEVERITIES, type ProblemSeverity } from 
 import { type Answers, computeScore, isAnswered, type MissingKind, requirements, visibleItems } from './checklist-logic.js';
 import { idSchema } from './common.js';
 
-export const EXECUTION_STATES = ['active', 'completed', 'partial', 'rejected'] as const;
+export const EXECUTION_STATES = ['active', 'completed', 'partial', 'rejected', 'rework'] as const;
 export const executionStateSchema = z.enum(EXECUTION_STATES);
 export type ExecutionState = z.infer<typeof executionStateSchema>;
 

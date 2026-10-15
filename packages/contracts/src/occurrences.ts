@@ -5,7 +5,7 @@ import { localDateSchema } from './scheduling-time.js';
 import { localRangeCheck, SCHEDULING_LIMITS } from './scheduling.js';
 
 /** FR-11.01. Sub-project 3 writes pending, overdue, missed and cancelled; the rest belong to sub-project 4. */
-export const OCCURRENCE_STATUSES = ['pending', 'started', 'in_progress', 'completed', 'partial', 'overdue', 'missed', 'cancelled', 'audit_pending', 'audited'] as const;
+export const OCCURRENCE_STATUSES = ['pending', 'started', 'in_progress', 'completed', 'partial', 'overdue', 'missed', 'cancelled', 'audit_pending', 'audited', 'correction_required'] as const;
 export const occurrenceStatusSchema = z.enum(OCCURRENCE_STATUSES);
 export type OccurrenceStatus = z.infer<typeof occurrenceStatusSchema>;
 

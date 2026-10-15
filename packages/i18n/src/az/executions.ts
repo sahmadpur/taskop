@@ -4,6 +4,7 @@ export default {
     completed: 'Tamamlanıb',
     partial: 'Yarımçıq',
     rejected: 'Rədd edilib',
+    rework: 'Düzəlişdə',
   },
   claimRejections: {
     ALREADY_CLAIMED: 'Bu checklist artıq başqa əməkdaş tərəfindən icra olunur.',

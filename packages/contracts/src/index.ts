@@ -34,3 +34,4 @@ export * from './occurrences.js';
 export * from './assignments.js';
 export * from './report-logic.js';
 export * from './reports.js';
+export * from './audit-logic.js';

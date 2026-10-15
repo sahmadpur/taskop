@@ -421,6 +421,7 @@ export const occurrenceStatus = pgEnum('occurrence_status', [
   'cancelled',
   'audit_pending',
   'audited',
+  'correction_required',
 ]);
 
 const localDate = (name: string) => date(name, { mode: 'string' });
@@ -591,7 +592,7 @@ export const occurrenceStatusHistory = pgTable(
 );
 
 // Must match EXECUTION_STATES, CLAIM_REJECTION_REASONS, MEDIA_*, PROBLEM_SOURCES and PROBLEM_SEVERITIES in @taskop/contracts.
-export const executionState = pgEnum('execution_state', ['active', 'completed', 'partial', 'rejected']);
+export const executionState = pgEnum('execution_state', ['active', 'completed', 'partial', 'rejected', 'rework']);
 export const claimRejectionReason = pgEnum('claim_rejection_reason', ['ALREADY_CLAIMED', 'NOT_ASSIGNED', 'NOT_STARTABLE', 'NOT_YET_OPEN', 'CLOSED', 'NOT_ON_SHIFT']);
 export const mediaKind = pgEnum('media_kind', ['photo', 'video']);
 export const mediaSource = pgEnum('media_source', ['camera', 'gallery']);
