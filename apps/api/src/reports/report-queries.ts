@@ -174,8 +174,14 @@ export function auditStateCondition(s: RunAuditState): SQL {
   }
 }
 
-/** The run's non-cancelled audit, for the column and the filter. */
-const auditJoin = sql`left join audits au on au.execution_id = r.execution_id and au.status <> 'cancelled'`;
+/**
+ * The run's non-cancelled audit, for the column and the filter (at most one: audits_open_uq). Lateral, so each run is one
+ * index probe: as a plain join the row-level-security filter on audits made Postgres expect a handful of audits and pick
+ * a nested loop over a materialised scan of all of them (2.4 s over 73,200 runs and 11,660 audits).
+ */
+const auditJoin = sql`left join lateral (
+  select a.id, a.status, a.result from audits a where a.execution_id = r.execution_id and a.status <> 'cancelled' limit 1
+) au on true`;
 
 type RunRow = {
   id: string;
