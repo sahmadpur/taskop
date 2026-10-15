@@ -74,7 +74,7 @@ export const light: ColorTokens = {
     planned: { solid: '#79818D', text: '#4B5563', soft: '#EEF1F4' },
     active: { solid: '#005E8C', text: '#004A72', soft: '#DDF0FB' },
     ok: { solid: '#05893E', text: '#046B30', soft: '#DDF5E5' },
-    late: { solid: '#DC8900', text: '#945000', soft: '#FFEFC7' },
+    late: { solid: '#C27700', text: '#945000', soft: '#FFEFC7' },
     bad: { solid: '#D01D21', text: '#A3151A', soft: '#FFE1E0' },
     audit: { solid: '#7A4ABA', text: '#5B2FA0', soft: '#EFE6FB' },
   },
