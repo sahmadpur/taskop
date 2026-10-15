@@ -1,3 +1,4 @@
+import { az } from '@taskop/i18n';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -76,5 +77,36 @@ describe('RunsTab', () => {
     mocks.api.reports.runs.mockResolvedValue(page([]));
     renderWithRouter(<RunsTab filters={FILTERS} bucket="missed" onBucket={vi.fn()} />);
     expect(await screen.findByText('Bu dövr üçün məlumat yoxdur.')).toBeInTheDocument();
+  });
+
+  it('shows each run’s audit state and marks a corrected score', async () => {
+    mocks.api.reports.runs.mockResolvedValue(page([completedRun({ auditState: 'failed', corrected: true }), reportRun()]));
+    renderWithRouter(<RunsTab filters={FILTERS} bucket="all" onBucket={vi.fn()} />);
+    const rows = await screen.findAllByRole('row');
+    expect(within(rows[0]!).getByRole('columnheader', { name: az.audits.audit })).toBeInTheDocument();
+    expect(rows[1]).toHaveTextContent(az.audits.runAuditStates.failed);
+    expect(rows[1]).toHaveTextContent(`87,5%${az.corrections.corrected}`);
+    expect(rows[2]).not.toHaveTextContent(az.corrections.corrected);
+    expect(rows[2]).not.toHaveTextContent(az.audits.runAuditStates.failed);
+  });
+
+  it('filters by audit state', async () => {
+    const onAuditState = vi.fn();
+    renderWithRouter(<RunsTab filters={FILTERS} bucket="all" onBucket={vi.fn()} auditState="waiting" onAuditState={onAuditState} />);
+    await screen.findAllByRole('row');
+    expect(mocks.api.reports.runs).toHaveBeenCalledWith({ ...FILTERS, bucket: 'all', auditState: 'waiting' });
+    const select = screen.getByRole('combobox', { name: az.audits.audit });
+    expect(select).toHaveValue('waiting');
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Hamısı',
+      az.audits.runAuditStates.waiting,
+      az.audits.runAuditStates.in_progress,
+      az.audits.runAuditStates.passed,
+      az.audits.runAuditStates.failed,
+    ]);
+    await userEvent.selectOptions(select, 'failed');
+    expect(onAuditState).toHaveBeenLastCalledWith('failed');
+    await userEvent.selectOptions(select, '');
+    expect(onAuditState).toHaveBeenLastCalledWith(null);
   });
 });

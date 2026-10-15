@@ -1,4 +1,4 @@
-import type { ChecklistSummary, ProblemSeverity, ReportFilters, RunBucket } from '@taskop/contracts';
+import type { ChecklistSummary, ProblemSeverity, ReportFilters, RunAuditState, RunBucket } from '@taskop/contracts';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/session';
 
@@ -13,7 +13,7 @@ export const reportKeys = {
   summary: (f: ReportFilters) => ['reports', 'summary', f] as const,
   sites: (f: ReportFilters) => ['reports', 'sites', f] as const,
   employees: (f: ReportFilters) => ['reports', 'employees', f] as const,
-  runs: (f: ReportFilters, bucket: RunBucket) => ['reports', 'runs', f, bucket] as const,
+  runs: (f: ReportFilters, bucket: RunBucket, auditState: RunAuditState | null = null) => ['reports', 'runs', f, bucket, auditState] as const,
   problems: (f: ReportFilters, severity: ProblemSeverity | null) => ['reports', 'problems', f, severity] as const,
   tasks: (f: ReportFilters) => ['reports', 'tasks', f] as const,
   overdueNow: (f: ReportFilters) => ['reports', 'attention', 'overdue', f] as const,
@@ -38,10 +38,10 @@ export const useEmployeeReport = (filters: ReportFilters) =>
   useQuery({ queryKey: reportKeys.employees(filters), queryFn: () => api.reports.employees(filters) });
 
 /** Pages of 50, newest due first; "Daha çox göstər" passes nextCursor back with the same filters. */
-export const useReportRuns = (filters: ReportFilters, bucket: RunBucket) =>
+export const useReportRuns = (filters: ReportFilters, bucket: RunBucket, auditState: RunAuditState | null = null) =>
   useInfiniteQuery({
-    queryKey: reportKeys.runs(filters, bucket),
-    queryFn: ({ pageParam }) => api.reports.runs({ ...filters, bucket, ...(pageParam ? { cursor: pageParam } : {}) }),
+    queryKey: reportKeys.runs(filters, bucket, auditState),
+    queryFn: ({ pageParam }) => api.reports.runs({ ...filters, bucket, ...(auditState ? { auditState } : {}), ...(pageParam ? { cursor: pageParam } : {}) }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });

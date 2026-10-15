@@ -1,9 +1,11 @@
-import { type ReportFilters, RUN_BUCKETS, type RunBucket } from '@taskop/contracts';
+import { type ReportFilters, RUN_AUDIT_STATES, RUN_BUCKETS, type RunAuditState, type RunBucket } from '@taskop/contracts';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NativeSelect } from '@/components/native-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { runAuditStateVariant } from '@/features/audits/labels';
 import { receiptDiffers } from '@/features/executions/labels';
 import { formatLocalDate, occurrenceVariant, useTimeFormat } from '@/features/scheduling/labels';
 import { errorText } from '@/lib/errors';
@@ -20,18 +22,48 @@ const COLUMNS = ['date', 'dueAt', 'checklist', 'site', 'status', 'executor', 'co
  * Spec §6.2 "Runs": bucket chips and a paged list; a row opens the run drawer. Device times with the server receipt
  * beside them when a late sync makes them differ (FR-10.14); the late and clock-suspect flags are shown (spec §8).
  */
-export function RunsTab({ filters, bucket, onBucket }: { filters: ReportFilters; bucket: RunBucket; onBucket: (bucket: RunBucket) => void }) {
+export function RunsTab({
+  filters,
+  bucket,
+  onBucket,
+  auditState = null,
+  onAuditState,
+}: {
+  filters: ReportFilters;
+  bucket: RunBucket;
+  onBucket: (bucket: RunBucket) => void;
+  /** SP8: the audit state filter; without `onAuditState` the select is not shown. */
+  auditState?: RunAuditState | null;
+  onAuditState?: (state: RunAuditState | null) => void;
+}) {
   const { t } = useTranslation();
   const { tenant } = useMe();
   const time = useTimeFormat();
   const formatDateTime = useFormatDateTime();
-  const runs = useReportRuns(filters, bucket);
+  const runs = useReportRuns(filters, bucket, auditState);
   const [open, setOpen] = useState<string | null>(null);
   const items = runs.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <div className="grid gap-4">
-      <ChipGroup label={t('reports.filters.bucket')} options={RUN_BUCKETS.map((b) => ({ value: b, label: t(`reports.buckets.${b}`) }))} value={bucket} onChange={onBucket} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ChipGroup label={t('reports.filters.bucket')} options={RUN_BUCKETS.map((b) => ({ value: b, label: t(`reports.buckets.${b}`) }))} value={bucket} onChange={onBucket} />
+        {onAuditState && (
+          <NativeSelect
+            aria-label={t('audits.audit')}
+            value={auditState ?? ''}
+            onChange={(e) => onAuditState((e.target.value || null) as RunAuditState | null)}
+            className="w-44"
+          >
+            <option value="">{t('common.all')}</option>
+            {RUN_AUDIT_STATES.map((s) => (
+              <option key={s} value={s}>
+                {t(`audits.runAuditStates.${s}`)}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </div>
       {runs.error && <p className="text-destructive">{errorText(t, runs.error)}</p>}
       {runs.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
       {runs.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('reports.empty')}</p>}
@@ -42,6 +74,7 @@ export function RunsTab({ filters, bucket, onBucket }: { filters: ReportFilters;
               {COLUMNS.map((k) => (
                 <TableHead key={k}>{t(`reports.columns.${k}`)}</TableHead>
               ))}
+              <TableHead>{t('audits.audit')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -75,13 +108,19 @@ export function RunsTab({ filters, bucket, onBucket }: { filters: ReportFilters;
                     t('reports.noValue')
                   )}
                 </TableCell>
-                <TableCell className="tabular-nums">{percentText(t, r.score, tenant.locale)}</TableCell>
+                <TableCell className="tabular-nums">
+                  <span className="flex flex-wrap items-center gap-1">
+                    {percentText(t, r.score, tenant.locale)}
+                    {r.corrected && <Badge variant="outline">{t('corrections.corrected')}</Badge>}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <span className="flex flex-wrap items-center gap-1 tabular-nums">
                     {r.problemCount}
                     {r.criticalCount > 0 && <Badge variant="destructive">{`${t('executions.severities.critical')}: ${r.criticalCount}`}</Badge>}
                   </span>
                 </TableCell>
+                <TableCell>{r.auditState ? <Badge variant={runAuditStateVariant(r.auditState)}>{t(`audits.runAuditStates.${r.auditState}`)}</Badge> : t('reports.noValue')}</TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -97,6 +97,9 @@ describe('exports', () => {
     expect(exportQuery('sites', FILTERS, 'pdf', extra)).toEqual({ ...FILTERS, format: 'pdf' });
     expect(exportQuery('full', FILTERS, 'pdf', extra)).toEqual({ ...FILTERS, format: 'pdf' });
     expect(exportQuery('problems', FILTERS, 'csv', {})).toEqual({ ...FILTERS, format: 'csv' });
+    expect(exportQuery('runs', FILTERS, 'csv', { bucket: 'all', auditState: 'passed' })).toEqual({ ...FILTERS, format: 'csv', bucket: 'all', auditState: 'passed' });
+    expect(exportQuery('problems', FILTERS, 'csv', { auditState: 'passed' })).toEqual({ ...FILTERS, format: 'csv' });
+    expect(exportQuery('full', FILTERS, 'xlsx', { auditState: 'passed' })).toEqual({ ...FILTERS, format: 'xlsx' });
   });
 
   it('explains a too large export with its row count and limit, other errors from az.errors', () => {

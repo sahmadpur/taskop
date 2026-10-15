@@ -43,6 +43,7 @@ export function ReportsPage({ today: fixedToday }: { today?: string }) {
             filters={filters}
             bucket={tab === 'runs' ? (search.bucket ?? DEFAULT_BUCKET) : undefined}
             severity={tab === 'problems' ? search.severity : undefined}
+            auditState={tab === 'runs' ? search.auditState : undefined}
           />
         }
       />
@@ -76,7 +77,15 @@ function TabBody({ kind, search, filters, go }: { kind: ReportKind; search: Repo
     case 'employees':
       return <EmployeesTab filters={filters} onDrill={(userId) => go({ ...search, userId, tab: 'summary' })} />;
     case 'runs':
-      return <RunsTab filters={filters} bucket={search.bucket ?? DEFAULT_BUCKET} onBucket={(bucket) => go({ ...search, bucket })} />;
+      return (
+        <RunsTab
+          filters={filters}
+          bucket={search.bucket ?? DEFAULT_BUCKET}
+          onBucket={(bucket) => go({ ...search, bucket })}
+          auditState={search.auditState ?? null}
+          onAuditState={(auditState) => go(cleanSearch({ ...search, auditState: auditState ?? undefined }))}
+        />
+      );
     case 'problems':
       return <ProblemsTab filters={filters} severity={search.severity ?? null} onSeverity={(severity) => go(cleanSearch({ ...search, severity: severity ?? undefined }))} />;
     case 'tasks':

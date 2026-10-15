@@ -8,6 +8,7 @@ import type {
   ReportFilters,
   ReportFormat,
   ReportRun,
+  RunAuditState,
   RunBucket,
   RunCountKey,
   SiteDto,
@@ -107,17 +108,18 @@ export function checklistOptions(list: readonly ChecklistSummary[], showInactive
   return list.filter((c) => c.status === 'active' || showInactive || c.id === selectedId).sort((a, b) => a.name.localeCompare(b.name, 'az'));
 }
 
-/** The export's query: the bucket goes with runs, the severity with problems, the full report takes neither (decision 14). */
+/** The export's query: bucket and audit state go with runs, severity with problems, the full report takes none (SP7 decision 14, SP8 decision 16). */
 export function exportQuery(
   kind: ReportExportKind,
   filters: ReportFilters,
   format: ReportFormat,
-  extra: { bucket?: RunBucket; severity?: ProblemSeverity },
+  extra: { bucket?: RunBucket; severity?: ProblemSeverity; auditState?: RunAuditState },
 ): ReportExportQuery {
   return {
     ...filters,
     format,
     ...(kind === 'runs' && extra.bucket ? { bucket: extra.bucket } : {}),
+    ...(kind === 'runs' && extra.auditState ? { auditState: extra.auditState } : {}),
     ...(kind === 'problems' && extra.severity ? { severity: extra.severity } : {}),
   };
 }

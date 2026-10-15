@@ -11,7 +11,9 @@ import {
   type ReportKind,
   reportRangeTooLong,
   resolvePeriod,
+  RUN_AUDIT_STATES,
   RUN_BUCKETS,
+  type RunAuditState,
   type RunBucket,
 } from '@taskop/contracts';
 
@@ -43,6 +45,8 @@ export interface ReportsPageSearch extends ReportSearch {
   tab?: ReportKind;
   bucket?: RunBucket;
   severity?: ProblemSeverity;
+  /** The runs table's audit filter (SP8 spec §8.3). */
+  auditState?: RunAuditState;
 }
 
 const isId = (v: unknown): v is string => idSchema.safeParse(v).success;
@@ -78,15 +82,16 @@ export function reportsPageSearch(s: Record<string, unknown>): ReportsPageSearch
     ...(isOneOf(REPORT_KINDS, s.tab) ? { tab: s.tab } : {}),
     ...(isOneOf(RUN_BUCKETS, s.bucket) ? { bucket: s.bucket } : {}),
     ...(isOneOf(PROBLEM_SEVERITIES, s.severity) ? { severity: s.severity } : {}),
+    ...(isOneOf(RUN_AUDIT_STATES, s.auditState) ? { auditState: s.auditState } : {}),
   };
 }
 
 const FILTER_KEYS = ['period', 'from', 'to', 'siteId', 'userId', 'checklistId', 'inactive'] as const;
-const PAGE_KEYS = ['tab', 'bucket', 'severity'] as const;
+const PAGE_KEYS = ['tab', 'bucket', 'severity', 'auditState'] as const;
 
 /** The filters a tile or a page switch carries along. */
 export const filterSearch = (s: ReportSearch): ReportSearch => pick(s, FILTER_KEYS);
-export const pageExtras = (s: ReportsPageSearch): Pick<ReportsPageSearch, 'tab' | 'bucket' | 'severity'> => pick(s, PAGE_KEYS);
+export const pageExtras = (s: ReportsPageSearch): Pick<ReportsPageSearch, 'tab' | 'bucket' | 'severity' | 'auditState'> => pick(s, PAGE_KEYS);
 
 /** Drops empty values: a select set back to "all", a cleared date field. */
 export function cleanSearch<T extends object>(s: T): T {
