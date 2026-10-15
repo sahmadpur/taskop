@@ -34,7 +34,8 @@ import type { FileRemover } from './user-scope';
 
 export type StartBlock = 'notYetOpen' | 'closed' | 'claimedByOther' | 'finished' | 'needsUpdate' | 'notDownloaded' | 'clockAhead';
 
-const FINISHED_STATUSES: ReadonlySet<string> = new Set(['completed', 'partial', 'cancelled', 'audit_pending', 'audited']);
+/** A run sent back for correction is not open to a new claim: its executor resumes their own execution (spec §3.1). */
+const FINISHED_STATUSES: ReadonlySet<string> = new Set(['completed', 'partial', 'cancelled', 'audit_pending', 'audited', 'correction_required']);
 
 /**
  * Spec §7.4: start is offered when the window is open by device time, nobody else is known to hold the claim,

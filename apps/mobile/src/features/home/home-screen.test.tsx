@@ -1,7 +1,9 @@
 import { fireEvent, screen, within } from '@testing-library/react-native';
-import { Alert } from 'react-native';
-import '@/lib/i18n';
-import { ME, OCC, OCC2, OCC3, OCC4, OCC5, occurrence, OTHER, OTHER_EXECUTION, syncResponse, syncTask, T, TASK2, TASK3, TEAM, VERSION2, versionOf } from '@/offline/testing/fixtures';
+import { Alert, StyleSheet } from 'react-native';
+import { formatDateTime } from '@taskop/i18n';
+import i18n from '@/lib/i18n';
+import { colors } from '@/lib/theme';
+import { ME, OCC, OCC2, OCC3, OCC4, OCC5, occurrence, OTHER, OTHER_EXECUTION, REWORK_DUE, reworkSync, syncResponse, syncTask, T, TASK2, TASK3, TEAM, VERSION2, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices, type TestServices } from '@/offline/testing/test-services';
 import { HomeScreen } from './home-screen';
@@ -119,5 +121,45 @@ describe('Home task card', () => {
     expect(within(card).getByText('Gecikmiş: 1')).toBeTruthy();
     await fireEvent.press(card);
     expect(mockPush).toHaveBeenCalledWith('/tasks');
+  });
+});
+
+describe('Needs correction (spec §8.1)', () => {
+  const tr = i18n.t.bind(i18n);
+
+  async function sentBack() {
+    const t = await createTestServices();
+    await t.seed(reworkSync(t.c, [{ itemId: t.c.temp.id, comment: 'Temperaturu yenidən ölçün' }, { itemId: t.c.photo.id, comment: 'Şəkil bulanıqdır' }]));
+    return t;
+  }
+
+  it('lists runs sent back to me above today’s runs, with the round, the flagged items and the due date in the tenant’s time', async () => {
+    const t = await sentBack();
+    await renderWithServices(t.services, <HomeScreen />);
+    const card = within(await screen.findByTestId(`occurrence-${OCC}`));
+    expect(screen.getAllByText(/^(Düzəliş tələb olunur|İndi)$/).map((n) => n.props.children)).toEqual(['Düzəliş tələb olunur', 'İndi']);
+    expect(card.getByText(`${tr('corrections.round', { round: 1 })} · 2 bənd düzəliş tələb edir`)).toBeTruthy();
+    const due = card.getByText(tr('corrections.dueAt', { date: formatDateTime(REWORK_DUE, { locale: 'az', timeZone: 'Asia/Baku' }) }));
+    expect(StyleSheet.flatten(due.props.style).color).toBe(colors.muted);
+    expect(card.queryByText('Gecikir')).toBeNull();
+    await fireEvent.press(card.getByRole('button', { name: 'Düzəliş et: Açılış yoxlaması' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/execution/[id]', params: { id: OCC } });
+  });
+
+  it('turns the card red once the due date has passed', async () => {
+    const t = await sentBack();
+    t.clock.set(REWORK_DUE);
+    await renderWithServices(t.services, <HomeScreen />);
+    const card = within(await screen.findByTestId(`occurrence-${OCC}`));
+    expect(card.getByText('Gecikir')).toBeTruthy();
+    const due = card.getByText(tr('corrections.dueAt', { date: formatDateTime(REWORK_DUE, { locale: 'az', timeZone: 'Asia/Baku' }) }));
+    expect(StyleSheet.flatten(due.props.style).color).toBe(colors.danger);
+  });
+
+  it('hides the group when nothing is sent back', async () => {
+    const t = await world();
+    await renderWithServices(t.services, <HomeScreen />);
+    expect(await screen.findByText('İndi')).toBeTruthy();
+    expect(screen.queryByText('Düzəliş tələb olunur')).toBeNull();
   });
 });

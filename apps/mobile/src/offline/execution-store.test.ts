@@ -39,6 +39,7 @@ describe('startBlock', () => {
     ['claimed by someone else', claimedBy(OTHER), T.open, 'ok', 0, 'claimedByOther'],
     ['claimed by me on another install (no local execution here)', claimedBy(ME), T.open, 'ok', 0, 'claimedByOther'],
     ['already completed', { ...base, status: 'completed' }, T.open, 'ok', 0, 'finished'],
+    ['sent back for correction (only its executor holds an execution)', { ...base, status: 'correction_required' }, T.open, 'ok', 0, 'finished'],
     ['content not downloaded yet', base, T.open, 'missing', 0, 'notDownloaded'],
     ['content newer than the app', base, T.open, 'needsUpdate', 0, 'needsUpdate'],
     ['phone clock too far ahead of the server', base, T.open, 'ok', ahead, 'clockAhead'],
