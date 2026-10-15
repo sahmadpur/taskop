@@ -49,6 +49,86 @@ describe('reading corrections (spec §6.2, NFR-07.05)', () => {
     expect(res.body.diff).toEqual([{ itemId: a.w.c.temp.id, original: { number: 10, note: 'isti' }, current: { number: 6 } }]);
   });
 
+  it('lists the diff in checklist order and the rework rounds in round order', async () => {
+    const a = await world();
+    const { temp, note } = a.w.c;
+    // Corrected in reverse checklist order, so neither the diff nor the history can fall back on chronology by accident.
+    const fix = await correct(a.manager.api, a.executionId, {
+      answersRev: 1,
+      changes: [
+        { itemId: note.id, answer: { text: 'Düzəliş' } },
+        { itemId: temp.id, answer: { number: 5 } },
+      ],
+      reason: 'Səhv daxil edilib',
+    });
+    expect(fix.status, JSON.stringify(fix.body)).toBe(200);
+    const rework = async (itemId: string, answer: object, round: number) => {
+      const rev = (await a.manager.api.get(`/api/v1/executions/${a.executionId}`)).body.answersRev as number;
+      expect((await sendBack(a.manager.api, a.executionId, { items: [{ itemId, comment: `Dəyişin ${round}` }] })).status).toBe(200);
+      const current = (await a.manager.api.get(`/api/v1/executions/${a.executionId}`)).body.answers;
+      clock.set(`2026-11-02T1${round}:00:00Z`);
+      const put = await a.worker.api.put(`/api/v1/executions/${a.executionId}/answers`, answersBody(rev + 1, { ...current, [itemId]: answer }, `2026-11-02T1${round}:00:00Z`));
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+      const done = await resubmit(a.worker.api, a.executionId, `2026-11-02T1${round}:00:00Z`, round);
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+    };
+    await rework(note.id, { text: 'Yeni qeyd' }, 1);
+    await rework(temp.id, { number: 6 }, 2);
+
+    const res = await history(a.manager.api, a);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.reworkRequests.map((r: { round: number }) => r.round)).toEqual([1, 2]);
+    expect(res.body.diff).toEqual([
+      { itemId: temp.id, original: { number: 10, note: 'isti' }, current: { number: 6 } },
+      { itemId: note.id, original: null, current: { text: 'Yeni qeyd' } },
+    ]);
+  });
+
+  describe('ExecutionDetail.audit', () => {
+    const insertAudit = (a: AuditWorld, status: 'in_progress' | 'finished' | 'cancelled', startedAt: string) => {
+      const id = uuidv7();
+      return ownerQuery(
+        `insert into audits (id, tenant_id, execution_id, occurrence_id, status, auditor_user_id, started_at, finished_at, result, audit_score, cancelled_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          id,
+          a.w.s.tenantId,
+          a.executionId,
+          a.w.occurrenceId,
+          status,
+          a.auditor.id,
+          startedAt,
+          status === 'finished' ? startedAt : null,
+          status === 'finished' ? 'passed' : null,
+          status === 'finished' ? JSON.stringify({ approved: 2, rejected: 0, reviewed: 2, percent: 100 }) : null,
+          status === 'cancelled' ? startedAt : null,
+        ],
+      ).then(() => id);
+    };
+    const audit = async (a: AuditWorld) => (await a.manager.api.get(`/api/v1/executions/${a.executionId}`)).body.audit;
+
+    it('prefers the non-cancelled audit over a newer cancelled one', async () => {
+      const a = await world();
+      await insertAudit(a, 'cancelled', '2026-11-02T04:50:00Z');
+      const open = await insertAudit(a, 'finished', '2026-11-02T04:30:00Z');
+      expect(await audit(a)).toEqual({ id: open, status: 'finished', result: 'passed', percent: 100, paused: false });
+    });
+
+    it('returns the in-progress audit rather than a cancelled one, not paused while the run is not sent back', async () => {
+      const a = await world();
+      await insertAudit(a, 'cancelled', '2026-11-02T04:50:00Z');
+      const open = await insertAudit(a, 'in_progress', '2026-11-02T04:30:00Z');
+      expect(await audit(a)).toEqual({ id: open, status: 'in_progress', result: null, percent: null, paused: false });
+    });
+
+    it('falls back to the latest cancelled audit when there is no other', async () => {
+      const a = await world();
+      await insertAudit(a, 'cancelled', '2026-11-02T04:30:00Z');
+      const latest = await insertAudit(a, 'cancelled', '2026-11-02T04:50:00Z');
+      expect(await audit(a)).toEqual({ id: latest, status: 'cancelled', result: null, percent: null, paused: false });
+    });
+  });
+
   it('fills the run detail: rework, the snapshot flag, the audit brief and cleared problems', async () => {
     const a = await world();
     const detail = async () => (await a.manager.api.get(`/api/v1/executions/${a.executionId}`)).body;

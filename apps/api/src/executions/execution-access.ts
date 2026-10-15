@@ -9,7 +9,7 @@ import { SchedulingScope } from '../scheduling/scheduling-scope';
 
 const READ_KEYS = ['assignments.view', 'reports.view', 'audits.perform', 'executions.correct'] as const satisfies readonly PermissionKey[];
 
-/** Who may read an execution and its media (spec §6.7, §6.8). No new permission key. */
+/** Who may read an execution, its media and its correction history (spec §6.7, §6.8, SP8 spec §6.2). */
 @Injectable()
 export class ExecutionAccess {
   constructor(
