@@ -1,6 +1,7 @@
 import {
   type Answer,
   type Answers,
+  type ChecklistContent,
   deriveProblems,
   type DeviceInfo,
   EXECUTION_LIMITS,
@@ -12,6 +13,8 @@ import {
   type Missing,
   type RegisterMediaCommand,
   requirements,
+  reworkViolations,
+  visibleItems,
 } from '@taskop/contracts';
 import type { ChangeFeed } from './change-feed';
 import { type Clock, isClockTooFarAhead, readOffset } from './clock';
@@ -86,6 +89,28 @@ export class LiveOnlyError extends Error {
     super('This item accepts camera media only');
     this.name = 'LiveOnlyError';
   }
+}
+
+/** An edit outside the items the manager sent back (spec §8.1); the server would refuse it with ITEM_NOT_IN_REWORK. */
+export class ItemNotInReworkError extends Error {
+  constructor(readonly itemIds: string[]) {
+    super(`Not sent back for correction: ${itemIds.join(', ')}`);
+    this.name = 'ItemNotInReworkError';
+  }
+}
+
+/** The items the manager sent back: those of the open request. */
+export const flaggedItems = (e: Pick<LocalExecution, 'rework'>): ReadonlySet<string> => new Set(e.rework?.items.map((i) => i.itemId) ?? []);
+
+/**
+ * Spec decision 2: what a run in rework offers for editing now. The flagged items, and every item visible now that was
+ * not visible in the round's starting answers (follow-ups a flagged change revealed, chains included).
+ */
+export function reworkEditable(content: ChecklistContent, e: Pick<LocalExecution, 'rework' | 'answers'>): ReadonlySet<string> {
+  const editable = new Set(flaggedItems(e));
+  const before = new Set(visibleItems(content, e.rework?.answersBefore ?? e.answers).map((v) => v.item.id));
+  for (const v of visibleItems(content, e.answers)) if (!before.has(v.item.id)) editable.add(v.item.id);
+  return editable;
 }
 
 /** `claim` asks for an immediate sync (online starts claim at once); `change` waits 2 s for more edits. */
@@ -220,6 +245,8 @@ export function createExecutionStore(deps: StoreDeps) {
       [executionId],
     );
     if (!row) throw new Error(`Unknown execution ${executionId}`);
+    // Spec §3.2: a run sent back for correction is not limited by closes_at.
+    if (row.state === 'rework') return { locked: false, e: toExecution(row) };
     if (row.state !== 'active') return { locked: true, state: row.state };
     if (now >= Date.parse(row.closes_at)) {
       await tx.run(`UPDATE executions SET state = 'partial', locked_at = ?, updated_at = ? WHERE id = ?`, [iso(now), iso(now), executionId]);
@@ -240,6 +267,13 @@ export function createExecutionStore(deps: StoreDeps) {
       const next = await edit(tx, g.e, now);
       if (next !== null) {
         const answers = compact(next);
+        // The API's own rule (Part 1 `reworkViolations`), checked against the round's starting answers: throwing here
+        // rolls back the whole edit, media rows included.
+        if (g.e.state === 'rework') {
+          const content = await usableContent(tx, g.e.checklistVersionId);
+          const outside = reworkViolations(content, g.e.rework?.answersBefore ?? g.e.answers, answers, flaggedItems(g.e));
+          if (outside.length > 0) throw new ItemNotInReworkError(outside);
+        }
         const rev = g.e.rev + 1;
         await tx.run('UPDATE executions SET answers = ?, rev = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), rev, iso(now), executionId]);
         await appendCommand(tx, { entityType: 'execution', entityId: executionId, kind: 'answers', rev, payload: { rev, answers }, createdAt: iso(now) });
@@ -257,7 +291,8 @@ export function createExecutionStore(deps: StoreDeps) {
         'SELECT id, state FROM executions WHERE occurrence_id = ? ORDER BY started_at DESC LIMIT 1',
         [occurrenceId],
       );
-      if (mine?.state === 'active') return mine.id; // a double tap resumes instead of claiming twice
+      // A double tap resumes instead of claiming twice; a run sent back to me resumes too.
+      if (mine?.state === 'active' || mine?.state === 'rework') return mine.id;
       if (mine) throw new StartRefusedError(mine.state === 'rejected' ? 'claimedByOther' : 'finished');
       const row = await tx.first<OccurrenceRow>('SELECT * FROM occurrences WHERE id = ?', [occurrenceId]);
       if (!row) throw new Error(`Unknown occurrence ${occurrenceId}`);
@@ -308,7 +343,10 @@ export function createExecutionStore(deps: StoreDeps) {
   async function attachMedia(executionId: string, m: CapturedMedia, target: MediaTarget): Promise<string> {
     const mediaId = newId();
     await change(executionId, async (tx, e, now) => {
-      const item = findItem(await usableContent(tx, e.checklistVersionId), target.itemId);
+      const content = await usableContent(tx, e.checklistVersionId);
+      // A problem medium changes no answer until the problem is saved, so the answers check alone would miss it.
+      if (e.state === 'rework' && !reworkEditable(content, e).has(target.itemId)) throw new ItemNotInReworkError([target.itemId]);
+      const item = findItem(content, target.itemId);
       if (!item) throw new Error(`Unknown item ${target.itemId}`);
       if (item.evidence.liveOnly && m.source === 'gallery') throw new LiveOnlyError();
       const current = (m.kind === 'photo' ? e.answers[target.itemId]?.photos : e.answers[target.itemId]?.videos) ?? [];

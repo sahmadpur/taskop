@@ -69,7 +69,8 @@ export async function dropMedium(tx: Db, mediaId: string, now: number, errorKey:
   }
   if (!refersTo(e.answers, mediaId)) return file;
   const answers = withoutMedia(e.answers, mediaId);
-  if ((await queuedRevisions(tx, e.id)).length === 0 && e.state !== 'active') {
+  // A run in rework is still open: the dropped medium leaves the server's answers through a new revision.
+  if ((await queuedRevisions(tx, e.id)).length === 0 && e.state !== 'active' && e.state !== 'rework') {
     await tx.run('UPDATE executions SET answers = ?, updated_at = ? WHERE id = ?', [JSON.stringify(answers), iso(now), e.id]);
     return file;
   }
