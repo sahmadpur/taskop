@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { OccurrenceStatus, ProblemSeverity } from '@taskop/contracts';
+import type { AuditResult, OccurrenceStatus, ProblemSeverity } from '@taskop/contracts';
 
 /** Payload of every task.* event (SP5 spec §6.5). SP6 listens for notifications; SP5 has no listeners. */
 export interface TaskEvent {
@@ -25,6 +25,8 @@ export interface DomainEventMap {
   'execution.sent_back': { tenantId: string; executionId: string; occurrenceId: string; round: number; actorUserId: string | null };
   /** SP8: the executor resubmitted a run sent back. SP6 turns it into run.resubmitted for whoever sent it back. */
   'execution.resubmitted': { tenantId: string; executionId: string; occurrenceId: string; round: number; actorUserId: string };
+  /** SP8: an audit finished (spec §6.2). SP6 turns it into audit.finished. */
+  'audit.finished': { tenantId: string; auditId: string; executionId: string; occurrenceId: string; result: AuditResult; actorUserId: string | null };
   'task.assigned': TaskEvent;
   'task.accepted': TaskEvent;
   'task.submitted': TaskEvent;

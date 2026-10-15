@@ -1,7 +1,7 @@
 import type { Answers } from '@taskop/contracts';
 import { expect } from 'vitest';
 import type { TestApp } from './app';
-import { claimOk, completeExecution, type ExecutionWorld, executionWorld, registerPhoto, type TestWorker } from './execution-fixtures';
+import { claimOk, completeExecution, type ExecutionWorld, executionWorld, fullAnswers, occurrenceOn, registerPhoto, type TestWorker } from './execution-fixtures';
 import type { FakeClock } from './fake-clock';
 import { staffAt } from './notification-fixtures';
 import { ownerQuery } from './owner-db';
@@ -147,3 +147,26 @@ export const problemRows = async (executionId: string): Promise<ProblemDbRow[]> 
 /** Marks every medium of the execution uploaded, as if the phone had finished its uploads. */
 export const markUploaded = (executionId: string) =>
   ownerQuery("update execution_media set status = 'uploaded', uploaded_at = now() where execution_id = $1", [executionId]);
+
+/** İşçi 1 completes the run of `date` (YYYY-MM-DD) at 08:20 Baku that day, with every required answer. */
+export async function completeRunOn(t: TestApp, clock: FakeClock, w: ExecutionWorld, date: string): Promise<{ occurrenceId: string; executionId: string }> {
+  const occurrenceId = await occurrenceOn(w.assignmentId, date);
+  const at = `${date}T04:20:00.000Z`;
+  clock.set(at);
+  const api = w.workers[0].api;
+  const executionId = await claimOk(api, occurrenceId, `${date}T04:10:00.000Z`);
+  const photo = await registerPhoto(api, executionId, w.c.photo.id, { capturedAt: at, deviceTime: at });
+  const res = await completeExecution(api, executionId, 1, fullAnswers(w, photo), at);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  await markUploaded(executionId);
+  return { occurrenceId, executionId };
+}
+
+/** Approves every item of `itemIds`, rejecting those in `rejected` with a comment. */
+export async function verdictAll(api: Api, auditId: string, itemIds: readonly string[], rejected: readonly string[] = []): Promise<void> {
+  for (const itemId of itemIds) {
+    const body = rejected.includes(itemId) ? { verdict: 'rejected', comment: 'Uyğun deyil' } : { verdict: 'approved' };
+    const res = await api.put(`/api/v1/audits/${auditId}/items/${itemId}`, body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  }
+}

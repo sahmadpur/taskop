@@ -1,11 +1,12 @@
-import { Body, Delete, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
+import { Body, Delete, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse } from '@nestjs/swagger';
-import type { AuditDetail, AuditDto, AuditItemVerdict } from '@taskop/contracts';
+import type { AuditDetail, AuditDto, AuditItemVerdict, AuditQueueRow, Page } from '@taskop/contracts';
 import { controllerDecorators, named, perm, permAny, type RouteMode } from '../checklists/route-mode';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { type Actor, CurrentActor } from '../scheduling/actor';
+import { AuditQueueQuery } from './audit-queue';
 import { AuditsService } from './audits.service';
-import { AuditDetailResponse, AuditDtoResponse, AuditItemVerdictResponse, AuditVerdictDto, CancelAuditDto } from './dto';
+import { AuditDetailResponse, AuditDtoResponse, AuditItemVerdictResponse, AuditQueuePageResponse, AuditQueueQueryDto, AuditVerdictDto, CancelAuditDto, FinishAuditDto } from './dto';
 
 /** /audits (SP8 spec §6.2), for tenant users and platform admins (Spec decision 24). */
 export function auditsControllerFor(mode: RouteMode) {
@@ -15,7 +16,17 @@ export function auditsControllerFor(mode: RouteMode) {
 
   @controllerDecorators(mode, 'audits', 'audits')
   class AuditsController {
-    constructor(@Inject(AuditsService) private readonly audits: AuditsService) {}
+    constructor(
+      @Inject(AuditsService) private readonly audits: AuditsService,
+      @Inject(AuditQueueQuery) private readonly queue: AuditQueueQuery,
+    ) {}
+
+    @Get()
+    @perform
+    @ApiOkResponse({ type: AuditQueuePageResponse })
+    list(@CurrentActor() a: Actor, @Query() q: AuditQueueQueryDto): Promise<Page<AuditQueueRow>> {
+      return this.queue.page(a, q);
+    }
 
     @Get(':id')
     @performOrReports
@@ -45,6 +56,14 @@ export function auditsControllerFor(mode: RouteMode) {
     @ApiOkResponse({ type: AuditDtoResponse })
     cancel(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string, @Body() body: CancelAuditDto): Promise<AuditDto> {
       return this.audits.cancel(a, id, body);
+    }
+
+    @Post(':id/finish')
+    @HttpCode(200)
+    @perform
+    @ApiOkResponse({ type: AuditDtoResponse })
+    finish(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string, @Body() body: FinishAuditDto): Promise<AuditDto> {
+      return this.audits.finish(a, id, body);
     }
   }
   return named(AuditsController, mode === 'tenant' ? 'AuditsController' : 'PlatformTenantAuditsController');

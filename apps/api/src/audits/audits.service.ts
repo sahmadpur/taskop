@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   type Answers,
   auditableItemIds,
@@ -6,16 +6,23 @@ import {
   type AuditDto,
   type AuditItemVerdict,
   type AuditVerdictParams,
+  auditScore,
   canStartAudit,
+  type FinishAuditParams,
+  isAuditPaused,
+  missingVerdicts,
+  reportRecipients,
   statusAfterAuditCancel,
 } from '@taskop/contracts';
-import { and, asc, eq, getTableColumns, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, getTableColumns, inArray, isNull } from 'drizzle-orm';
 import { actorColumns } from '../checklists/actor';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
+import { DomainEvents } from '../common/domain-events';
+import { sanitiseForLog } from '../common/error.filter';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
-import { auditItemVerdicts, audits, checklists, occurrences, users } from '../db/schema';
+import { auditItemVerdicts, audits, checklists, executionMedia, occurrences, users } from '../db/schema';
 import { AuditLookup } from '../executions/audit-lookup';
 import { CorrectionHistory } from '../executions/correction-history';
 import { ExecutionLookups, findItem } from '../executions/execution-lookups';
@@ -23,12 +30,16 @@ import { ExecutionQueries } from '../executions/execution-queries';
 import { type LockedRun, lockRun } from '../executions/run-locks';
 import type { Actor } from '../scheduling/actor';
 import { OccurrenceWriter } from '../scheduling/occurrence-writer';
+import { JobsService } from '../scheduling/jobs.service';
 import { SchedulingScope } from '../scheduling/scheduling-scope';
 import { type AuditRow, toAuditDto } from './audit-rows';
+import { AUDIT_JOB_QUEUES, type AuditReportJobData } from './report/queues';
 
 /** SP8 spec §6.2: formal audits of completed runs. Runs in the request's tenant transaction. */
 @Injectable()
 export class AuditsService {
+  private readonly logger = new Logger('AuditsService');
+
   constructor(
     private readonly db: DbService,
     private readonly clock: Clock,
@@ -39,6 +50,8 @@ export class AuditsService {
     private readonly history: CorrectionHistory,
     private readonly lookups: ExecutionLookups,
     private readonly auditLookup: AuditLookup,
+    private readonly events: DomainEvents,
+    private readonly jobs: JobsService,
   ) {}
 
   /**
@@ -129,6 +142,67 @@ export class AuditsService {
     if (next !== o.status) await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: next, at: now, reason: input.reason }]);
     await this.audit.record({ action: 'audit.cancelled', entityType: 'audit', entityId: auditId, after: { reason: input.reason, status: next } });
     return this.dto(auditId);
+  }
+
+  /**
+   * FR-19.06 (spec §6.2): an in-progress audit of a run that is not sent back, a verdict on every auditable item, and every
+   * medium the answers reference uploaded. Stores the score, the result and the recipients, moves the run to audited (the
+   * run is then locked), emits audit.finished and queues the report after commit.
+   */
+  async finish(a: Actor, auditId: string, input: FinishAuditParams): Promise<AuditDto> {
+    const now = this.clock.now();
+    const { audit, e, o } = await this.lockAudit(a, auditId);
+    if (audit.status !== 'in_progress') throw new AppError('AUDIT_NOT_IN_PROGRESS');
+    if (isAuditPaused(o.status)) throw new AppError('AUDIT_PAUSED');
+    const tx = this.db.tx();
+    const answers = e.answers as Answers;
+    const ids = auditableItemIds(await this.lookups.content(e.checklistVersionId), answers);
+    const rows = await tx.select({ itemId: auditItemVerdicts.itemId, verdict: auditItemVerdicts.verdict }).from(auditItemVerdicts).where(eq(auditItemVerdicts.auditId, auditId));
+    const verdicts = new Map(rows.map((r) => [r.itemId, r.verdict]));
+    const missing = missingVerdicts(verdicts, ids);
+    if (missing.length) throw new AppError('AUDIT_INCOMPLETE', { details: { itemIds: missing } });
+    if (await this.mediaStillUploading(e.id, answers)) throw new AppError('MEDIA_NOT_FOUND_IN_STORAGE');
+    const score = auditScore(verdicts, ids);
+    const [checklist] = await tx.select({ emails: checklists.auditReportEmails }).from(checklists).where(eq(checklists.id, o.checklistId));
+    const recipients = reportRecipients(checklist!.emails, input.extraEmails ?? []);
+    const comment = input.comment ? input.comment : null;
+    await tx
+      .update(audits)
+      .set({ status: 'finished', finishedAt: now, result: input.result, auditScore: score, comment, reportStatus: 'pending', reportRecipients: recipients, reportAttempts: 0, updatedAt: now })
+      .where(eq(audits.id, auditId));
+    await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: 'audited', at: now }]);
+    await this.events.emit('audit.finished', { tenantId: audit.tenantId, auditId, executionId: e.id, occurrenceId: o.id, result: input.result, actorUserId: actorColumns(this.db).userId });
+    await this.audit.record({
+      action: 'audit.finished',
+      entityType: 'audit',
+      entityId: auditId,
+      after: { result: input.result, score, rejectedItemIds: ids.filter((id) => verdicts.get(id) === 'rejected'), comment, recipients },
+    });
+    this.queueReport({ tenantId: audit.tenantId, auditId });
+    return this.dto(auditId);
+  }
+
+  /** After commit. A lost send leaves report_status = pending; POST /audits/:id/report/send queues it again. */
+  private queueReport(job: AuditReportJobData): void {
+    this.db.afterCommit(async () => {
+      try {
+        await this.jobs.send(AUDIT_JOB_QUEUES.report, job);
+      } catch (e) {
+        this.logger.error(sanitiseForLog(e, null), `Queueing the report of audit ${job.auditId} failed`);
+      }
+    });
+  }
+
+  /** Spec §6.2 "MEDIA_PENDING": a medium the answers reference is still pending. A purged one never uploads, so it is ignored. */
+  private async mediaStillUploading(executionId: string, answers: Answers): Promise<boolean> {
+    const ids = [...new Set(Object.values(answers).flatMap((x) => [...(x?.photos ?? []), ...(x?.videos ?? []), ...(x?.problem?.mediaIds ?? [])]))];
+    if (!ids.length) return false;
+    const [r] = await this.db
+      .tx()
+      .select({ n: count() })
+      .from(executionMedia)
+      .where(and(eq(executionMedia.executionId, executionId), inArray(executionMedia.id, ids), eq(executionMedia.status, 'pending'), isNull(executionMedia.storagePurgedAt)));
+    return (r?.n ?? 0) > 0;
   }
 
   /** The audit and its run, locked in the order of every run command: occurrence, execution, then the audit row. */
