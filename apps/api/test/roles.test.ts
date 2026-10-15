@@ -15,7 +15,7 @@ describe('roles', () => {
     expect(roles.map((r) => r.systemKey).sort()).toEqual(['admin', 'auditor', 'manager', 'owner', 'worker']);
     expect(roles.find((r) => r.systemKey === 'owner')).toMatchObject({ userCount: 1 });
     expect(roles.find((r) => r.systemKey === 'manager')!.permissions.sort()).toEqual([
-      'assignments.manage', 'assignments.view', 'checklists.manage', 'checklists.view', 'notifications.send', 'reports.export', 'reports.view', 'shifts.manage', 'shifts.view', 'sites.view', 'tasks.manage', 'tasks.view', 'teams.view', 'users.view',
+      'assignments.manage', 'assignments.view', 'checklists.manage', 'checklists.view', 'executions.correct', 'notifications.send', 'reports.export', 'reports.view', 'shifts.manage', 'shifts.view', 'sites.view', 'tasks.manage', 'tasks.view', 'teams.view', 'users.view',
     ]);
   });
 

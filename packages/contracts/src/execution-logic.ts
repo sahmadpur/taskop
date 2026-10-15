@@ -29,6 +29,8 @@ export const scoreSchema = z.object({
   percent: z.number().nullable(),
   problems: z.array(z.object({ itemId: idSchema, severity: problemSeveritySchema })),
 });
+/** A run's score as the API sends it (the schema of ScoreResult). */
+export type Score = z.infer<typeof scoreSchema>;
 
 export interface DerivedProblem {
   itemId: string;

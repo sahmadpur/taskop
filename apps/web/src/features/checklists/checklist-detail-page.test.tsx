@@ -23,6 +23,8 @@ const detail = (over: Partial<ChecklistDetail> = {}): ChecklistDetail => ({
     { id: V2, number: 2, state: 'published', changeNote: 'Sual əlavə edildi', publishedAt: '2026-10-08T08:00:00.000Z', publishedBy: { kind: 'user', name: 'Elvin' }, createdAt: '2026-10-08T07:00:00.000Z' },
     { id: V1, number: 1, state: 'published', changeNote: null, publishedAt: '2026-10-07T08:00:00.000Z', publishedBy: { kind: 'platform', name: null }, createdAt: '2026-10-07T07:00:00.000Z' },
   ],
+  requiresAudit: false,
+  auditReportEmails: [],
   ...over,
 });
 

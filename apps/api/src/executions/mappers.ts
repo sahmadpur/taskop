@@ -64,6 +64,7 @@ export const toProblemEntry = (p: typeof executionProblems.$inferSelect, taskId:
   createdAt: p.createdAt.toISOString(),
   resolution: problemResolutionOf(taskStatus),
   taskId,
+  clearedAt: null,
 });
 
 export const asDevice = (v: unknown): DeviceInfo => v as DeviceInfo;

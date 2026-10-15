@@ -39,6 +39,7 @@ export function effectiveRule(type: RuleType, row: RuleRow | null, roles: RoleCa
       notifyCreator: d.notifyCreator,
       roleIds: d.systemRoles.map((k) => roles.bySystemKey[k]).filter((id): id is string => id !== undefined),
       leadMinutes: d.leadMinutes,
+      resultFilter: d.resultFilter,
       isDefault: true,
     };
   }
@@ -52,6 +53,8 @@ export function effectiveRule(type: RuleType, row: RuleRow | null, roles: RoleCa
     roleIds: row.roleIds.filter((id) => roles.ids.has(id)),
     // notification_rules_lead_ck keeps a stored value inside LEAD_MINUTES.
     leadMinutes: NOTIFICATION_TYPE_META[type].hasLeadTime ? ((row.leadMinutes as LeadMinutes | null) ?? d.leadMinutes) : null,
+    // Task 16 stores the tenant's own filter; until then a row keeps the default's.
+    resultFilter: NOTIFICATION_TYPE_META[type].hasResultFilter ? d.resultFilter : null,
     isDefault: false,
   };
 }

@@ -42,3 +42,20 @@ export type NotificationAuditAction = (typeof NOTIFICATION_AUDIT_ACTIONS)[number
 /** Audited report action (SP7 spec §5.4): entity type `report`, entity id null, `after: { kind, format, filters, rows }`. */
 export const REPORT_AUDIT_ACTIONS = ['reports.exported'] as const;
 export type ReportAuditAction = (typeof REPORT_AUDIT_ACTIONS)[number];
+
+/**
+ * Audited audit and correction actions (SP8 spec §6.4). `audit.*` use entity type `audit`; `execution.*` entity type
+ * `execution`. before/after hold only the changed items. Verdict edits and the system's completed → audit_pending move
+ * are recorded only in their own tables and in the status history.
+ */
+export const AUDIT_FLOW_AUDIT_ACTIONS = [
+  'audit.started',
+  'audit.finished',
+  'audit.cancelled',
+  'audit.report_sent',
+  'execution.corrected',
+  'execution.sent_back',
+  'execution.send_back_withdrawn',
+  'execution.resubmitted',
+] as const;
+export type AuditFlowAuditAction = (typeof AUDIT_FLOW_AUDIT_ACTIONS)[number];

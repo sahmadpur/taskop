@@ -57,6 +57,8 @@ describe('GET /reports/runs', () => {
       criticalCount: 0,
       late: true,
       clockSuspect: false,
+      auditState: null,
+      corrected: false,
     });
     expect(completed.find((r) => r.occurrenceId === w.runs.r9.occurrenceId)).toMatchObject({ clockSuspect: true, problemCount: 1, criticalCount: 1 });
     expect(completed.find((r) => r.occurrenceId === w.runs.r4.occurrenceId)).toMatchObject({ problemCount: 2, criticalCount: 1 });

@@ -12,7 +12,7 @@ const row = { enabled: false, push: false, email: true, notifyAssignees: true, n
 describe('effectiveRule', () => {
   it('turns each default’s system roles into the tenant’s role ids', () => {
     expect(effectiveRule('checklist.missed', null, roles)).toEqual({
-      type: 'checklist.missed', enabled: true, push: false, email: false, notifyAssignees: false, notifyCreator: false, roleIds: [MANAGER, ADMIN], leadMinutes: null, isDefault: true,
+      type: 'checklist.missed', enabled: true, push: false, email: false, notifyAssignees: false, notifyCreator: false, roleIds: [MANAGER, ADMIN], leadMinutes: null, resultFilter: null, isDefault: true,
     });
     expect(effectiveRule('checklist.due_soon', null, roles)).toMatchObject({ roleIds: [], leadMinutes: 30, isDefault: true });
     for (const type of RULE_TYPES) expect(effectiveRule(type, null, roles)).toMatchObject({ enabled: DEFAULT_RULES[type].enabled, push: DEFAULT_RULES[type].push });
@@ -23,7 +23,7 @@ describe('effectiveRule', () => {
   });
 
   it('lays the tenant row over the default and drops role ids that no longer exist', () => {
-    expect(effectiveRule('task.assigned', row, roles)).toEqual({ type: 'task.assigned', ...row, roleIds: [CUSTOM], isDefault: false });
+    expect(effectiveRule('task.assigned', row, roles)).toEqual({ type: 'task.assigned', ...row, roleIds: [CUSTOM], resultFilter: null, isDefault: false });
   });
 
   it('keeps the lead time only where it applies, falling back to the default when a stored one is missing', () => {
@@ -34,7 +34,7 @@ describe('effectiveRule', () => {
 });
 
 describe('ruleIssues', () => {
-  const input = { enabled: true, push: true, email: false, notifyAssignees: false, notifyCreator: false, roleIds: [], leadMinutes: null };
+  const input = { enabled: true, push: true, email: false, notifyAssignees: false, notifyCreator: false, roleIds: [], leadMinutes: null, resultFilter: null };
 
   it('requires the lead time on due_soon and refuses it elsewhere', () => {
     expect(ruleIssues('checklist.due_soon', input)).toEqual({ leadMinutes: 'notifications.issues.leadMinutesRequired' });

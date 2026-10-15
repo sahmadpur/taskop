@@ -35,3 +35,5 @@ export * from './assignments.js';
 export * from './report-logic.js';
 export * from './reports.js';
 export * from './audit-logic.js';
+export * from './corrections.js';
+export * from './audits.js';

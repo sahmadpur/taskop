@@ -200,6 +200,8 @@ const toReportRun = (r: RunRow): ReportRun => ({
   criticalCount: r.critical_count,
   late: r.late,
   clockSuspect: r.clock_suspect,
+  auditState: null,
+  corrected: false,
 });
 
 /** Problems of the period's occurrences (spec §3.2) under scope and filters; a problem's user is its run's executor (Spec decision 10). */

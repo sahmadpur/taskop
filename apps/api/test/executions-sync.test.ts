@@ -87,6 +87,8 @@ describe('download sync (GET /me/sync)', () => {
         late: false,
         clockSuspect: false,
         mediaPending: 1,
+        reworkRound: 0,
+        rework: null,
       },
     ]);
   });

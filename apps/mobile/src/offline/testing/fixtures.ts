@@ -160,6 +160,8 @@ export const myExecution = (over: Partial<MyExecution> = {}): MyExecution => ({
   late: false,
   clockSuspect: false,
   mediaPending: 0,
+  reworkRound: 0,
+  rework: null,
   ...over,
 });
 

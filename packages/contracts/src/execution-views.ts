@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { auditBriefSchema } from './audit-logic.js';
 import { checklistContentSchema } from './checklist-content.js';
 import { cursorQuerySchema, idSchema, isoDateTimeSchema } from './common.js';
 import { claimRejectionReasonSchema, executionStateSchema, problemSeveritySchema, problemSourceSchema, progressSchema, scoreSchema } from './execution-logic.js';
+import { reworkRequestSchema } from './corrections.js';
 import { executionSummarySchema } from './execution-summary.js';
 import { answerSchema, claimRefSchema, deviceInfoSchema, EXECUTION_LIMITS, mediaKindSchema, mediaSourceSchema, mediaStatusSchema } from './executions.js';
 import { occurrenceDtoSchema, occurrenceStatusSchema, userRefSchema } from './occurrences.js';
@@ -52,6 +54,10 @@ export const myExecutionSchema = z.object({
   late: z.boolean(),
   clockSuspect: z.boolean(),
   mediaPending: z.number().int(),
+  /** Send-back rounds so far (SP8 spec §3.2). */
+  reworkRound: z.number().int().default(0),
+  /** The open send-back while `state` is `rework`; the phone edits only its items. */
+  rework: reworkRequestSchema.nullable().default(null),
 });
 export type MyExecution = z.infer<typeof myExecutionSchema>;
 
@@ -83,6 +89,8 @@ export const executionProblemSchema = z.object({
   resolution: problemResolutionSchema,
   /** The task created from this problem (spec §6.2 "Problem endpoints"). */
   taskId: idSchema.nullable(),
+  /** Set when a correction removed the problem (SP8 spec §4.1); the row is kept. */
+  clearedAt: isoDateTimeSchema.nullable().default(null),
 });
 export type ExecutionProblem = z.infer<typeof executionProblemSchema>;
 
@@ -99,6 +107,13 @@ export const executionDetailSchema = executionSummarySchema.extend({
   lastSyncedAt: isoDateTimeSchema,
   media: z.array(executionMediaDtoSchema),
   problems: z.array(executionProblemSchema),
+  reworkRound: z.number().int().default(0),
+  /** The open send-back, or null. */
+  rework: reworkRequestSchema.nullable().default(null),
+  /** The original answers were snapshotted: at least one correction or send-back happened. */
+  corrected: z.boolean().default(false),
+  /** The run's latest audit, cancelled ones included; null when none was ever started. */
+  audit: auditBriefSchema.nullable().default(null),
 });
 export type ExecutionDetail = z.infer<typeof executionDetailSchema>;
 
@@ -130,6 +145,8 @@ export const problemDtoSchema = z.object({
   taskId: idSchema.nullable(),
   /** `active` = the run is still open: no task can be created from the problem yet (PROBLEM_NOT_CLOSED). */
   executionState: executionStateSchema,
+  /** Set when a correction removed the problem; the problems page hides these unless `includeCleared`. */
+  clearedAt: isoDateTimeSchema.nullable().default(null),
 });
 export type ProblemDto = z.infer<typeof problemDtoSchema>;
 
@@ -142,6 +159,8 @@ export const problemListQuerySchema = cursorQuerySchema
     severity: problemSeveritySchema.optional(),
     source: problemSourceSchema.optional(),
     resolution: problemResolutionSchema.optional(),
+    /** 'true' also lists problems a correction cleared (SP8 spec §8.3). */
+    includeCleared: z.stringbool().optional(),
   })
   .superRefine((v, ctx) => {
     const days = dayNumber(v.to) - dayNumber(v.from) + 1;

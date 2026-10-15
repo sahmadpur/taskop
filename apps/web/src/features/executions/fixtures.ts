@@ -103,9 +103,9 @@ export function executionFixture() {
     [video.id]: { videos: ['v1'] },
   };
   const problems: ExecutionProblem[] = [
-    { id: 'pr1', itemId: problem.id, source: 'rule', severity: 'critical', note: null, mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED },
-    { id: 'pr2', itemId: temp.id, source: 'rule', severity: 'normal', note: 'isti', mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED },
-    { id: 'pr3', itemId: temp.id, source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır', mediaIds: ['pm1'], resolution: 'none', taskId: null, createdAt: CREATED },
+    { id: 'pr1', itemId: problem.id, source: 'rule', severity: 'critical', note: null, mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED, clearedAt: null },
+    { id: 'pr2', itemId: temp.id, source: 'rule', severity: 'normal', note: 'isti', mediaIds: [], resolution: 'none', taskId: null, createdAt: CREATED, clearedAt: null },
+    { id: 'pr3', itemId: temp.id, source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır', mediaIds: ['pm1'], resolution: 'none', taskId: null, createdAt: CREATED, clearedAt: null },
   ];
   const detail = (over: Partial<ExecutionDetail> = {}): ExecutionDetail => ({
     ...summary(),
@@ -121,6 +121,7 @@ export function executionFixture() {
     lastSyncedAt: '2026-11-02T09:00:00.000Z',
     media,
     problems,
+    reworkRound: 0, rework: null, corrected: false, audit: null,
     ...over,
   });
   return { content, problem, yes, no, comment, temp, photo, video, note, answers, media, problems, detail };

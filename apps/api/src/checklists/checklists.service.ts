@@ -69,6 +69,8 @@ export class ChecklistsService {
           ? { kind: 'version', id: row.sourceVersionId }
           : null,
       versions: versions.map(toVersionSummary),
+      requiresAudit: false,
+      auditReportEmails: [],
     };
   }
 

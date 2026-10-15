@@ -31,7 +31,7 @@ describe('report tables', () => {
       checklist: { id: ID, name: 'Açılış yoxlaması' }, site: { id: ID, name: 'Zona A1' }, status: 'completed',
       assignees: [{ id: ID, fullName: 'Aynur' }, { id: ID, fullName: 'Kamran' }], executor: { id: ID, fullName: 'Kamran' },
       startedAt: '2026-11-02T04:10:00.000Z', completedAt: '2026-11-02T05:40:00.000Z', completedReceivedAt: '2026-11-04T05:00:00.000Z',
-      score: 100, problemCount: 1, criticalCount: 0, late: false, clockSuspect: true,
+      score: 100, problemCount: 1, criticalCount: 0, late: false, clockSuspect: true, auditState: null, corrected: false,
     };
     const t = runsTable([run], runsTitle('all'));
     expect(t.title).toBe('İcralar');
@@ -59,7 +59,7 @@ describe('report tables', () => {
     const problem = {
       id: ID, executionId: ID, occurrenceId: ID, localDate: '2026-11-02', siteId: ID, siteName: 'Filial B', checklistId: ID, checklistName: 'Açılış yoxlaması',
       itemId: ID, itemLabel: 'Temperatur', source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır', mediaIds: [], media: [],
-      executorName: 'Nigar', createdAt: '2026-11-02T05:10:00.000Z', resolution: 'open', taskId: ID, executionState: 'completed', taskStatus: 'in_progress',
+      executorName: 'Nigar', createdAt: '2026-11-02T05:10:00.000Z', resolution: 'open', taskId: ID, executionState: 'completed', taskStatus: 'in_progress', clearedAt: null,
     } satisfies ReportProblem;
     expect(problemsTable([problem]).rows[0]).toEqual([
       '2026-11-02', 'Filial B', 'Açılış yoxlaması', 'Temperatur', 'Kritik', 'Əl ilə qeyd', 'Kondisioner xarabdır', 'Nigar', '2026-11-02T05:10:00.000Z', 'Açıq', 'İcradadır',

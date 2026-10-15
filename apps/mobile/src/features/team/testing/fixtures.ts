@@ -103,6 +103,8 @@ export const reportRun = (over: Partial<ReportRun> = {}): ReportRun => ({
   criticalCount: 1,
   late: false,
   clockSuspect: false,
+  auditState: null,
+  corrected: false,
   ...over,
 });
 
@@ -194,6 +196,7 @@ export const executionProblem = (over: Partial<ExecutionProblem> = {}): Executio
   createdAt: T.open,
   resolution: 'none',
   taskId: null,
+  clearedAt: null,
   ...over,
 });
 
@@ -226,6 +229,10 @@ export function executionDetail(c: Checklist, over: Partial<ExecutionDetail> = {
       executionProblem({ id: PROBLEM, itemId: c.problem.id, severity: 'critical', source: 'rule', mediaIds: [PHOTO] }),
       executionProblem({ id: PROBLEM2, itemId: c.temp.id, severity: 'normal', source: 'manual', note: 'Termometr sınıb', mediaIds: [PROBLEM_PHOTO], resolution: 'open', taskId: TASK }),
     ],
+    reworkRound: 0,
+    rework: null,
+    corrected: false,
+    audit: null,
     ...over,
   };
 }

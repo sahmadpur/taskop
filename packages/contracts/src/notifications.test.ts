@@ -4,6 +4,7 @@ import {
   ALL_PERMISSIONS,
   DEFAULT_RULES,
   DELIVERY_STATUSES,
+  isAuditType,
   isProblemType,
   LEAD_MINUTES,
   leadMinutesSchema,
@@ -48,9 +49,11 @@ describe('notification catalogue', () => {
     expect(Object.keys(DEFAULT_RULES)).toEqual([...RULE_TYPES]);
   });
 
-  it('groups each type by its prefix and keeps the lead time on due_soon alone', () => {
-    for (const t of RULE_TYPES) expect(t.startsWith(`${NOTIFICATION_TYPE_META[t].group}.`)).toBe(true);
+  it('groups each type by its prefix, the SP8 types under audit, and keeps the lead time on due_soon and the result filter on audit.finished', () => {
+    for (const t of RULE_TYPES.filter((x) => !isAuditType(x))) expect(t.startsWith(`${NOTIFICATION_TYPE_META[t].group}.`)).toBe(true);
+    expect(RULE_TYPES.filter((t) => NOTIFICATION_TYPE_META[t].group === 'audit')).toEqual(['run.correction_required', 'run.resubmitted', 'audit.finished']);
     expect(RULE_TYPES.filter((t) => NOTIFICATION_TYPE_META[t].hasLeadTime)).toEqual(['checklist.due_soon']);
+    expect(RULE_TYPES.filter((t) => NOTIFICATION_TYPE_META[t].hasResultFilter)).toEqual(['audit.finished']);
   });
 
   it('keeps every default rule inside what its type allows', () => {
@@ -61,6 +64,7 @@ describe('notification catalogue', () => {
       if (!meta.audiences.includes('assignees')) expect(d.notifyAssignees).toBe(false);
       if (!meta.audiences.includes('creator')) expect(d.notifyCreator).toBe(false);
       expect(d.leadMinutes !== null).toBe(meta.hasLeadTime);
+      expect(d.resultFilter !== null).toBe(meta.hasResultFilter);
       if (d.leadMinutes !== null) expect(leadMinutesSchema.safeParse(d.leadMinutes).success).toBe(true);
       // A default that notifies nobody would be a dead rule.
       expect(d.notifyAssignees || d.notifyCreator || d.systemRoles.length > 0 || !d.push).toBe(true);
@@ -76,7 +80,7 @@ describe('rule schemas', () => {
   const base = { enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [ID, ID, ID2], leadMinutes: 60 };
 
   it('accepts a full rule and removes duplicate role ids', () => {
-    expect(updateNotificationRuleSchema.parse(base)).toEqual({ ...base, roleIds: [ID, ID2] });
+    expect(updateNotificationRuleSchema.parse(base)).toEqual({ ...base, roleIds: [ID, ID2], resultFilter: null });
     expect(updateNotificationRuleSchema.safeParse({ ...base, leadMinutes: null }).success).toBe(true);
   });
 
@@ -93,7 +97,7 @@ describe('rule schemas', () => {
   });
 
   it('parses the effective rule a client receives, for rule types only', () => {
-    const dto = { type: 'checklist.due_soon', ...base, roleIds: [ID], leadMinutes: 30, isDefault: false };
+    const dto = { type: 'checklist.due_soon', ...base, roleIds: [ID], leadMinutes: 30, resultFilter: null, isDefault: false };
     expect(notificationRuleDtoSchema.parse(dto)).toEqual(dto);
     expect(notificationRuleDtoSchema.safeParse({ ...dto, type: 'manual' }).success).toBe(false);
   });
@@ -220,7 +224,7 @@ describe('changes to existing contracts', () => {
     expect(meSchema.parse(me).user.emailNotifications).toBe(false);
   });
 
-  it('adds the notification permissions last, with the role defaults', () => {
+  it('adds the notification permissions, with the role defaults', () => {
     expect(PERMISSION_GROUPS.find((g) => g.group === 'notifications')).toEqual({ group: 'notifications', keys: ['notifications.manage', 'notifications.send'] });
     expect(SYSTEM_ROLE_DEFAULTS.owner.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));
     expect(SYSTEM_ROLE_DEFAULTS.admin.permissions).toEqual(expect.arrayContaining(['notifications.manage', 'notifications.send']));

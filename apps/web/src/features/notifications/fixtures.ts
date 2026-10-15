@@ -66,6 +66,7 @@ export const ruleDto = (type: RuleType, over: Partial<NotificationRuleDto> = {})
     notifyCreator: d.notifyCreator,
     roleIds: d.systemRoles.map((k) => ROLE_IDS[k]),
     leadMinutes: d.leadMinutes,
+    resultFilter: d.resultFilter,
     isDefault: true,
     ...over,
   };

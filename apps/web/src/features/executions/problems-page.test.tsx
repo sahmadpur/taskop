@@ -25,7 +25,7 @@ const problem = (over: Partial<ProblemDto> = {}): ProblemDto => ({
   id: 'p1', executionId: 'x1', occurrenceId: 'o1', localDate: '2026-11-02', siteId: 'site1', siteName: 'Anbar', checklistId: 'c1',
   checklistName: 'Açılış', itemId: 'i1', itemLabel: 'Temperatur', source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır',
   mediaIds: ['m1', 'm2'], media: [{ id: 'm1', kind: 'photo', status: 'uploaded' }, { id: 'm2', kind: 'video', status: 'pending' }],
-  executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', resolution: 'none', taskId: null, executionState: 'completed', ...over,
+  executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', resolution: 'none', taskId: null, executionState: 'completed', clearedAt: null, ...over,
 });
 
 beforeEach(() => {

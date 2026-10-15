@@ -19,6 +19,9 @@ export const NOTIFICATION_TYPES = [
   'task.completed',
   'task.overdue',
   'task.cancelled',
+  'run.correction_required',
+  'run.resubmitted',
+  'audit.finished',
   'manual',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -29,7 +32,7 @@ export const ruleTypeSchema = notificationTypeSchema.exclude(['manual']);
 export type RuleType = z.infer<typeof ruleTypeSchema>;
 export const RULE_TYPES: readonly RuleType[] = ruleTypeSchema.options;
 
-export const NOTIFICATION_GROUPS = ['checklist', 'problem', 'task'] as const;
+export const NOTIFICATION_GROUPS = ['checklist', 'problem', 'task', 'audit'] as const;
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
 /** Direct audiences a rule can switch on. For checklist.assigned, "assignees" means the users just added. */
@@ -42,11 +45,15 @@ export interface NotificationTypeMeta {
   audiences: readonly DirectAudience[];
   /** Only checklist.due_soon has a lead time. */
   hasLeadTime: boolean;
+  /** Only audit.finished: notify on every result, or on failed audits only (SP8 spec §7.1). */
+  hasResultFilter: boolean;
 }
 
-const checklistMeta = (hasLeadTime = false): NotificationTypeMeta => ({ group: 'checklist', audiences: ['assignees'], hasLeadTime });
-const problemMeta: NotificationTypeMeta = { group: 'problem', audiences: [], hasLeadTime: false };
-const taskMeta: NotificationTypeMeta = { group: 'task', audiences: ['assignees', 'creator'], hasLeadTime: false };
+const checklistMeta = (hasLeadTime = false): NotificationTypeMeta => ({ group: 'checklist', audiences: ['assignees'], hasLeadTime, hasResultFilter: false });
+const problemMeta: NotificationTypeMeta = { group: 'problem', audiences: [], hasLeadTime: false, hasResultFilter: false };
+const taskMeta: NotificationTypeMeta = { group: 'task', audiences: ['assignees', 'creator'], hasLeadTime: false, hasResultFilter: false };
+/** SP8: for run.correction_required and audit.finished "assignees" is the executor; for run.resubmitted "creator" is who sent it back. */
+const auditMeta = (audiences: readonly DirectAudience[], hasResultFilter = false): NotificationTypeMeta => ({ group: 'audit', audiences, hasLeadTime: false, hasResultFilter });
 
 export const NOTIFICATION_TYPE_META: Record<RuleType, NotificationTypeMeta> = {
   'checklist.assigned': checklistMeta(),
@@ -62,12 +69,20 @@ export const NOTIFICATION_TYPE_META: Record<RuleType, NotificationTypeMeta> = {
   'task.completed': taskMeta,
   'task.overdue': taskMeta,
   'task.cancelled': taskMeta,
+  'run.correction_required': auditMeta(['assignees']),
+  'run.resubmitted': auditMeta(['creator']),
+  'audit.finished': auditMeta(['assignees'], true),
 };
 
 /** FR-15.04: one tenant-wide reminder lead time on the due-soon rule. */
 export const LEAD_MINUTES = [15, 30, 60, 120] as const;
 export type LeadMinutes = (typeof LEAD_MINUTES)[number];
 export const leadMinutesSchema = z.literal([15, 30, 60, 120]);
+
+/** audit.finished's rule option (SP8 spec §7.1). */
+export const AUDIT_RESULT_FILTERS = ['any', 'failed'] as const;
+export const auditResultFilterSchema = z.enum(AUDIT_RESULT_FILTERS);
+export type AuditResultFilter = z.infer<typeof auditResultFilterSchema>;
 
 export type DefaultRule = {
   enabled: boolean;
@@ -78,6 +93,8 @@ export type DefaultRule = {
   /** Turned into the tenant's role ids by the API (roles.system_key); clients never see this. */
   systemRoles: readonly SystemRoleKey[];
   leadMinutes: LeadMinutes | null;
+  /** audit.finished only; null elsewhere. */
+  resultFilter: AuditResultFilter | null;
 };
 
 const rule = (
@@ -87,7 +104,8 @@ const rule = (
   notifyCreator: boolean,
   systemRoles: readonly SystemRoleKey[] = [],
   leadMinutes: LeadMinutes | null = null,
-): DefaultRule => ({ enabled: true, push, email, notifyAssignees, notifyCreator, systemRoles, leadMinutes });
+  resultFilter: AuditResultFilter | null = null,
+): DefaultRule => ({ enabled: true, push, email, notifyAssignees, notifyCreator, systemRoles, leadMinutes, resultFilter });
 
 /** Spec §3.1: the rule a tenant has until it saves its own. */
 export const DEFAULT_RULES: Record<RuleType, DefaultRule> = {
@@ -104,10 +122,16 @@ export const DEFAULT_RULES: Record<RuleType, DefaultRule> = {
   'task.completed': rule(true, false, false, true),
   'task.overdue': rule(true, false, true, true),
   'task.cancelled': rule(true, false, true, false),
+  'run.correction_required': rule(true, false, true, false),
+  'run.resubmitted': rule(false, false, false, true),
+  'audit.finished': rule(false, false, true, false, ['manager'], null, 'failed'),
 };
 
 /** The web opens a problem notification on the execution tab. */
 export const isProblemType = (t: NotificationType): boolean => t.startsWith('problem.');
+
+/** The SP8 types: their inbox items open the run, like checklist types. */
+export const isAuditType = (t: NotificationType): boolean => t === 'run.correction_required' || t === 'run.resubmitted' || t === 'audit.finished';
 
 /** The effective rule (spec §3.2): the default with the tenant's row laid over it. */
 export const notificationRuleDtoSchema = z.object({
@@ -119,6 +143,7 @@ export const notificationRuleDtoSchema = z.object({
   notifyCreator: z.boolean(),
   roleIds: z.array(idSchema),
   leadMinutes: leadMinutesSchema.nullable(),
+  resultFilter: auditResultFilterSchema.nullable(),
   /** True while the tenant has no override row. */
   isDefault: z.boolean(),
 });
@@ -136,6 +161,7 @@ export const updateNotificationRuleSchema = z.object({
     .max(50)
     .transform((ids) => [...new Set(ids)]),
   leadMinutes: leadMinutesSchema.nullable(),
+  resultFilter: auditResultFilterSchema.nullable().default(null),
 });
 export type UpdateNotificationRuleInput = z.input<typeof updateNotificationRuleSchema>;
 export type UpdateNotificationRuleOutput = z.output<typeof updateNotificationRuleSchema>;
@@ -213,6 +239,7 @@ export const NOTIFICATION_ISSUE_CODES = [
   'notifications.issues.leadMinutesRequired',
   'notifications.issues.leadMinutesNotApplicable',
   'notifications.issues.audienceNotApplicable',
+  'notifications.issues.resultFilterNotApplicable',
 ] as const;
 export type NotificationIssueCode = (typeof NOTIFICATION_ISSUE_CODES)[number];
 

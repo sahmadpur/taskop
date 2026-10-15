@@ -189,11 +189,16 @@ export type AuditBrief = z.infer<typeof auditBriefSchema>;
 
 const dedupe = (list: readonly string[]): string[] => [...new Set(list)];
 
+/** A list of addresses: each one is validated and lower-cased by `emailSchema`; duplicates are dropped; at most `max`. */
+export const emailListSchema = (max: number, min = 0) =>
+  z
+    .array(emailSchema)
+    .min(min)
+    .max(max, { error: 'audits.issues.tooManyEmails' })
+    .transform(dedupe);
+
 /** checklists.audit_report_emails: lower-cased, de-duplicated, at most 10. */
-export const auditReportEmailsSchema = z
-  .array(emailSchema)
-  .max(AUDIT_LIMITS.reportEmails, { error: 'audits.issues.tooManyEmails' })
-  .transform(dedupe);
+export const auditReportEmailsSchema = emailListSchema(AUDIT_LIMITS.reportEmails);
 
 /** Spec §7.2: the checklist's addresses, then the extra ones; lower-cased, de-duplicated, at most 20. */
 export function reportRecipients(checklistEmails: readonly string[], extra: readonly string[]): string[] {

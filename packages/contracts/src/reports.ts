@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { runAuditStateSchema } from './audit-logic.js';
 import { idSchema, isoDateTimeSchema, pageOf } from './common.js';
 import { problemSeveritySchema } from './execution-logic.js';
 import { problemDtoSchema } from './execution-views.js';
@@ -46,7 +47,7 @@ export type ReportFiltersQuery = z.input<typeof reportFiltersSchema>;
 export type ReportFilters = z.output<typeof reportFiltersSchema>;
 
 export const reportRunsQuerySchema = z
-  .object({ ...filterShape, bucket: runBucketSchema.default('all'), cursor: idSchema.optional() })
+  .object({ ...filterShape, bucket: runBucketSchema.default('all'), auditState: runAuditStateSchema.optional(), cursor: idSchema.optional() })
   .superRefine(toNotBeforeFrom);
 export type ReportRunsQuery = z.input<typeof reportRunsQuerySchema>;
 export type ReportRunsParams = z.output<typeof reportRunsQuerySchema>;
@@ -64,7 +65,14 @@ export type ReportTasksParams = z.output<typeof reportTasksQuerySchema>;
 
 /** `bucket` applies to the runs export (default all), `severity` to the problems export; the full report ignores both. */
 export const reportExportQuerySchema = z
-  .object({ ...filterShape, format: reportFormatSchema, bucket: runBucketSchema.optional(), severity: problemSeveritySchema.optional() })
+  .object({
+    ...filterShape,
+    format: reportFormatSchema,
+    bucket: runBucketSchema.optional(),
+    /** The runs export only (SP8 spec §8.3). */
+    auditState: runAuditStateSchema.optional(),
+    severity: problemSeveritySchema.optional(),
+  })
   .superRefine(toNotBeforeFrom);
 export type ReportExportQuery = z.input<typeof reportExportQuerySchema>;
 export type ReportExportParams = z.output<typeof reportExportQuerySchema>;
@@ -136,6 +144,10 @@ export const reportRunSchema = z.object({
   criticalCount: count,
   late: z.boolean(),
   clockSuspect: z.boolean(),
+  /** waiting / in_progress / passed / failed; null without an audit (SP8 spec §8.3). */
+  auditState: runAuditStateSchema.nullable().default(null),
+  /** The answers were corrected (the original snapshot exists). */
+  corrected: z.boolean().default(false),
 });
 export type ReportRun = z.infer<typeof reportRunSchema>;
 export const reportRunPageSchema = pageOf(reportRunSchema);

@@ -56,7 +56,7 @@ const detail = {
     id: ID, executionId: ID, occurrenceId: ID, localDate: '2026-11-02', siteId: ID, siteName: 'Anbar №1', checklistId: ID,
     checklistName: 'Açılış', itemId: ID, itemLabel: 'Temperatur', source: 'manual', severity: 'critical', note: 'Qapı bağlanmır',
     mediaIds: [ID], media: [{ id: ID, kind: 'video', status: 'pending' }], executorName: 'Elvin', createdAt: AT, resolution: 'open',
-    taskId: ID, executionState: 'partial',
+    taskId: ID, executionState: 'partial', clearedAt: null,
   },
   history: [{ id: ID, fromStatus: 'in_progress', toStatus: 'awaiting_review', at: AT, actor: user, comment: null }],
   canManage: true,

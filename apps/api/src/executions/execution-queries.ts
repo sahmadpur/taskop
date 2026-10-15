@@ -54,6 +54,11 @@ export class ExecutionQueries {
       lastSyncedAt: row.x.lastSyncedAt.toISOString(),
       media: media.map(toMediaDto),
       problems: problems.map((r) => toProblemEntry(r.p, r.taskId, r.taskStatus)),
+      // Sub-project 8: filled from the rework, snapshot and audit rows in Task 10.
+      reworkRound: 0,
+      rework: null,
+      corrected: false,
+      audit: null,
     };
   }
 }

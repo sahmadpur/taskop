@@ -120,6 +120,8 @@ export class SyncService {
         late: x.late,
         clockSuspect: x.clockSuspect,
         mediaPending,
+        reworkRound: 0,
+        rework: null,
       })),
       ...(await this.taskSync.forUser(p, q.knownTaskIds, now)),
       unreadNotifications: await this.inbox.unreadCount(p.userId),

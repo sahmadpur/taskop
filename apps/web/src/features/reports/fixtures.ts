@@ -111,6 +111,8 @@ export const reportRun = (over: Partial<ReportRun> = {}): ReportRun => ({
   criticalCount: 0,
   late: false,
   clockSuspect: false,
+  auditState: null,
+  corrected: false,
   ...over,
 });
 

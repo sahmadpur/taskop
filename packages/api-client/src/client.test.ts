@@ -445,7 +445,7 @@ describe('notification endpoints', () => {
   const now = '2026-11-02T04:00:00.000Z';
   const token = 'ExponentPushToken[abc]';
   const zero = { queued: 0, sent: 0, delivered: 0, failed: 0, skipped: 0 };
-  const rule = { type: 'task.assigned', enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null, isDefault: true };
+  const rule = { type: 'task.assigned', enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null, resultFilter: null, isDefault: true };
   const summary = {
     id, title: 'Diqqət', body: 'Sabah iclas var.', sender: { id, fullName: 'Elvin' }, sentAt: now, emailRequested: false,
     processed: false, recipientCount: 0, readCount: 0, push: zero, email: zero,
