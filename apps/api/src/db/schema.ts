@@ -301,6 +301,9 @@ export const checklists = pgTable(
     sourceTemplateKind: templateSourceKind('source_template_kind'),
     sourceTemplateId: uuid('source_template_id'),
     sourceVersionId: uuid('source_version_id'),
+    // SP8 spec §4.1: settings, not versioned content.
+    requiresAudit: boolean('requires_audit').notNull().default(false),
+    auditReportEmails: text('audit_report_emails').array().notNull().default(sql`'{}'::text[]`),
     createdByUserId: createdByUser(),
     createdByPlatformAdminId: createdByPlatform(),
     createdAt: createdAt(),
@@ -421,6 +424,7 @@ export const occurrenceStatus = pgEnum('occurrence_status', [
   'cancelled',
   'audit_pending',
   'audited',
+  'correction_required',
 ]);
 
 const localDate = (name: string) => date(name, { mode: 'string' });
@@ -591,13 +595,15 @@ export const occurrenceStatusHistory = pgTable(
 );
 
 // Must match EXECUTION_STATES, CLAIM_REJECTION_REASONS, MEDIA_*, PROBLEM_SOURCES and PROBLEM_SEVERITIES in @taskop/contracts.
-export const executionState = pgEnum('execution_state', ['active', 'completed', 'partial', 'rejected']);
+export const executionState = pgEnum('execution_state', ['active', 'completed', 'partial', 'rejected', 'rework']);
 export const claimRejectionReason = pgEnum('claim_rejection_reason', ['ALREADY_CLAIMED', 'NOT_ASSIGNED', 'NOT_STARTABLE', 'NOT_YET_OPEN', 'CLOSED', 'NOT_ON_SHIFT']);
 export const mediaKind = pgEnum('media_kind', ['photo', 'video']);
 export const mediaSource = pgEnum('media_source', ['camera', 'gallery']);
 export const mediaStatus = pgEnum('media_status', ['pending', 'uploaded']);
 export const problemSource = pgEnum('problem_source', ['rule', 'manual']);
 export const problemSeverity = pgEnum('problem_severity', ['normal', 'critical']);
+// Must match CORRECTION_KINDS in @taskop/contracts.
+export const correctionKind = pgEnum('correction_kind', ['manual', 'rework']);
 
 /** One attempt to execute an occurrence (SP4 spec §5.2). The id is generated on the phone, so every command is idempotent. */
 export const executions = pgTable(
@@ -624,6 +630,12 @@ export const executions = pgTable(
     clockOffsetMs: integer('clock_offset_ms'),
     clockSuspect: boolean('clock_suspect').notNull().default(false),
     device: jsonb('device').notNull(),
+    // The one-time snapshot taken by the first correction or send-back (SP8 spec §4.1); a trigger keeps it immutable.
+    originalAnswers: jsonb('original_answers'),
+    originalScore: jsonb('original_score'),
+    originalCapturedAt: ts('original_captured_at'),
+    // Send-back rounds so far.
+    reworkRound: integer('rework_round').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -674,6 +686,35 @@ export const executionMedia = pgTable(
   ],
 );
 
+/** Append-only (BR-14, FR-19.13): one row per changed item. The app account may only INSERT and SELECT. */
+export const executionCorrections = pgTable(
+  'execution_corrections',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    executionId: uuid('execution_id').notNull(),
+    itemId: uuid('item_id').notNull(),
+    kind: correctionKind('kind').notNull(),
+    // executions.rework_round at the time: 0 for a manual correction before any send-back.
+    round: integer('round').notNull(),
+    // The item's whole answer before and after, or null.
+    before: jsonb('before'),
+    after: jsonb('after'),
+    // manual: the manager's reason; rework: the manager's comment on the item.
+    reason: text('reason').notNull(),
+    actorUserId: uuid('actor_user_id'),
+    actorPlatformAdminId: uuid('actor_platform_admin_id'),
+    at: ts('at').notNull(),
+  },
+  (t) => [
+    unique('execution_corrections_tenant_id_uq').on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'execution_corrections_execution_fk' }),
+    foreignKey({ columns: [t.tenantId, t.actorUserId], foreignColumns: [users.tenantId, users.id], name: 'execution_corrections_actor_fk' }),
+    check('execution_corrections_actor_ck', sql`num_nonnulls(${t.actorUserId}, ${t.actorPlatformAdminId}) = 1`),
+    index('execution_corrections_execution_idx').on(t.tenantId, t.executionId, t.at),
+  ],
+);
+
 /** Rule and manual problems of counted executions (FR-13), derived from the answers; frozen once the execution closes. */
 export const executionProblems = pgTable(
   'execution_problems',
@@ -689,19 +730,62 @@ export const executionProblems = pgTable(
     severity: problemSeverity('severity').notNull(),
     note: text('note'),
     mediaIds: uuid('media_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    // A correction after close removed it (SP8 spec §4.1): the row stays, so a task made from it keeps its link.
+    clearedAt: ts('cleared_at'),
+    clearedByCorrectionId: uuid('cleared_by_correction_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     // The target of tasks_problem_fk (composite, like every tenant-scoped reference).
     unique('execution_problems_tenant_id_uq').on(t.tenantId, t.id),
-    unique('execution_problems_item_uq').on(t.executionId, t.itemId, t.source),
+    // One active problem per item and source; a cleared row and a new active row may coexist.
+    uniqueIndex('execution_problems_active_item_uq').on(t.executionId, t.itemId, t.source).where(sql`cleared_at is null`),
+    foreignKey({
+      columns: [t.tenantId, t.clearedByCorrectionId],
+      foreignColumns: [executionCorrections.tenantId, executionCorrections.id],
+      name: 'execution_problems_cleared_by_fk',
+    }),
     foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'execution_problems_execution_fk' }),
     foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'execution_problems_occurrence_fk' }),
     foreignKey({ columns: [t.tenantId, t.siteId], foreignColumns: [sites.tenantId, sites.id], name: 'execution_problems_site_fk' }),
     foreignKey({ columns: [t.tenantId, t.checklistId], foreignColumns: [checklists.tenantId, checklists.id], name: 'execution_problems_checklist_fk' }),
     index('execution_problems_site_idx').on(t.tenantId, t.siteId, t.createdAt),
     index('execution_problems_severity_idx').on(t.tenantId, t.severity, t.createdAt),
+  ],
+);
+
+/** A send-back (SP8 spec §4.2). Open while both resubmitted_at and withdrawn_at are null. */
+export const executionReworkRequests = pgTable(
+  'execution_rework_requests',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    executionId: uuid('execution_id').notNull(),
+    round: integer('round').notNull(),
+    // [{ itemId, comment }]
+    items: jsonb('items').notNull(),
+    dueAt: ts('due_at'),
+    requestedByUserId: uuid('requested_by_user_id'),
+    requestedByPlatformAdminId: uuid('requested_by_platform_admin_id'),
+    requestedAt: ts('requested_at').notNull(),
+    // The answers when the run was sent back: the base of the rework guard and of the rework corrections.
+    answersBefore: jsonb('answers_before').notNull(),
+    // completed or audit_pending; restored when the send-back is withdrawn.
+    statusBefore: occurrenceStatus('status_before').notNull(),
+    resubmittedAt: ts('resubmitted_at'),
+    withdrawnAt: ts('withdrawn_at'),
+    withdrawnByUserId: uuid('withdrawn_by_user_id'),
+  },
+  (t) => [
+    unique('execution_rework_requests_tenant_id_uq').on(t.tenantId, t.id),
+    unique('execution_rework_requests_round_uq').on(t.executionId, t.round),
+    uniqueIndex('execution_rework_requests_open_uq').on(t.executionId).where(sql`resubmitted_at is null and withdrawn_at is null`),
+    foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'execution_rework_requests_execution_fk' }),
+    foreignKey({ columns: [t.tenantId, t.requestedByUserId], foreignColumns: [users.tenantId, users.id], name: 'execution_rework_requests_requested_by_fk' }),
+    foreignKey({ columns: [t.tenantId, t.withdrawnByUserId], foreignColumns: [users.tenantId, users.id], name: 'execution_rework_requests_withdrawn_by_fk' }),
+    check('execution_rework_requests_requester_ck', sql`num_nonnulls(${t.requestedByUserId}, ${t.requestedByPlatformAdminId}) = 1`),
+    check('execution_rework_requests_status_before_ck', sql`${t.statusBefore} in ('completed', 'audit_pending')`),
   ],
 );
 
@@ -986,6 +1070,8 @@ export const notificationRules = pgTable(
     roleIds: uuid('role_ids').array().notNull().default(sql`'{}'::uuid[]`),
     // checklist.due_soon only.
     leadMinutes: integer('lead_minutes'),
+    // audit.finished only: any | failed (SP8 spec §7.1).
+    resultFilter: text('result_filter'),
     updatedAt: updatedAt(),
     updatedBy: uuid('updated_by'),
   },
@@ -993,5 +1079,77 @@ export const notificationRules = pgTable(
     primaryKey({ name: 'notification_rules_pk', columns: [t.tenantId, t.type] }),
     foreignKey({ columns: [t.tenantId, t.updatedBy], foreignColumns: [users.tenantId, users.id], name: 'notification_rules_updated_by_fk' }),
     check('notification_rules_lead_ck', sql`${t.leadMinutes} is null or ${t.leadMinutes} in (15, 30, 60, 120)`),
+    check('notification_rules_result_filter_ck', sql`${t.resultFilter} is null or ${t.resultFilter} in ('any', 'failed')`),
+  ],
+);
+
+// Must match AUDIT_STATUSES, AUDIT_RESULTS, AUDIT_VERDICTS and AUDIT_REPORT_STATUSES in @taskop/contracts.
+export const auditStatus = pgEnum('audit_status', ['in_progress', 'finished', 'cancelled']);
+export const auditResult = pgEnum('audit_result', ['passed', 'failed']);
+export const auditVerdict = pgEnum('audit_verdict', ['approved', 'rejected']);
+export const auditReportStatus = pgEnum('audit_report_status', ['none', 'pending', 'ready', 'failed']);
+
+/** A formal audit of a completed run (SP8 spec §4.2). At most one non-cancelled audit per execution. */
+export const audits = pgTable(
+  'audits',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    executionId: uuid('execution_id').notNull(),
+    occurrenceId: uuid('occurrence_id').notNull(),
+    status: auditStatus('status').notNull().default('in_progress'),
+    auditorUserId: uuid('auditor_user_id'),
+    auditorPlatformAdminId: uuid('auditor_platform_admin_id'),
+    startedAt: ts('started_at').notNull(),
+    finishedAt: ts('finished_at'),
+    cancelledAt: ts('cancelled_at'),
+    cancelReason: text('cancel_reason'),
+    result: auditResult('result'),
+    // { approved, rejected, reviewed, percent }
+    auditScore: jsonb('audit_score'),
+    comment: text('comment'),
+    reportStatus: auditReportStatus('report_status').notNull().default('none'),
+    reportStorageKey: text('report_storage_key'),
+    reportRecipients: text('report_recipients').array().notNull().default(sql`'{}'::text[]`),
+    reportSentAt: ts('report_sent_at'),
+    // Failed attempts of the audit.report job (Spec decision 27).
+    reportAttempts: integer('report_attempts').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('audits_tenant_id_uq').on(t.tenantId, t.id),
+    uniqueIndex('audits_open_uq').on(t.executionId).where(sql`status <> 'cancelled'`),
+    foreignKey({ columns: [t.tenantId, t.executionId], foreignColumns: [executions.tenantId, executions.id], name: 'audits_execution_fk' }),
+    foreignKey({ columns: [t.tenantId, t.occurrenceId], foreignColumns: [occurrences.tenantId, occurrences.id], name: 'audits_occurrence_fk' }),
+    foreignKey({ columns: [t.tenantId, t.auditorUserId], foreignColumns: [users.tenantId, users.id], name: 'audits_auditor_fk' }),
+    check('audits_auditor_ck', sql`num_nonnulls(${t.auditorUserId}, ${t.auditorPlatformAdminId}) = 1`),
+    check('audits_finished_ck', sql`(${t.status} = 'finished') = (${t.finishedAt} is not null and ${t.result} is not null)`),
+    check('audits_cancelled_ck', sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null)`),
+    // The queue's In progress and Finished tabs.
+    index('audits_status_started_idx').on(t.tenantId, t.status, t.startedAt),
+    index('audits_status_finished_idx').on(t.tenantId, t.status, t.finishedAt),
+    index('audits_occurrence_idx').on(t.tenantId, t.occurrenceId),
+  ],
+);
+
+/** One verdict per audited item (FR-19.04–05). Editable while the audit is in progress (Spec decision 23: own tenant_id). */
+export const auditItemVerdicts = pgTable(
+  'audit_item_verdicts',
+  {
+    tenantId: tenantId(),
+    auditId: uuid('audit_id').notNull(),
+    itemId: uuid('item_id').notNull(),
+    verdict: auditVerdict('verdict').notNull(),
+    comment: text('comment'),
+    // Null for a platform admin.
+    updatedByUserId: uuid('updated_by_user_id'),
+    updatedAt: ts('updated_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'audit_item_verdicts_pk', columns: [t.auditId, t.itemId] }),
+    foreignKey({ columns: [t.tenantId, t.auditId], foreignColumns: [audits.tenantId, audits.id], name: 'audit_item_verdicts_audit_fk' }),
+    foreignKey({ columns: [t.tenantId, t.updatedByUserId], foreignColumns: [users.tenantId, users.id], name: 'audit_item_verdicts_updated_by_fk' }),
+    check('audit_item_verdicts_comment_ck', sql`${t.verdict} <> 'rejected' or ${t.comment} is not null`),
   ],
 );

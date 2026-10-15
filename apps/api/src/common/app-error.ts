@@ -10,6 +10,10 @@ export interface AppErrorDetails {
   /** REPORT_TOO_LARGE: the rows the export would have, and the cap (SP7 spec §5.4). */
   rows?: number;
   limit?: number;
+  /** AUDIT_EXISTS: the run's existing audit (SP8 spec §6.2). */
+  auditId?: string;
+  /** AUDIT_INCOMPLETE: the auditable items without a verdict. */
+  itemIds?: string[];
 }
 
 export class AppError extends Error {

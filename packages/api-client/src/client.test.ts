@@ -445,7 +445,7 @@ describe('notification endpoints', () => {
   const now = '2026-11-02T04:00:00.000Z';
   const token = 'ExponentPushToken[abc]';
   const zero = { queued: 0, sent: 0, delivered: 0, failed: 0, skipped: 0 };
-  const rule = { type: 'task.assigned', enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null, isDefault: true };
+  const rule = { type: 'task.assigned', enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null, resultFilter: null, isDefault: true };
   const summary = {
     id, title: 'Diqqət', body: 'Sabah iclas var.', sender: { id, fullName: 'Elvin' }, sentAt: now, emailRequested: false,
     processed: false, recipientCount: 0, readCount: 0, push: zero, email: zero,
@@ -626,5 +626,93 @@ describe('report endpoints', () => {
     expect(parseContentDispositionFilename('attachment; filename=plain.pdf')).toBe('plain.pdf');
     expect(parseContentDispositionFilename('attachment')).toBeNull();
     expect(parseContentDispositionFilename(null)).toBeNull();
+  });
+});
+
+describe('audit and correction endpoints', () => {
+  async function authed(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
+    const store = memoryTokenStore();
+    await store.save({ accessToken: 'a1', refreshToken: null });
+    return setup(handler, 'web', store);
+  }
+  const AT = '2026-11-02T04:20:00.000Z';
+  const user = { id, fullName: 'Leyla' };
+  const audit = {
+    id, executionId: id, occurrenceId: id, status: 'in_progress', paused: false, auditor: { kind: 'user', id, name: 'Auditor' },
+    startedAt: AT, finishedAt: null, cancelledAt: null, cancelReason: null, result: null, score: null, comment: null,
+    reportStatus: 'none', reportRecipients: [], reportSentAt: null, verdicts: [],
+  };
+  const verdict = { itemId: id, verdict: 'approved', comment: null, updatedBy: user, updatedAt: AT };
+  const request = { id, round: 1, items: [{ itemId: id, comment: 'Foto' }], dueAt: null, requestedBy: user, requestedAt: AT, resubmittedAt: null, withdrawnAt: null, withdrawnBy: null, answersBefore: {} };
+  const history = { original: null, corrections: [], reworkRequests: [], diff: [] };
+  const correction = { executionId: id, answersRev: 2, changedItemIds: [id], score: null };
+  const resubmitted = { executionId: id, state: 'completed', status: 'audit_pending', progress: { answered: 1, total: 1, requiredMissing: 0 }, score: null };
+
+  it('builds every path, method and body and parses each response', async () => {
+    const calls: string[] = [];
+    const { api } = await authed((url, init) => {
+      calls.push(`${init.method} ${url} ${init.body ?? ''}`.trim());
+      if (init.method === 'DELETE') return new Response(null, { status: 204 });
+      if (url.endsWith('/audits?queue=waiting&siteId=' + id)) return json(200, { items: [], nextCursor: null });
+      if (url.includes('/items/')) return json(200, verdict);
+      if (url.endsWith('/corrections') && init.method === 'POST') return json(200, correction);
+      if (url.endsWith('/corrections')) return json(200, history);
+      if (url.includes('/send-back')) return json(200, request);
+      if (url.endsWith('/resubmit')) return json(200, resubmitted);
+      return json(200, audit);
+    });
+    const t = createTaskopApi(api);
+    expect(await t.audits.list({ queue: 'waiting', siteId: id })).toEqual({ items: [], nextCursor: null });
+    expect(await t.audits.start(id)).toEqual(audit);
+    expect(await t.audits.setVerdict(id, id, { verdict: 'approved' })).toEqual(verdict);
+    expect(await t.audits.clearVerdict(id, id)).toBeUndefined();
+    expect(await t.audits.finish(id, { result: 'passed', extraEmails: ['a@x.az'] })).toEqual(audit);
+    expect(await t.audits.cancel(id, { reason: 'Səhv' })).toEqual(audit);
+    expect(await t.audits.sendReport(id)).toEqual(audit);
+    expect(await t.corrections.correct(id, { answersRev: 1, changes: [{ itemId: id, answer: { number: 5 } }], reason: 'Səhv' })).toEqual(correction);
+    expect(await t.corrections.sendBack(id, { items: [{ itemId: id, comment: 'Foto' }] })).toEqual(request);
+    expect(await t.corrections.withdraw(id)).toEqual(request);
+    expect(await t.corrections.history(id)).toEqual(history);
+    expect(await t.executions.resubmit(id, { round: 1, resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 })).toEqual(resubmitted);
+    expect(calls).toEqual([
+      `GET /api/v1/audits?queue=waiting&siteId=${id}`,
+      `POST /api/v1/executions/${id}/audits {}`,
+      `PUT /api/v1/audits/${id}/items/${id} {"verdict":"approved"}`,
+      `DELETE /api/v1/audits/${id}/items/${id}`,
+      `POST /api/v1/audits/${id}/finish {"result":"passed","extraEmails":["a@x.az"]}`,
+      `POST /api/v1/audits/${id}/cancel {"reason":"Səhv"}`,
+      `POST /api/v1/audits/${id}/report/send {}`,
+      `POST /api/v1/executions/${id}/corrections {"answersRev":1,"changes":[{"itemId":"${id}","answer":{"number":5}}],"reason":"Səhv"}`,
+      `POST /api/v1/executions/${id}/send-back {"items":[{"itemId":"${id}","comment":"Foto"}]}`,
+      `POST /api/v1/executions/${id}/send-back/cancel {}`,
+      `GET /api/v1/executions/${id}/corrections`,
+      `POST /api/v1/executions/${id}/resubmit {"round":1,"resubmittedAt":"${AT}","deviceTime":"${AT}","clientOffsetMs":0}`,
+    ]);
+  });
+
+  it('gets the audit detail through its schema', async () => {
+    const { api } = await authed(() => json(200, { ...audit, verdicts: 'not a list' }));
+    await expect(createTaskopApi(api).audits.get(id)).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+
+  it('downloads the PDF, named by Content-Disposition or audit-<id>.pdf', async () => {
+    const pdf = () => new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), { status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="taskop-audit-acilis-2026-11-02.pdf"' } });
+    const seen: string[] = [];
+    const { api } = await authed((url) => {
+      seen.push(url);
+      return seen.length === 1 ? pdf() : new Response('x', { status: 200 });
+    });
+    const a = createTaskopApi(api).audits;
+    expect((await a.downloadReport(id)).filename).toBe('taskop-audit-acilis-2026-11-02.pdf');
+    expect((await a.downloadReport(id)).filename).toBe(`audit-${id}.pdf`);
+    expect(seen).toEqual([`/api/v1/audits/${id}/report.pdf`, `/api/v1/audits/${id}/report.pdf`]);
+  });
+
+  it('exposes the existing audit id and the items without a verdict', async () => {
+    const errorOf = (code: string, extra: object) => json(409, { error: { code, messageKey: `errors.${code}`, fields: null, retryAfterSeconds: null, requestId: 'r1', ...extra } });
+    const exists = await authed(() => errorOf('AUDIT_EXISTS', { auditId: id }));
+    await expect(createTaskopApi(exists.api).audits.start(id)).rejects.toMatchObject({ code: 'AUDIT_EXISTS', auditId: id, itemIds: null });
+    const incomplete = await authed(() => errorOf('AUDIT_INCOMPLETE', { itemIds: [id] }));
+    await expect(createTaskopApi(incomplete.api).audits.finish(id, { result: 'passed' })).rejects.toMatchObject({ code: 'AUDIT_INCOMPLETE', itemIds: [id], auditId: null });
   });
 });

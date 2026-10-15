@@ -14,6 +14,7 @@ import { NativeSelect } from '@/components/native-select';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -44,6 +45,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
   const [source, setSource] = useState<ProblemSource | ''>('');
   const [resolution, setResolution] = useState<ProblemResolution | ''>('');
   const [creatingFrom, setCreatingFrom] = useState<ProblemDto | null>(null);
+  const [showCleared, setShowCleared] = useState(false);
   const rangeError = problemRangeError(range.from, range.to);
   const filters: ProblemFilters = {
     from: range.from,
@@ -53,6 +55,8 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
     severity: severity || undefined,
     source: source || undefined,
     resolution: resolution || undefined,
+    // Part 1 decision 18: cleared problems are skipped unless asked for.
+    ...(showCleared ? { includeCleared: 'true' } : {}),
   };
   const problems = useProblems(filters, rangeError === null);
   const items = problems.data?.pages.flatMap((p) => p.items) ?? [];
@@ -125,6 +129,12 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
             </option>
           ))}
         </NativeSelect>
+        <div className="flex h-9 items-center gap-2">
+          <Checkbox id="problems-show-cleared" checked={showCleared} onCheckedChange={(c) => setShowCleared(c === true)} />
+          <Label htmlFor="problems-show-cleared" className="font-normal">
+            {t('corrections.web.showCleared')}
+          </Label>
+        </div>
       </div>
       {rangeError && <p className="text-destructive text-sm">{t(rangeError)}</p>}
       {!rangeError && problems.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
@@ -142,7 +152,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
           </TableHeader>
           <TableBody>
             {items.map((p) => (
-              <TableRow key={p.id}>
+              <TableRow key={p.id} data-cleared={p.clearedAt ? 'true' : undefined} className={p.clearedAt ? 'opacity-60' : undefined}>
                 <TableCell>{formatLocalDate(p.localDate)}</TableCell>
                 <TableCell>{p.siteName}</TableCell>
                 <TableCell>{p.checklistName}</TableCell>
@@ -156,14 +166,17 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={severityVariant(p.severity)}>{t(`executions.severities.${p.severity}`)}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={severityVariant(p.severity)}>{t(`executions.severities.${p.severity}`)}</Badge>
+                    {p.clearedAt && <Badge variant="outline">{t('corrections.cleared')}</Badge>}
+                  </div>
                 </TableCell>
                 <TableCell>{t(`executions.problemSources.${p.source}`)}</TableCell>
                 <TableCell className="max-w-xs whitespace-pre-line">{p.note ?? '—'}</TableCell>
                 <TableCell>{p.executorName}</TableCell>
                 <TableCell>{p.mediaIds.length ? t('executions.problemsPage.mediaCount', { count: p.mediaIds.length }) : '—'}</TableCell>
                 <TableCell>
-                  <ResolutionCell problem={p} canCreate={canManageTasks} onCreate={() => setCreatingFrom(p)} />
+                  <ResolutionCell problem={p} canCreate={canManageTasks && !p.clearedAt} onCreate={() => setCreatingFrom(p)} />
                 </TableCell>
               </TableRow>
             ))}

@@ -111,4 +111,12 @@ describe('ExportMenu', () => {
     renderMenu({ filters: null });
     expect(screen.getByRole('button', { name: 'İxrac et' })).toBeDisabled();
   });
+
+  it('sends the audit state with the runs table only', async () => {
+    renderMenu({ auditState: 'failed' });
+    await choose('Bu cədvəl', 'CSV');
+    expect(mocks.api.reports.export).toHaveBeenLastCalledWith('runs', { ...FILTERS, format: 'csv', bucket: 'overdue', auditState: 'failed' });
+    await choose('Tam hesabat', 'PDF');
+    expect(mocks.api.reports.export).toHaveBeenLastCalledWith('full', { ...FILTERS, format: 'pdf' });
+  });
 });

@@ -1,6 +1,6 @@
 import type { Db } from './db';
 
-export const COMMAND_KINDS = ['claim', 'media', 'answers', 'complete', 'task.accept', 'task.start', 'task.media', 'task.submit'] as const;
+export const COMMAND_KINDS = ['claim', 'media', 'answers', 'complete', 'resubmit', 'task.accept', 'task.start', 'task.media', 'task.submit'] as const;
 export type CommandKind = (typeof COMMAND_KINDS)[number];
 
 /** What a command or a medium belongs to (local database version 3). */
@@ -85,6 +85,8 @@ export async function appendCommand(tx: Db, c: AppendInput): Promise<void> {
  * The oldest pending command, so each execution's and each task's commands go in order (a medium's registration before
  * the submission that lists it). A failed claim, task accept or task start holds back the later commands of its entity:
  * without it they could only fail. So does a parked task photo registration for the task's submission, which would name an unknown medium.
+ * A resubmit (SP8) goes only once no answers revision or media registration of its run is left, whatever their order:
+ * an answers revision can be re-queued after it (a refused medium), and the server checks the answers it holds.
  */
 export async function nextCommand(db: Db): Promise<OutboxCommand | null> {
   const row = await db.first<OutboxRow>(
@@ -92,6 +94,7 @@ export async function nextCommand(db: Db): Promise<OutboxCommand | null> {
      WHERE o.status = 'pending'
        AND NOT EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = o.entity_type AND c.entity_id = o.entity_id AND c.kind IN ('claim', 'task.accept', 'task.start') AND c.status = 'failed' AND c.seq < o.seq)
        AND NOT (o.kind = 'task.submit' AND EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = 'task' AND c.entity_id = o.entity_id AND c.kind = 'task.media' AND c.status = 'failed' AND c.seq < o.seq))
+       AND NOT (o.kind = 'resubmit' AND EXISTS (SELECT 1 FROM outbox c WHERE c.entity_type = 'execution' AND c.entity_id = o.entity_id AND c.kind IN ('answers', 'media')))
      ORDER BY o.seq LIMIT 1`,
   );
   return row ? toCommand(row) : null;

@@ -1,9 +1,12 @@
-import type { ExecutionDetail, ExecutionSummary, OccurrenceDetail } from '@taskop/contracts';
+import type { ExecutionDetail, ExecutionSummary, OccurrenceDetail, OccurrenceStatus } from '@taskop/contracts';
 import type { TFunction } from 'i18next';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CorrectAnswers } from '@/features/corrections/correct-answers';
+import { ReworkBanner } from '@/features/corrections/rework-banner';
+import { RunActions } from '@/features/corrections/run-actions';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
 import { useMe } from '@/lib/session';
@@ -17,7 +20,7 @@ export function ExecutionTab({ occurrence }: { occurrence: OccurrenceDetail }) {
   return (
     <div className="grid gap-4">
       {occurrence.execution ? (
-        <CountedExecution summary={occurrence.execution} />
+        <CountedExecution summary={occurrence.execution} status={occurrence.status} />
       ) : (
         <p className="text-muted-foreground">{t('executions.notStarted')}</p>
       )}
@@ -26,12 +29,26 @@ export function ExecutionTab({ occurrence }: { occurrence: OccurrenceDetail }) {
   );
 }
 
-function CountedExecution({ summary }: { summary: ExecutionSummary }) {
+function CountedExecution({ summary, status }: { summary: ExecutionSummary; status: OccurrenceStatus }) {
   const detail = useExecution(summary.id);
+  const [correcting, setCorrecting] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const d = detail.data;
+  const done = () => {
+    setConflict(false);
+    setCorrecting(false);
+  };
   return (
     <div className="grid gap-4">
-      <SummaryView summary={summary} detail={detail.data} />
-      <ExecutionAnswers id={summary.id} />
+      <SummaryView summary={summary} detail={d} />
+      {d && <ReworkBanner detail={d} />}
+      {d && !correcting && <RunActions status={status} detail={d} onCorrect={() => setCorrecting(true)} />}
+      {d && correcting ? (
+        // Keyed by the revision: an ANSWERS_CONFLICT reload starts the edit over from the newest answers.
+        <CorrectAnswers key={d.answersRev} detail={d} conflict={conflict} onConflict={() => setConflict(true)} onDone={done} />
+      ) : (
+        <ExecutionAnswers id={summary.id} />
+      )}
     </div>
   );
 }
@@ -84,6 +101,7 @@ function SummaryView({ summary, detail }: { summary: ExecutionSummary; detail?: 
         {summary.late && <Badge variant="destructive">{t('executions.flags.late')}</Badge>}
         {summary.clockSuspect && <Badge variant="outline">{t('executions.flags.clockSuspect')}</Badge>}
         {summary.mediaPending > 0 && <Badge variant="outline">{t('executions.flags.mediaPending', { count: summary.mediaPending })}</Badge>}
+        {detail?.corrected && <Badge variant="outline">{t('corrections.corrected')}</Badge>}
       </div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Field label={t('executions.executor')}>

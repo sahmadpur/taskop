@@ -9,6 +9,7 @@ import { configureApp } from '../src/app.setup';
 import { Clock } from '../src/common/clock';
 import { type AppConfig, loadConfig } from '../src/config/config';
 import { MAILER } from '../src/mail/mailer';
+import { S3Service } from '../src/storage/s3.service';
 import { MemoryMailer } from './memory-mailer';
 
 export interface TestApp {
@@ -54,13 +55,14 @@ export function testEnv(overrides: Record<string, string> = {}): Record<string, 
   };
 }
 
-export async function createTestApp(overrides: Record<string, string> = {}, opts: { clock?: Clock } = {}): Promise<TestApp> {
+export async function createTestApp(overrides: Record<string, string> = {}, opts: { clock?: Clock; storage?: object } = {}): Promise<TestApp> {
   const config = loadConfig(testEnv(overrides));
   const mailer = new MemoryMailer();
   let builder = Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
     .overrideProvider(MAILER)
     .useValue(mailer);
   if (opts.clock) builder = builder.overrideProvider(Clock).useValue(opts.clock);
+  if (opts.storage) builder = builder.overrideProvider(S3Service).useValue(opts.storage);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication();
   configureApp(app, config);

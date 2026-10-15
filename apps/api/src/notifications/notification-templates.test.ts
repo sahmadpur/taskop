@@ -1,6 +1,6 @@
-import { NOTIFICATION_TYPES, type NotificationType } from '@taskop/contracts';
+import { isAuditType, NOTIFICATION_TYPES, type NotificationType } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
-import type { AssignmentTarget, ManualTarget, OccurrenceTarget, ProblemTarget, TaskTarget } from './notification-targets';
+import type { AssignmentTarget, ManualTarget, OccurrenceTarget, ProblemTarget, RunTarget, TaskTarget } from './notification-targets';
 import { notificationLink, notificationMail, renderNotification } from './notification-templates';
 
 const OCC = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01';
@@ -15,6 +15,10 @@ const assignment: AssignmentTarget = { kind: 'assignment', assignmentId: OCC, ad
 const task: TaskTarget = {
   kind: 'task', taskId: TASK, title: 'Soyuducunun qapısını təmir edin', assigneeUserId: null, assigneeTeamId: null, createdByUserId: TASK,
   dueAt: new Date('2026-11-02T10:30:00Z'), timezone: 'Asia/Baku',
+};
+const run: RunTarget = {
+  kind: 'run', occurrence, executionId: OCC, executorUserId: TASK, executorName: 'Aysel', round: 2, flaggedCount: 3,
+  dueAt: null, sentBackByUserId: TASK, auditResult: 'failed', auditPercent: 66.7,
 };
 const manual: ManualTarget = { kind: 'manual', title: 'Diqqət', body: 'Sabah iclas var.', userIds: [], teamIds: [], siteIds: [], email: false, senderUserId: null };
 const onOccurrence = { targetKind: 'occurrence', targetId: OCC, targetDate: '2026-11-02' } as const;
@@ -60,9 +64,37 @@ describe('renderNotification', () => {
   });
 });
 
+describe('SP8 texts', () => {
+  it('renders the three types on the run, opening the occurrence', () => {
+    expect(renderNotification('run.correction_required', run)).toEqual({
+      title: 'Düzəliş tələb olunur', body: 'Açılış yoxlaması — Filial 1: 3 bənd düzəliş gözləyir.', ...onOccurrence,
+    });
+    expect(renderNotification('run.resubmitted', run)).toEqual({
+      title: 'Düzəliş təqdim edildi', body: 'Açılış yoxlaması — Filial 1: Aysel düzəlişləri təqdim etdi (raund 2).', ...onOccurrence,
+    });
+    expect(renderNotification('audit.finished', run)).toEqual({
+      title: 'Audit tamamlandı', body: 'Açılış yoxlaması — Filial 1: Uğursuz, audit balı 66.7%.', ...onOccurrence,
+    });
+    expect(() => renderNotification('task.assigned', run)).toThrow(/cannot be rendered/);
+  });
+
+  it('adds the due date to a send-back that has one, in the tenant timezone', () => {
+    // 2026-11-03T06:00Z is 10:00 in Baku.
+    expect(renderNotification('run.correction_required', { ...run, dueAt: new Date('2026-11-03T06:00:00Z') }).body).toBe(
+      'Açılış yoxlaması — Filial 1: 3 bənd düzəliş gözləyir. Son tarix: 03.11.2026 10:00.',
+    );
+  });
+
+  it('writes one percent sign, a passed result, and a dash for a missing score', () => {
+    expect(renderNotification('audit.finished', { ...run, auditResult: 'passed', auditPercent: 85 }).body).toBe('Açılış yoxlaması — Filial 1: Uğurlu, audit balı 85%.');
+    expect(renderNotification('audit.finished', { ...run, auditResult: null, auditPercent: null }).body).toBe('Açılış yoxlaması — Filial 1: —, audit balı —.');
+  });
+});
+
 describe('every notification type', () => {
   const targetFor = (type: NotificationType) => {
     if (type === 'manual') return manual;
+    if (isAuditType(type)) return run;
     if (type === 'checklist.assigned') return assignment;
     if (type.startsWith('checklist.')) return occurrence;
     if (type.startsWith('problem.')) return problem;

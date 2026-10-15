@@ -23,7 +23,7 @@ describe('notification rules API', () => {
     const manager = await roleIdOf(s.tenantId, 'manager');
     const admin = await roleIdOf(s.tenantId, 'admin');
     expect(res.body.find((r: { type: string }) => r.type === 'problem.critical')).toEqual({
-      type: 'problem.critical', enabled: true, push: true, email: true, notifyAssignees: false, notifyCreator: false, roleIds: [manager, admin], leadMinutes: null, isDefault: true,
+      type: 'problem.critical', enabled: true, push: true, email: true, notifyAssignees: false, notifyCreator: false, roleIds: [manager, admin], leadMinutes: null, resultFilter: null, isDefault: true,
     });
   });
 
@@ -33,7 +33,7 @@ describe('notification rules API', () => {
     const manager = await roleIdOf(s.tenantId, 'manager');
     const saved = await owner.put('/api/v1/notification-rules/task.overdue', { ...full, roleIds: [manager, manager] });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(saved.body).toEqual({ type: 'task.overdue', ...full, roleIds: [manager], isDefault: false });
+    expect(saved.body).toEqual({ type: 'task.overdue', ...full, roleIds: [manager], resultFilter: null, isDefault: false });
     expect((await owner.get('/api/v1/notification-rules')).body.find((r: { type: string }) => r.type === 'task.overdue').isDefault).toBe(false);
     const reset = await owner.delete('/api/v1/notification-rules/task.overdue');
     expect(reset.status).toBe(200);

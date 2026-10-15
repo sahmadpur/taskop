@@ -35,7 +35,7 @@ describe('ChecklistsPage', () => {
   it('creates a blank checklist and opens its draft', async () => {
     const ws = fakeWorkspace();
     ws.checklists.list.mockResolvedValue({ items: [], nextCursor: null });
-    ws.checklists.create.mockResolvedValue({ ...row(), id: 'new-id', versions: [], currentVersionId: null, source: null });
+    ws.checklists.create.mockResolvedValue({ ...row(), id: 'new-id', versions: [], currentVersionId: null, source: null, requiresAudit: false, auditReportEmails: [] });
     renderInWorkspace(<ChecklistsPage />, ws);
     await userEvent.click(await screen.findByRole('button', { name: 'Yeni yoxlama vərəqəsi' }));
     await userEvent.type(screen.getByLabelText('Ad'), 'Mətbəx yoxlaması');
@@ -51,7 +51,7 @@ describe('ChecklistsPage', () => {
     ws.templates.list.mockResolvedValue([
       { id: 't1', source: 'global', name: 'Restoran mətbəxi', description: null, category: 'restaurant', status: 'active', itemCount: 11, updatedAt: '2026-10-08T08:00:00.000Z' },
     ]);
-    ws.checklists.create.mockResolvedValue({ ...row(), id: 'c9', versions: [], currentVersionId: null, source: null });
+    ws.checklists.create.mockResolvedValue({ ...row(), id: 'c9', versions: [], currentVersionId: null, source: null, requiresAudit: false, auditReportEmails: [] });
     renderInWorkspace(<ChecklistsPage />, ws);
     await userEvent.click(await screen.findByRole('button', { name: 'Yeni yoxlama vərəqəsi' }));
     await userEvent.click(screen.getByRole('tab', { name: 'Şablondan' }));

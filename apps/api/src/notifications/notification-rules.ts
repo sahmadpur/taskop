@@ -1,4 +1,5 @@
 import {
+  type AuditResultFilter,
   DEFAULT_RULES,
   type LeadMinutes,
   NOTIFICATION_TYPE_META,
@@ -18,6 +19,8 @@ export interface RuleRow {
   notifyCreator: boolean;
   roleIds: string[];
   leadMinutes: number | null;
+  /** audit.finished only. */
+  resultFilter: string | null;
 }
 
 /** The tenant's roles: the built-in ones by key, and every id that exists (roles are never deleted, only deactivated). */
@@ -39,6 +42,7 @@ export function effectiveRule(type: RuleType, row: RuleRow | null, roles: RoleCa
       notifyCreator: d.notifyCreator,
       roleIds: d.systemRoles.map((k) => roles.bySystemKey[k]).filter((id): id is string => id !== undefined),
       leadMinutes: d.leadMinutes,
+      resultFilter: d.resultFilter,
       isDefault: true,
     };
   }
@@ -52,6 +56,7 @@ export function effectiveRule(type: RuleType, row: RuleRow | null, roles: RoleCa
     roleIds: row.roleIds.filter((id) => roles.ids.has(id)),
     // notification_rules_lead_ck keeps a stored value inside LEAD_MINUTES.
     leadMinutes: NOTIFICATION_TYPE_META[type].hasLeadTime ? ((row.leadMinutes as LeadMinutes | null) ?? d.leadMinutes) : null,
+    resultFilter: NOTIFICATION_TYPE_META[type].hasResultFilter ? ((row.resultFilter as AuditResultFilter | null) ?? d.resultFilter) : null,
     isDefault: false,
   };
 }
@@ -64,5 +69,6 @@ export function ruleIssues(type: RuleType, input: UpdateNotificationRuleOutput):
   if (!meta.hasLeadTime && input.leadMinutes !== null) issues.leadMinutes = 'notifications.issues.leadMinutesNotApplicable';
   if (input.notifyAssignees && !meta.audiences.includes('assignees')) issues.notifyAssignees = 'notifications.issues.audienceNotApplicable';
   if (input.notifyCreator && !meta.audiences.includes('creator')) issues.notifyCreator = 'notifications.issues.audienceNotApplicable';
+  if (!meta.hasResultFilter && input.resultFilter !== null) issues.resultFilter = 'notifications.issues.resultFilterNotApplicable';
   return issues;
 }

@@ -15,7 +15,7 @@ import { useMe } from '@/lib/session';
 export type Variant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export const occurrenceVariant = (s: OccurrenceStatus): Variant =>
-  s === 'overdue' || s === 'missed' || s === 'partial'
+  s === 'overdue' || s === 'missed' || s === 'partial' || s === 'correction_required'
     ? 'destructive'
     : s === 'cancelled'
       ? 'outline'

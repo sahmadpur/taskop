@@ -1,3 +1,4 @@
+import { az } from '@taskop/i18n';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -125,5 +126,14 @@ describe('ReportsPage', () => {
     renderWithRouter(<ReportsPage today={TODAY} />, '/reports');
     expect(await screen.findByRole('link', { name: 'Gecikib: 1' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'İxrac et' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the runs table’s audit state in the URL', async () => {
+    const router = renderWithRouter(<ReportsPage today={TODAY} />, '/reports?tab=runs&auditState=failed');
+    await waitFor(() => expect(mocks.api.reports.runs).toHaveBeenCalledWith({ from: TODAY, to: TODAY, bucket: 'all', auditState: 'failed' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: az.audits.audit }), 'waiting');
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'runs', auditState: 'waiting' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: az.audits.audit }), '');
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'runs' }));
   });
 });

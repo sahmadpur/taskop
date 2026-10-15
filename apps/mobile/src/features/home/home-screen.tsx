@@ -90,25 +90,28 @@ export function HomeScreen() {
         </View>
       </Pressable>
       {groups ? (
-        GROUP_KEYS.map((key) => (
-          <View key={key} style={styles.group}>
-            <Text style={styles.section}>{t(`mobile.checklists.sections.${key}`)}</Text>
-            {groups[key].length === 0 ? (
-              <Text style={styles.subtitle}>{t('mobile.checklists.emptySection')}</Text>
-            ) : (
-              groups[key].map((card) => (
-                <OccurrenceCard
-                  key={card.occurrence.id}
-                  card={card}
-                  group={key}
-                  timeZone={services.timeZone}
-                  onStart={() => void start(card.occurrence)}
-                  onOpen={() => open(card.occurrence)}
-                />
-              ))
-            )}
-          </View>
-        ))
+        GROUP_KEYS.map((key) =>
+          // Spec decision 6: "Düzəliş tələb olunur" only when something was sent back.
+          key === 'rework' && groups.rework.length === 0 ? null : (
+            <View key={key} style={styles.group}>
+              <Text style={styles.section}>{t(`mobile.checklists.sections.${key}`)}</Text>
+              {groups[key].length === 0 ? (
+                <Text style={styles.subtitle}>{t('mobile.checklists.emptySection')}</Text>
+              ) : (
+                groups[key].map((card) => (
+                  <OccurrenceCard
+                    key={card.occurrence.id}
+                    card={card}
+                    group={key}
+                    timeZone={services.timeZone}
+                    onStart={() => void start(card.occurrence)}
+                    onOpen={() => open(card.occurrence)}
+                  />
+                ))
+              )}
+            </View>
+          ),
+        )
       ) : (
         <ActivityIndicator color={colors.primary} />
       )}

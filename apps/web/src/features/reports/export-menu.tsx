@@ -1,4 +1,4 @@
-import { type ProblemSeverity, REPORT_FORMATS, type ReportExportKind, type ReportFilters, type ReportFormat, type ReportKind, type RunBucket } from '@taskop/contracts';
+import { type ProblemSeverity, REPORT_FORMATS, type ReportExportKind, type ReportFilters, type ReportFormat, type ReportKind, type RunAuditState, type RunBucket } from '@taskop/contracts';
 import { Download, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,19 @@ const FULL_FORMATS: readonly ReportFormat[] = ['xlsx', 'pdf'];
  * The file is built synchronously by the API, so the trigger shows a spinner and is disabled meanwhile: one export at
  * a time (decision 14).
  */
-export function ExportMenu({ kind, filters, bucket, severity }: { kind: ReportKind; filters: ReportFilters | null; bucket?: RunBucket; severity?: ProblemSeverity }) {
+export function ExportMenu({
+  kind,
+  filters,
+  bucket,
+  severity,
+  auditState,
+}: {
+  kind: ReportKind;
+  filters: ReportFilters | null;
+  bucket?: RunBucket;
+  severity?: ProblemSeverity;
+  auditState?: RunAuditState;
+}) {
   const { t } = useTranslation();
   const allowed = useCan('reports.view', 'reports.export');
   const [busy, setBusy] = useState(false);
@@ -35,7 +47,7 @@ export function ExportMenu({ kind, filters, bucket, severity }: { kind: ReportKi
     if (!filters || busy) return;
     setBusy(true);
     try {
-      saveFile(await api.reports.export(target, exportQuery(target, filters, format, { bucket, severity })));
+      saveFile(await api.reports.export(target, exportQuery(target, filters, format, { bucket, severity, auditState })));
     } catch (e) {
       toast.error(exportErrorText(t, e));
     } finally {

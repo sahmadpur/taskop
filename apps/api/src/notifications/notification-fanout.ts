@@ -105,7 +105,10 @@ export class NotificationFanout implements OnModuleInit {
     }
     const target = await this.targets.load(type, ev.payload, ev.actorUserId);
     if (!target) return finish('target_gone');
-    const userIds = target.kind === 'manual' ? await this.recipients.forMessage(target) : await this.recipients.resolve(rule!, target, ev.actorUserId);
+    // Spec §7.1 / R11: audit.finished's failed-only filter drops the role recipients of a passed audit; the executor is always told.
+    const filtered = rule?.resultFilter === 'failed' && target.kind === 'run' && target.auditResult !== 'failed';
+    const userIds =
+      target.kind === 'manual' ? await this.recipients.forMessage(target) : await this.recipients.resolve(filtered ? { ...rule!, roleIds: [] } : rule!, target, ev.actorUserId);
     if (!userIds.length) return finish('no_recipients');
 
     const rendered = renderNotification(type, target);

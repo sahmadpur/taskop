@@ -67,6 +67,21 @@ describe('tasks from problems', () => {
     expect((await outside.post('/api/v1/tasks', newTaskBody({ userId: u.id }, { problemId: c.ruleProblemId }))).status).toBe(404);
   });
 
+  it('refuses a problem a correction cleared (ruling F3)', async () => {
+    const c = await closedRunWithProblems(t, clock);
+    const fixed = await c.w.owner.post(`/api/v1/executions/${c.executionId}/corrections`, {
+      answersRev: 1,
+      changes: [{ itemId: c.w.c.temp.id, answer: { number: 5 } }],
+      reason: 'Səhv ölçülüb',
+    });
+    expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+    const cleared = await ownerQuery<{ id: string }>('select id from execution_problems where execution_id = $1 and cleared_at is not null', [c.executionId]);
+    expect(cleared.rows.map((r) => r.id)).toContain(c.ruleProblemId);
+    const res = await c.w.owner.post('/api/v1/tasks', newTaskBody({ userId: c.w.workers[1].id }, { problemId: c.ruleProblemId }));
+    expect([res.status, res.body.error.code]).toEqual([409, 'PROBLEM_NOT_CLOSED']);
+    expect((await ownerQuery('select id from tasks where problem_id = $1', [c.ruleProblemId])).rows).toEqual([]);
+  });
+
   it('answers PROBLEM_ALREADY_HAS_TASK to the loser of two concurrent creates for one problem', async () => {
     const c = await closedRunWithProblems(t, clock);
     const body = () => newTaskBody({ userId: c.w.workers[1].id }, { problemId: c.ruleProblemId });

@@ -71,7 +71,10 @@ async function toApiError(res: Response): Promise<ApiError> {
   const parsed = errorBodySchema.safeParse(await res.json().catch(() => null));
   if (!parsed.success) return new ApiError(res.status, 'INTERNAL', 'errors.INTERNAL');
   const e = parsed.data.error;
-  return new ApiError(res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null, e.userIds ?? null, e.missing ?? null, e.rows ?? null, e.limit ?? null);
+  return new ApiError(
+    res.status, e.code, e.messageKey, e.fields, e.retryAfterSeconds, e.requestId, e.issues ?? null, e.currentRevision ?? null,
+    e.userIds ?? null, e.missing ?? null, e.rows ?? null, e.limit ?? null, e.auditId ?? null, e.itemIds ?? null,
+  );
 }
 
 export interface DownloadedFile {

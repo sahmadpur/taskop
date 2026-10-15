@@ -10,6 +10,8 @@ import {
   type ExecutionProgress,
   progress,
   requirements,
+  type ReworkItem,
+  reworkViolations,
   type SaveAnswersResult,
   type ScoreResult,
 } from '@taskop/contracts';
@@ -20,11 +22,14 @@ import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
 import { checklists, checklistVersions, executions, occurrences } from '../db/schema';
 import { EligibilityService } from '../scheduling/eligibility.service';
-import { OccurrenceWriter } from '../scheduling/occurrence-writer';
+import { OccurrenceWriter, type Transition } from '../scheduling/occurrence-writer';
+import { AuditLookup } from './audit-lookup';
 import { assertDeviceTimes, clampStart } from './device-time';
 import type { ClaimCommandDto, CompleteCommandDto, SaveAnswersCommandDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
 import { ProblemWriter } from './problem-writer';
+import { ReworkRequests } from './rework-requests';
+import { lockOwnRun } from './run-locks';
 
 export type ExecutionRow = typeof executions.$inferSelect;
 export type OccurrenceRow = typeof occurrences.$inferSelect;
@@ -44,6 +49,8 @@ export class ExecutionsService {
     private readonly writer: OccurrenceWriter,
     private readonly lookups: ExecutionLookups,
     private readonly problems: ProblemWriter,
+    private readonly reworkRequests: ReworkRequests,
+    private readonly auditLookup: AuditLookup,
   ) {}
 
   /** First claim to reach the server wins (NFR-06.05); a loser is stored as rejected and answered with 200. */
@@ -116,10 +123,11 @@ export class ExecutionsService {
   /** Spec §6.3. A stale revision is ignored before any state check, so a late, older command never fails. */
   async saveAnswers(p: Principal, id: string, cmd: SaveAnswersCommandDto): Promise<SaveAnswersResult> {
     const receivedAt = this.clock.now();
-    const { e, o } = await this.lockForCommand(p, id);
+    const { e, o } = await lockOwnRun(this.db, p, id);
     const deviceTime = new Date(cmd.deviceTime);
     const bounds = assertDeviceTimes([deviceTime], receivedAt, cmd.clientOffsetMs);
     if (cmd.rev <= e.answersRev) return this.answersResult(e, true);
+    if (e.state === 'rework') return this.saveReworkAnswers(e, cmd, bounds.clockSuspect, receivedAt);
     // Answers made inside the window count, even when they sync after the sweep made the execution partial;
     // nothing made at or after closes_at does, whether or not the sweep has run yet. Rejected executions store anything.
     const closed = e.state === 'completed' || (e.state === 'partial' && e.completedAt !== null);
@@ -147,12 +155,37 @@ export class ExecutionsService {
   }
 
   /**
+   * SP8 Spec decisions 5, 21 and 28: a run sent back takes answers for its flagged items (and the follow-ups they reveal or
+   * hide) only, whatever closes_at says. Score and problems are recalculated by the resubmit. No open request (withdrawn)
+   * is EXECUTION_NOT_ACTIVE.
+   */
+  private async saveReworkAnswers(e: ExecutionRow, cmd: SaveAnswersCommandDto, suspect: boolean, receivedAt: Date): Promise<SaveAnswersResult> {
+    const request = await this.reworkRequests.open(e.id);
+    if (!request) throw new AppError('EXECUTION_NOT_ACTIVE');
+    const content = await this.lookups.content(e.checklistVersionId);
+    const flagged = new Set((request.items as ReworkItem[]).map((x) => x.itemId));
+    // Spec decision 28: the follow-ups a flagged change reveals or hides may change too.
+    const outside = reworkViolations(content, request.answersBefore as Answers, cmd.answers, flagged);
+    if (outside.length) {
+      throw new AppError('ITEM_NOT_IN_REWORK', { fields: Object.fromEntries(outside.map((itemId) => [`answers.${itemId}`, 'errors.ITEM_NOT_IN_REWORK'])) });
+    }
+    await this.assertValidAnswers(content, e.id, cmd.answers);
+    const [row] = await this.db
+      .tx()
+      .update(executions)
+      .set({ ...this.answersColumns(e, cmd.answers, cmd.rev, cmd.clientOffsetMs, suspect, receivedAt), progress: progress(content, cmd.answers) })
+      .where(eq(executions.id, e.id))
+      .returning();
+    return this.answersResult(row!, false);
+  }
+
+  /**
    * Spec §6.4. Saves the answers (when newer), checks requirements on the pinned version, then decides by device time:
    * completedAt < closes_at → completed (reviving a swept partial), otherwise partial. Score and problems are frozen.
    */
   async complete(p: Principal, id: string, cmd: CompleteCommandDto): Promise<CompleteResult> {
     const receivedAt = this.clock.now();
-    const { e, o } = await this.lockForCommand(p, id);
+    const { e, o } = await lockOwnRun(this.db, p, id);
     const bounds = assertDeviceTimes([new Date(cmd.deviceTime), new Date(cmd.completedAt)], receivedAt, cmd.clientOffsetMs);
     if (e.completedAt) return this.completeResult(e);
     const content = await this.lookups.content(e.checklistVersionId);
@@ -189,9 +222,10 @@ export class ExecutionsService {
       .returning();
     await this.problems.rewrite(e, o, content, answers, receivedAt);
     if (inWindow) {
-      await this.writer.applyTransitions([
-        { occurrenceId: o.id, from: o.status, to: 'completed', at: completedAt, reason: o.status === 'partial' ? 'late_sync' : null },
-      ]);
+      const steps: Transition[] = [{ occurrenceId: o.id, from: o.status, to: 'completed', at: completedAt, reason: o.status === 'partial' ? 'late_sync' : null }];
+      // SP8 Spec decision 10: a checklist that requires audit puts the run in the audit queue in the same transaction.
+      if (await this.auditLookup.requiresAudit(o.checklistId)) steps.push({ occurrenceId: o.id, from: 'completed', to: 'audit_pending', at: completedAt, system: true });
+      await this.writer.applyTransitions(steps);
     } else if (o.status !== 'partial') {
       await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: 'partial', at: o.closesAt }]);
     }
@@ -219,17 +253,6 @@ export class ExecutionsService {
       clockSuspect: e.clockSuspect || suspect,
       updatedAt: receivedAt,
     };
-  }
-
-  /** Locks the occurrence, then the execution (the order every command uses), and checks the executor. */
-  private async lockForCommand(p: Principal, id: string): Promise<{ e: ExecutionRow; o: OccurrenceRow }> {
-    const tx = this.db.tx();
-    const [found] = await tx.select({ occurrenceId: executions.occurrenceId }).from(executions).where(eq(executions.id, id));
-    if (!found) throw new AppError('NOT_FOUND');
-    const [o] = await tx.select().from(occurrences).where(eq(occurrences.id, found.occurrenceId)).for('update');
-    const [e] = await tx.select().from(executions).where(eq(executions.id, id)).for('update');
-    if (e!.executorUserId !== p.userId) throw new AppError('NOT_EXECUTOR');
-    return { e: e!, o: o! };
   }
 
   /** Item ids, value types and media against the pinned version (spec §6.3) → 400 VALIDATION_FAILED with issues. */

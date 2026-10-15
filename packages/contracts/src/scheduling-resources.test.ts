@@ -53,7 +53,7 @@ describe('scheduling resources', () => {
   });
 
   it('defines the full FR-11.01 status list', () => {
-    expect(OCCURRENCE_STATUSES).toEqual(['pending', 'started', 'in_progress', 'completed', 'partial', 'overdue', 'missed', 'cancelled', 'audit_pending', 'audited']);
+    expect(OCCURRENCE_STATUSES).toEqual(['pending', 'started', 'in_progress', 'completed', 'partial', 'overdue', 'missed', 'cancelled', 'audit_pending', 'audited', 'correction_required']);
   });
 
   it('registers error codes, the userIds detail and permissions', () => {

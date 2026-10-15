@@ -1,7 +1,7 @@
 import { ApiError } from '@taskop/api-client';
 import type { LocalDate, ReportFiltersQuery, RunBucket } from '@taskop/contracts';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, session } from '@/lib/session';
 
 /** Team data this young counts as fresh (decision 7): switching chips back and forth reuses it. */
@@ -26,6 +26,8 @@ export const teamKeys = {
   runs: (viewerId: string, f: TeamFilters, bucket: RunBucket) => ['team', viewerId, 'list', 'runs', f.from, f.to, f.userId, bucket] as const,
   occurrence: (viewerId: string, id: string) => ['team', viewerId, 'run', 'occurrence', id] as const,
   execution: (viewerId: string, id: string) => ['team', viewerId, 'run', 'execution', id] as const,
+  audit: (viewerId: string, id: string) => ['team', viewerId, 'run', 'audit', id] as const,
+  corrections: (viewerId: string, executionId: string) => ['team', viewerId, 'run', 'corrections', executionId] as const,
 };
 
 /** The shared report filters (Part 1 `reportFiltersSchema`); `userId` only when someone is picked. */
@@ -65,6 +67,73 @@ export const useTeamExecution = (viewerId: string, executionId: string | null, e
     enabled: enabled && executionId !== null,
     ...common,
   });
+
+/** GET /audits/:id (SP8): the audit with its verdicts and the run as it is now. */
+export const useTeamAudit = (viewerId: string, auditId: string, enabled: boolean) =>
+  useQuery({ queryKey: teamKeys.audit(viewerId, auditId), queryFn: () => api.audits.get(auditId), enabled, ...common });
+
+/** GET /executions/:id/corrections (SP8): the corrections timeline, only for a run that has an execution. */
+export const useTeamCorrections = (viewerId: string, executionId: string | null, enabled: boolean) =>
+  useQuery({
+    queryKey: teamKeys.corrections(viewerId, executionId ?? ''),
+    queryFn: () => api.corrections.history(executionId!),
+    enabled: enabled && executionId !== null,
+    ...common,
+  });
+
+export type CommandResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+export interface RunOptions {
+  /** `false`: a success leaves the cache alone (a verdict updates the cached audit itself). */
+  refresh?: boolean;
+  /** True for a refusal that means the screen shows stale data: the viewer's team queries are refreshed. */
+  refreshOnError?: (e: ApiError) => boolean;
+}
+
+export interface RunCommand {
+  /** Null when another action of this screen is still in flight (a second tap does nothing). */
+  run<T>(job: () => Promise<T>, o?: RunOptions): Promise<CommandResult<T> | null>;
+  busy: boolean;
+  /** The last failure, for the screen to show; cleared by the next action. */
+  error: unknown;
+  clearError(): void;
+}
+
+/**
+ * The Team run screen's server actions (audit, verdict, correction, send-back, withdraw): one at a time. A success
+ * refreshes every team query of the viewer (the run's status, its execution and audit, the list's buckets) unless
+ * `refresh: false` (a verdict updates the cached audit itself). A refusal refreshes them only when `refreshOnError`
+ * says the screen was showing stale data.
+ */
+export function useRunCommand(viewerId: string): RunCommand {
+  const client = useQueryClient();
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const run = useCallback(
+    async <T>(job: () => Promise<T>, o: RunOptions = {}): Promise<CommandResult<T> | null> => {
+      if (inFlight.current) return null;
+      inFlight.current = true;
+      setBusy(true);
+      setError(null);
+      try {
+        const value = await job();
+        if (o.refresh !== false) await client.invalidateQueries({ queryKey: teamKeys.all(viewerId) });
+        return { ok: true, value };
+      } catch (e) {
+        setError(e);
+        if (e instanceof ApiError && o.refreshOnError?.(e)) void client.invalidateQueries({ queryKey: teamKeys.all(viewerId) });
+        return { ok: false, error: e };
+      } finally {
+        inFlight.current = false;
+        setBusy(false);
+      }
+    },
+    [client, viewerId],
+  );
+  const clearError = useCallback(() => setError(null), []);
+  return { run, busy, error, clearError };
+}
 
 /**
  * Decision 9: a 403 means the role changed after the profile was cached. Refreshing it lets the tab and the routes follow

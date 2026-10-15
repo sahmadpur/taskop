@@ -18,6 +18,7 @@
     "db:seed": "tsx --env-file=.env src/db/scripts/seed.ts",
     "db:seed-report-volume": "tsx --env-file=.env src/scripts/seed-report-volume.ts",
     "perf:reports": "tsx test/perf/time-reports.ts",
+    "perf:audit-report": "RUN_PERF=1 vitest run test/audit-report-perf.test.ts --disable-console-intercept",
     "keys:generate": "tsx src/scripts/generate-keys.ts",
     "platform:create-admin": "tsx --env-file=.env src/scripts/create-platform-admin.ts"
   },
@@ -38,6 +39,7 @@
     "nestjs-pino": "^5.3.1",
     "nestjs-zod": "^5.5.0",
     "nodemailer": "^10.0.15",
+    "pdfkit": "^0.19.1",
     "pdfmake": "^0.3.11",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.0",
@@ -59,6 +61,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
     "@types/nodemailer": "^8.0.2",
+    "@types/pdfkit": "^0.17.6",
     "@types/pdfmake": "^0.3.3",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",

@@ -98,6 +98,7 @@ export const problemDto = (over: Partial<ProblemDto> = {}): ProblemDto => ({
   createdAt: AT,
   resolution: 'none',
   taskId: null,
+  clearedAt: null,
   executionState: 'completed',
   ...over,
 });

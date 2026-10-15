@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { auditReportEmailsSchema } from './audit-logic.js';
 import { checklistContentSchema, contentIssueSchema } from './checklist-content.js';
 import { cursorQuerySchema, idSchema, isoDateTimeSchema } from './common.js';
 import { templateCategorySchema } from './templates.js';
@@ -41,6 +42,10 @@ export const checklistDetailSchema = checklistSummarySchema.extend({
   source: checklistSourceSchema.nullable(),
   /** Draft first, then published versions newest first. */
   versions: z.array(checklistVersionSummarySchema),
+  /** Completed runs move to audit_pending (SP8 spec §4.1). A setting, not versioned content. */
+  requiresAudit: z.boolean().default(false),
+  /** Where the audit report goes (FR-19.08). */
+  auditReportEmails: z.array(z.string()).default([]),
 });
 export type ChecklistDetail = z.infer<typeof checklistDetailSchema>;
 
@@ -75,6 +80,8 @@ export const updateChecklistInputSchema = z.object({
   name: name.optional(),
   description: description.optional(),
   category: templateCategorySchema.nullable().optional(),
+  requiresAudit: z.boolean().optional(),
+  auditReportEmails: auditReportEmailsSchema.optional(),
 });
 export type UpdateChecklistInput = z.input<typeof updateChecklistInputSchema>;
 

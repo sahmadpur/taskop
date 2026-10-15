@@ -1,6 +1,7 @@
 import { isProblemType, type NotificationTargetKind, type NotificationType } from '@taskop/contracts';
+import { az, interpolate } from '@taskop/i18n';
 import type { MailMessage } from '../mail/mailer';
-import type { NotificationTarget, OccurrenceTarget, ProblemTarget, TaskTarget } from './notification-targets';
+import type { NotificationTarget, OccurrenceTarget, ProblemTarget, RunTarget, TaskTarget } from './notification-targets';
 
 /** What one inbox row stores and every channel sends (spec §5 `notifications`). */
 export interface RenderedNotification {
@@ -73,6 +74,33 @@ const entry = <V>(table: Partial<Record<NotificationType, V>>, type: Notificatio
 const mismatch = (type: NotificationType, target: NotificationTarget) =>
   new Error(`Notification type ${type} cannot be rendered for a ${target.kind} target`);
 
+/** SP8 spec §7.1: the texts live in @taskop/i18n (az.notifications.templates). */
+function runText(type: NotificationType, r: RunTarget): { title: string; body: string } | null {
+  const T = az.notifications.templates;
+  const place = { checklist: r.occurrence.checklistName, site: r.occurrence.siteName };
+  switch (type) {
+    case 'run.correction_required': {
+      const body = interpolate(T['run.correction_required'].body, { ...place, count: r.flaggedCount });
+      const due = r.dueAt ? ` ${interpolate(T['run.correction_required'].due, { date: dayTime(r.dueAt, r.occurrence.timezone) })}` : '';
+      return { title: T['run.correction_required'].title, body: `${body}${due}` };
+    }
+    case 'run.resubmitted':
+      return { title: T['run.resubmitted'].title, body: interpolate(T['run.resubmitted'].body, { ...place, executor: r.executorName, round: r.round ?? 1 }) };
+    case 'audit.finished':
+      return {
+        title: T['audit.finished'].title,
+        body: interpolate(T['audit.finished'].body, {
+          ...place,
+          result: r.auditResult ? az.audits.results[r.auditResult] : az.audits.report.none,
+          // The template carries no % sign of its own.
+          percent: r.auditPercent === null ? az.audits.report.none : `${r.auditPercent}%`,
+        }),
+      };
+    default:
+      return null;
+  }
+}
+
 /** Spec §6.1 step 4: the Azerbaijani title and body, rendered once at fan-out. */
 export function renderNotification(type: NotificationType, target: NotificationTarget): RenderedNotification {
   switch (target.kind) {
@@ -96,6 +124,11 @@ export function renderNotification(type: NotificationType, target: NotificationT
       const title = entry<string>(TASK_TITLES, type);
       if (title === undefined) throw mismatch(type, target);
       return { title, body: taskBody(type, target), ...onTask(target) };
+    }
+    case 'run': {
+      const text = runText(type, target);
+      if (!text) throw mismatch(type, target);
+      return { ...text, ...onOccurrence(target.occurrence) };
     }
     default: {
       const unhandled: never = target;

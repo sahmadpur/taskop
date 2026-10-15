@@ -114,7 +114,7 @@ describe('report responses', () => {
       startedAt: AT, completedAt: AT, completedReceivedAt: '2026-11-04T05:00:00.000Z',
       score: 90, problemCount: 1, criticalCount: 0, late: true, clockSuspect: false,
     };
-    expect(reportRunPageSchema.parse({ items: [row], nextCursor: null }).items[0]).toEqual(row);
+    expect(reportRunPageSchema.parse({ items: [row], nextCursor: null }).items[0]).toEqual({ ...row, auditState: null, corrected: false });
   });
 
   it('parses problems and tasks with their counts', () => {
@@ -139,8 +139,8 @@ describe('report errors, permissions and audit', () => {
     expect(body.error).toMatchObject({ rows: 12000, limit: 10000 });
   });
 
-  it('adds the reports permissions last, for Manager and Auditor by default', () => {
-    expect(PERMISSION_GROUPS.at(-1)).toEqual({ group: 'reports', keys: ['reports.view', 'reports.export'] });
+  it('adds the reports permissions, for Manager and Auditor by default', () => {
+    expect(PERMISSION_GROUPS.find((g) => g.group === 'reports')).toEqual({ group: 'reports', keys: ['reports.view', 'reports.export'] });
     for (const role of ['owner', 'admin', 'manager', 'auditor'] as const) {
       expect(SYSTEM_ROLE_DEFAULTS[role].permissions, role).toEqual(expect.arrayContaining(['reports.view', 'reports.export']));
     }

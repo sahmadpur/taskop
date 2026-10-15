@@ -16,3 +16,8 @@ export function formatDateTime(iso: string, { locale, timeZone }: FormatOptions)
 export function formatDate(iso: string, { locale, timeZone }: FormatOptions): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'medium', timeZone }).format(new Date(iso));
 }
+
+/** Fills `{{name}}` placeholders; a placeholder without a value stays visible, so a missing variable is noticed. */
+export function interpolate(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (Object.hasOwn(vars, name) ? String(vars[name]) : match));
+}

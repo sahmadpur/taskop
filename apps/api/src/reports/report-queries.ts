@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type AuditResult,
+  type AuditStatus,
   COMPLETED_STATUSES,
   completionPercent,
   type EmployeeReportRow,
@@ -16,13 +18,15 @@ import {
   type ReportTask,
   type ReportTaskCounts,
   roundOne,
+  type RunAuditState,
+  runAuditState,
   type RunBucket,
   type RunCounts,
   type SiteReportRow,
   type UserRef,
 } from '@taskop/contracts';
 import { az } from '@taskop/i18n';
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { DbService } from '../db/db.service';
 import { executionProblems, executions, occurrences, tasks } from '../db/schema';
@@ -128,7 +132,7 @@ export function runsCte(f: ResolvedFilters, scope: SQL | undefined): SQL {
         select ep.occurrence_id, count(*)::int as total, (count(*) filter (where ep.severity = 'critical'))::int as critical
           from execution_problems ep
           join occurrences po on po.id = ep.occurrence_id
-         where po.local_date between ${f.from}::date and ${f.to}::date
+         where po.local_date between ${f.from}::date and ${f.to}::date and ep.cleared_at is null
          group by ep.occurrence_id
       ) pr on pr.occurrence_id = ${occurrences.id}
      where ${runConditions(f, scope)})`;
@@ -156,6 +160,30 @@ export function bucketCondition(b: RunBucket): SQL {
   }
 }
 
+/** /reports/runs?auditState (SP8 spec §8.3) over `runs r` left-joined to its non-cancelled audit `au`; mirrors runAuditState. */
+export function auditStateCondition(s: RunAuditState): SQL {
+  switch (s) {
+    case 'waiting':
+      return sql`r.status = 'audit_pending' and au.id is null`;
+    case 'in_progress':
+      return sql`au.status = 'in_progress'`;
+    case 'passed':
+      return sql`au.status = 'finished' and au.result = 'passed'`;
+    case 'failed':
+      return sql`au.status = 'finished' and au.result = 'failed'`;
+  }
+}
+
+/**
+ * The run's non-cancelled audit, for the column and the filter (at most one: audits_open_uq). Lateral, so each run is one
+ * index probe: as a plain join the row-level-security filter on audits made Postgres expect a handful of audits and pick
+ * a nested loop over a materialised scan of all of them. Check any new join against a large RLS table with EXPLAIN
+ * ANALYZE as `taskop_app` (with `app.tenant_id` set), not as the owner, which skips the filter.
+ */
+const auditJoin = sql`left join lateral (
+  select a.id, a.status, a.result from audits a where a.execution_id = r.execution_id and a.status <> 'cancelled' limit 1
+) au on true`;
+
 type RunRow = {
   id: string;
   execution_id: string | null;
@@ -177,6 +205,9 @@ type RunRow = {
   clock_suspect: boolean;
   problem_count: number;
   critical_count: number;
+  audit_status: AuditStatus | null;
+  audit_result: AuditResult | null;
+  corrected: boolean;
 };
 
 // Drizzle's pg driver returns timestamps from `execute` as raw strings.
@@ -200,11 +231,18 @@ const toReportRun = (r: RunRow): ReportRun => ({
   criticalCount: r.critical_count,
   late: r.late,
   clockSuspect: r.clock_suspect,
+  auditState: runAuditState(r.status, r.audit_status ? { status: r.audit_status, result: r.audit_result } : null),
+  corrected: r.corrected,
 });
 
 /** Problems of the period's occurrences (spec §3.2) under scope and filters; a problem's user is its run's executor (Spec decision 10). */
 function problemConditions(f: ResolvedFilters, scope: SQL | undefined, severity: ProblemSeverity | undefined): SQL {
-  const conds: (SQL | undefined)[] = [scope, sql`${occurrences.localDate} between ${f.from}::date and ${f.to}::date`, inFilterSubtree(f, occurrences.siteId)];
+  const conds: (SQL | undefined)[] = [
+    scope,
+    isNull(executionProblems.clearedAt),
+    sql`${occurrences.localDate} between ${f.from}::date and ${f.to}::date`,
+    inFilterSubtree(f, occurrences.siteId),
+  ];
   if (f.checklistId) conds.push(eq(executionProblems.checklistId, f.checklistId));
   if (f.userId) conds.push(eq(executions.executorUserId, f.userId));
   if (severity) conds.push(eq(executionProblems.severity, severity));
@@ -298,8 +336,14 @@ export class ReportQueries {
   }
 
   /** Spec §5.3: newest due first, keyset on (due_at, id) like /problems (Spec decision 7). `limit: null` reads every row. */
-  async runs(f: ResolvedFilters, scope: SQL | undefined, bucket: RunBucket, opts: { cursor?: string; limit: number | null }): Promise<Page<ReportRun>> {
+  async runs(
+    f: ResolvedFilters,
+    scope: SQL | undefined,
+    bucket: RunBucket,
+    opts: { cursor?: string; limit: number | null; auditState?: RunAuditState },
+  ): Promise<Page<ReportRun>> {
     const conds = [bucketCondition(bucket)];
+    if (opts.auditState) conds.push(auditStateCondition(opts.auditState));
     if (opts.cursor) conds.push(sql`(r.due_at, r.id) < (select c.due_at, c.id from occurrences c where c.id = ${opts.cursor})`);
     const rows = (
       await this.db.tx().execute<RunRow>(sql`
@@ -308,12 +352,14 @@ export class ReportQueries {
                coalesce((select json_agg(json_build_object('id', u.id, 'fullName', u.full_name) order by u.full_name, u.id)
                            from occurrence_assignees oa join users u on u.id = oa.user_id where oa.occurrence_id = r.id), '[]'::json) as assignees,
                x.executor_user_id, eu.full_name as executor_name, x.started_at, x.completed_at, x.completed_received_at, r.score_percent,
-               coalesce(x.late, false) as late, coalesce(x.clock_suspect, false) as clock_suspect, r.problem_count, r.critical_count
+               coalesce(x.late, false) as late, coalesce(x.clock_suspect, false) as clock_suspect, r.problem_count, r.critical_count,
+               au.status::text as audit_status, au.result::text as audit_result, exists (select 1 from execution_corrections ec where ec.execution_id = x.id) as corrected
           from runs r
           join checklists c on c.id = r.checklist_id
           join sites s on s.id = r.site_id
           left join executions x on x.id = r.execution_id
           left join users eu on eu.id = x.executor_user_id
+          ${auditJoin}
          where ${sql.join(conds, sql` and `)}
          order by r.due_at desc, r.id desc
          ${opts.limit === null ? sql.empty() : sql`limit ${opts.limit + 1}`}`)
@@ -416,8 +462,9 @@ export class ReportQueries {
   }
 
   /** The export's count-first check (spec §5.4). */
-  async countRuns(f: ResolvedFilters, scope: SQL | undefined, bucket: RunBucket): Promise<number> {
-    const r = await this.db.tx().execute<{ n: number }>(sql`with ${runsCte(f, scope)} select count(*)::int as n from runs r where ${bucketCondition(bucket)}`);
+  async countRuns(f: ResolvedFilters, scope: SQL | undefined, bucket: RunBucket, auditState?: RunAuditState): Promise<number> {
+    const conds = [bucketCondition(bucket), ...(auditState ? [auditStateCondition(auditState)] : [])];
+    const r = await this.db.tx().execute<{ n: number }>(sql`with ${runsCte(f, scope)} select count(*)::int as n from runs r ${auditJoin} where ${sql.join(conds, sql` and `)}`);
     return r.rows[0]!.n;
   }
 }

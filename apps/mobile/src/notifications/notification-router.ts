@@ -12,20 +12,28 @@ export type NotificationRoute =
   | { pathname: '/' }
   | { pathname: '/execution/[id]'; params: { id: string } }
   | { pathname: '/task/[id]'; params: { id: string } }
-  | { pathname: '/review/[id]'; params: { id: string; n: string } };
+  | { pathname: '/review/[id]'; params: { id: string; n: string } }
+  | { pathname: '/team/run/[id]'; params: { id: string } };
 
 export const INBOX: NotificationRoute = { pathname: '/notifications' };
 export const HOME: NotificationRoute = { pathname: '/' };
 
+/** SP8: run notifications that open the run on the Team tab when the phone does not hold it (Spec decision 15). */
+export const TEAM_RUN_TYPES: ReadonlySet<string> = new Set(['run.correction_required', 'run.resubmitted', 'audit.finished']);
+
 export interface NotificationTarget {
   targetKind: NotificationTargetKind;
   targetId: string | null;
+  /** The notification type; pushes and inbox rows both carry it. */
+  type?: string;
 }
 
 export interface RouteContext {
   /** The signed-in user. */
   userId: string;
   canManageTasks(): boolean;
+  /** Whether the user can see the Team tab (`canSeeTeam`); absent means no. */
+  canSeeTeam?(): boolean;
   sync(): Promise<void>;
   /** 'execution' when the phone holds an execution of the occurrence, 'notStarted' when only the occurrence. */
   occurrenceOnPhone(id: string): Promise<'execution' | 'notStarted' | null>;
@@ -34,10 +42,15 @@ export interface RouteContext {
   nonce(): string;
 }
 
-export function createRouteContext(services: Pick<OfflineServices, 'userId' | 'syncNow' | 'store' | 'tasks' | 'newId'>, canManageTasks: () => boolean): RouteContext {
+export function createRouteContext(
+  services: Pick<OfflineServices, 'userId' | 'syncNow' | 'store' | 'tasks' | 'newId'>,
+  canManageTasks: () => boolean,
+  canSeeTeam: () => boolean = () => false,
+): RouteContext {
   return {
     userId: services.userId,
     canManageTasks,
+    canSeeTeam,
     sync: () => services.syncNow('manual'),
     async occurrenceOnPhone(id) {
       const o = (await services.store.occurrences()).find((x) => x.id === id);
@@ -57,6 +70,9 @@ export async function routeForTarget(target: NotificationTarget, ctx: RouteConte
   if (target.targetKind === 'occurrence') {
     const where = await ctx.occurrenceOnPhone(id);
     if (where === 'execution') return { pathname: '/execution/[id]', params: { id } };
+    // SP8: a manager's (or auditor's) run notification opens the run on the Team tab, also when the phone holds the
+    // occurrence (claimed by someone else, so not startable here) without an execution of it.
+    if (target.type !== undefined && TEAM_RUN_TYPES.has(target.type) && ctx.canSeeTeam?.()) return { pathname: '/team/run/[id]', params: { id } };
     return where === 'notStarted' ? HOME : INBOX;
   }
   if (await ctx.taskOnPhone(id)) return { pathname: '/task/[id]', params: { id } };

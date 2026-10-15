@@ -55,3 +55,36 @@ describe('outbox action time', () => {
     expect(await nextCommand(db)).toMatchObject({ rev: 2, createdAt: '2026-11-02T04:20:00.000Z' });
   });
 });
+
+describe('the resubmit command (sub-project 8)', () => {
+  /** Hands out and acknowledges every command, in the order nextCommand gives them. */
+  async function drain(db: Db): Promise<string[]> {
+    const order: string[] = [];
+    for (let c = await nextCommand(db); c; c = await nextCommand(db)) {
+      order.push(`${c.entityId}:${c.kind}`);
+      await ackCommand(db, c.seq);
+    }
+    return order;
+  }
+
+  it('waits for every answers revision and media registration of its run, even one queued after it', async () => {
+    const db = await openTestDb();
+    await add(db, 'e1', 'media', { refId: 'm1' });
+    await add(db, 'e1', 'resubmit');
+    await add(db, 'e1', 'answers', { rev: 5 });
+    await add(db, 'e2', 'answers', { rev: 1 });
+    expect(await drain(db)).toEqual(['e1:media', 'e1:answers', 'e1:resubmit', 'e2:answers']);
+  });
+
+  it('is held back while an answers revision of its run is parked, and goes once that is resolved', async () => {
+    const db = await openTestDb();
+    await add(db, 'e1', 'answers', { rev: 4 });
+    await add(db, 'e1', 'resubmit');
+    await add(db, 'e2', 'claim');
+    const answers = (await nextCommand(db))!;
+    await failCommand(db, answers.seq, 'ITEM_NOT_IN_REWORK', 'errors.ITEM_NOT_IN_REWORK');
+    expect(await drain(db)).toEqual(['e2:claim']);
+    await ackCommand(db, answers.seq); // "Sil" removed it
+    expect(await nextCommand(db)).toMatchObject({ entityId: 'e1', kind: 'resubmit' });
+  });
+});

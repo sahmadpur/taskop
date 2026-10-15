@@ -106,6 +106,20 @@
       "when": 1791963579084,
       "tag": "0014_reports_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792048507622,
+      "tag": "0015_audit_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792049620314,
+      "tag": "0016_audit_corrections_tables",
+      "breakpoints": true
     }
   ]
 }

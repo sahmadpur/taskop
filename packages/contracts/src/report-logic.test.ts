@@ -39,6 +39,7 @@ describe('classifyRun (spec §3.1)', () => {
       cancelled: [],
       audit_pending: ['planned', 'due', 'completed'],
       audited: ['planned', 'due', 'completed'],
+      correction_required: ['planned', 'due', 'completed'],
     };
     for (const s of OCCURRENCE_STATUSES) expect(classifyRun(run(s), NOW), s).toEqual(on(...expected[s]));
   });
@@ -64,7 +65,7 @@ describe('classifyRun (spec §3.1)', () => {
   });
 
   it('names the status groups the SQL mirrors', () => {
-    expect(COMPLETED_STATUSES).toEqual(['completed', 'audit_pending', 'audited']);
+    expect(COMPLETED_STATUSES).toEqual(['completed', 'audit_pending', 'audited', 'correction_required']);
     expect(IN_PROGRESS_STATUSES).toEqual(['started', 'in_progress']);
     expect(RUN_COUNT_KEYS).toEqual(['planned', 'due', 'completed', 'inProgress', 'pending', 'overdue', 'partial', 'missed', 'withProblems', 'withCritical']);
   });

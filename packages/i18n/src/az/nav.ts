@@ -17,6 +17,7 @@ export default {
   notifications: 'Bildirişlər',
   messages: 'Mesajlar',
   reports: 'Hesabatlar',
+  audits: 'Auditlər',
   logout: 'Çıxış',
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:

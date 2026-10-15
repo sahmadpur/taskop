@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AUDIT_JOB_QUEUES, AUDIT_REPORT_JOB } from '../src/audits/report/queues';
 import { loadConfig } from '../src/config/config';
 import { MEDIA_CLEANUP_QUEUE } from '../src/executions/media-jobs';
 import { NOTIFICATION_QUEUES, NOTIFICATION_WORKER } from '../src/notifications/queues';
@@ -95,6 +96,26 @@ describe('pg-boss wiring', () => {
     }
   });
 
+  it('creates the audit.report worker queue with five 15 s-doubling retries (cap 240 s) and two local workers, dead letter audit.dead', async () => {
+    const t = await createTestApp({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' });
+    try {
+      const boss = (t.app.get(JobsService) as unknown as { boss: PgBoss }).boss;
+      const workers = boss.getWipData().filter((w) => w.name === AUDIT_JOB_QUEUES.report);
+      expect(workers).toHaveLength(2);
+      for (const w of workers) expect(w.options).toMatchObject({ localConcurrency: 2 });
+      expect(AUDIT_REPORT_JOB).toMatchObject({ retryLimit: 5, retryDelay: 15, retryDelayMax: 240, localConcurrency: 2, expireInSeconds: 3600 });
+      const rows = await ownerQuery<{ name: string; policy: string; retry_limit: number; retry_backoff: boolean; retry_delay: number; retry_delay_max: number | null; dead_letter: string | null; expire_seconds: number }>(
+        "select name, policy, retry_limit, retry_backoff, retry_delay, retry_delay_max, dead_letter, expire_seconds from pgboss.queue where name in ('audit.report', 'audit.dead') order by name",
+      );
+      expect(rows.rows).toEqual([
+        { name: 'audit.dead', policy: 'standard', retry_limit: 2, retry_backoff: false, retry_delay: 0, retry_delay_max: null, dead_letter: null, expire_seconds: 900 },
+        { name: 'audit.report', policy: 'standard', retry_limit: 5, retry_backoff: true, retry_delay: 15, retry_delay_max: 240, dead_letter: 'audit.dead', expire_seconds: 3600 },
+      ]);
+    } finally {
+      await t.close();
+    }
+  });
+
   it('registers cron schedules only while JOBS_CRON is on and uses stately queues', async () => {
     const schedules = async () =>
       (await ownerQuery<{ name: string }>("select name from pgboss.schedule where name like 'occurrences.%' order by name")).rows.map((r) => r.name);
@@ -168,6 +189,29 @@ describe('pg-boss wiring', () => {
           .toBe(1);
         const policy = await ownerQuery<{ policy: string }>('select policy from pgboss.queue where name = $1', [queue]);
         expect(policy.rows[0]!.policy).toBe('standard');
+      } finally {
+        await jobs.onModuleDestroy();
+      }
+    });
+
+    it("runs a worker's onDead handler for a job that reaches the dead-letter queue, and applies expireInSeconds to the queue", async () => {
+      const jobs = new JobsService(loadConfig(testEnv({ JOBS_ENABLED: 'true', JOBS_CRON: 'false' })), idle);
+      const queue = `test.deadhandler.${randomUUID()}`;
+      const dead = `test.dead.${randomUUID()}`;
+      const handled: unknown[] = [];
+      jobs.defineWorker<{ v: string }>(
+        queue,
+        async () => {
+          throw new Error('boom');
+        },
+        { retryLimit: 1, deadLetter: dead, expireInSeconds: 1234, onDead: async (d) => void handled.push(d) },
+      );
+      await jobs.onApplicationBootstrap();
+      try {
+        await jobs.send(queue, { v: 'x' });
+        await expect.poll(() => handled, { timeout: 20_000, interval: 250 }).toEqual([{ v: 'x' }]);
+        const q = await ownerQuery<{ expire_seconds: number }>('select expire_seconds from pgboss.queue where name = $1', [queue]);
+        expect(q.rows[0]!.expire_seconds).toBe(1234);
       } finally {
         await jobs.onModuleDestroy();
       }

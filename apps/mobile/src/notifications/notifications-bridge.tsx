@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
+import { canSeeTeam } from '@/features/team/team-rules';
 import { api, useSession } from '@/lib/session';
 import { useOffline } from '@/offline/context';
 import { rnAppState } from '@/offline/native/ports';
@@ -16,12 +17,14 @@ export function NotificationsBridge() {
   const s = useSession();
   const canManageTasks = useRef(false);
   canManageTasks.current = s.status === 'authenticated' && s.me.permissions.includes('tasks.manage');
+  const seesTeam = useRef(false);
+  seesTeam.current = s.status === 'authenticated' && canSeeTeam(s.me);
   useEffect(() => startPushRegistration({ push: nativePush, tokens: pushTokenStore, api, appState: rnAppState(), userId: services.userId }), [services.userId]);
   useEffect(
     () =>
       startTapRouting({
         events: notificationEvents,
-        ctx: createRouteContext(services, () => canManageTasks.current),
+        ctx: createRouteContext(services, () => canManageTasks.current, () => seesTeam.current),
         navigate: (route) => router.push(route),
       }),
     [services],

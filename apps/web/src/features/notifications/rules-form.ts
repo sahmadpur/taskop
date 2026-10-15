@@ -1,4 +1,5 @@
 import {
+  type AuditResultFilter,
   DEFAULT_RULES,
   type LeadMinutes,
   NOTIFICATION_TYPE_META,
@@ -16,6 +17,8 @@ export interface RuleDraft {
   notifyCreator: boolean;
   roleIds: string[];
   leadMinutes: LeadMinutes | null;
+  /** audit.finished only (SP8 spec §7.1): notify on every result, or on failed audits only. */
+  resultFilter: AuditResultFilter | null;
 }
 
 export const draftOf = (r: NotificationRuleDto): RuleDraft => ({
@@ -26,6 +29,7 @@ export const draftOf = (r: NotificationRuleDto): RuleDraft => ({
   notifyCreator: r.notifyCreator,
   roleIds: [...r.roleIds],
   leadMinutes: r.leadMinutes,
+  resultFilter: r.resultFilter,
 });
 
 /**
@@ -43,6 +47,7 @@ export function ruleBody(type: RuleType, d: RuleDraft): UpdateNotificationRuleIn
     notifyCreator: meta.audiences.includes('creator') && d.notifyCreator,
     roleIds: [...new Set(d.roleIds)],
     leadMinutes: meta.hasLeadTime ? (d.leadMinutes ?? DEFAULT_RULES[type].leadMinutes) : null,
+    resultFilter: meta.hasResultFilter ? (d.resultFilter ?? DEFAULT_RULES[type].resultFilter) : null,
   };
 }
 
@@ -53,5 +58,6 @@ export const sameDraft = (a: RuleDraft, b: RuleDraft): boolean =>
   a.notifyAssignees === b.notifyAssignees &&
   a.notifyCreator === b.notifyCreator &&
   a.leadMinutes === b.leadMinutes &&
+  a.resultFilter === b.resultFilter &&
   a.roleIds.length === b.roleIds.length &&
   a.roleIds.every((id) => b.roleIds.includes(id));

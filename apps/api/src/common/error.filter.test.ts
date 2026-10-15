@@ -54,6 +54,22 @@ describe('toAppError', () => {
       .safeParse({ to: '2026-11-01' });
     expect(toAppError(new ZodValidationException(r.error!)).fields).toEqual({ to: 'reports.issues.toBeforeFrom' });
   });
+
+  it('passes audit and correction issue keys through as field keys', () => {
+    const r = z
+      .object({ comment: z.string(), changes: z.array(z.string()) })
+      .superRefine((_v, ctx) => {
+        ctx.addIssue({ code: 'custom', path: ['comment'], message: 'audits.issues.commentRequired' });
+        ctx.addIssue({ code: 'custom', path: ['changes', 1, 'itemId'], message: 'corrections.issues.duplicateItem' });
+      })
+      .safeParse({ comment: '', changes: [] });
+    expect(toAppError(new ZodValidationException(r.error!)).fields).toEqual({ comment: 'audits.issues.commentRequired', 'changes.1.itemId': 'corrections.issues.duplicateItem' });
+  });
+
+  it('carries the audit id and the item ids as error details', () => {
+    expect(new AppError('AUDIT_EXISTS', { details: { auditId: 'a1' } }).details).toEqual({ auditId: 'a1' });
+    expect(new AppError('AUDIT_INCOMPLETE', { details: { itemIds: ['i1'] } }).details).toEqual({ itemIds: ['i1'] });
+  });
 });
 
 describe('AllExceptionsFilter logging', () => {

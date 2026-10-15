@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChecklistAssignments } from '@/features/scheduling/checklist-assignments';
 import { errorText } from '@/lib/errors';
+import { AuditSettings } from './audit-settings';
 import { DetailsDialog } from './checklist-dialogs';
 import { categoryLabel } from './labels';
 import { NewChecklistDialog } from './new-checklist-dialog';
@@ -99,6 +100,17 @@ export function ChecklistDetailPage({ checklistId }: { checklistId: string }) {
         {c.source && <span>{t(`checklists.detail.source.${c.source.kind}`)}</span>}
         {c.description && <span>{c.description}</span>}
       </div>
+      {/* Keyed by the stored values, so the section starts from the server's state again after a save. */}
+      <AuditSettings
+        key={`${c.requiresAudit}|${c.auditReportEmails.join(',')}`}
+        checklist={c}
+        editable={editable}
+        onSave={async (v) => {
+          await ws.checklists.update(checklistId, v);
+          await refresh();
+          toast.success(t('common.saved'));
+        }}
+      />
       <h2 className="text-lg font-semibold">{t('checklists.detail.versions')}</h2>
       <Table>
         <TableHeader>

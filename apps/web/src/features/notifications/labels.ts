@@ -1,9 +1,17 @@
-import { DELIVERY_STATUSES, type DeliveryCounts, isProblemType, type NotificationItem } from '@taskop/contracts';
+import { DELIVERY_STATUSES, type DeliveryCounts, isProblemType, type NotificationItem, type NotificationType } from '@taskop/contracts';
 import type { TFunction } from 'i18next';
+import type { OccurrenceTab } from '@/features/scheduling/occurrence-dialog';
 import type { ScheduleSearch } from '@/features/scheduling/routes';
 import type { TasksSearch } from '@/features/tasks/routes';
 
 export type NotificationLink = { to: '/schedule'; search: ScheduleSearch } | { to: '/tasks'; search: TasksSearch };
+
+/** SP8: the run dialog tab an audit notification is about (decision 18). Problems open the execution tab. */
+const RUN_TABS: Partial<Record<NotificationType, OccurrenceTab>> = {
+  'run.correction_required': 'execution',
+  'run.resubmitted': 'corrections',
+  'audit.finished': 'audit',
+};
 
 /**
  * Where a notification leads on the web (spec §8). `null`: it has no page of its own (manual messages, or a target
@@ -13,13 +21,14 @@ export function notificationLink(n: Pick<NotificationItem, 'type' | 'targetKind'
   if (!n.targetId) return null;
   if (n.targetKind === 'task') return { to: '/tasks', search: { task: n.targetId } };
   if (n.targetKind === 'occurrence') {
+    const tab: OccurrenceTab | undefined = isProblemType(n.type) ? 'execution' : RUN_TABS[n.type];
     return {
       to: '/schedule',
       search: {
         // Without a date the schedule opens the current week; the drawer still opens the occurrence.
         ...(n.targetDate ? { date: n.targetDate } : {}),
         occurrence: n.targetId,
-        ...(isProblemType(n.type) ? { tab: 'execution' as const } : {}),
+        ...(tab ? { tab } : {}),
       },
     };
   }

@@ -1,4 +1,13 @@
-import { deriveProblems, MEDIA_LIMITS, type MediaKind, type MediaSource, progress, requirements, visibleItems } from '@taskop/contracts';
+import {
+  deriveProblems,
+  MEDIA_LIMITS,
+  type MediaKind,
+  type MediaSource,
+  progress,
+  requirements,
+  visibleItems,
+} from '@taskop/contracts';
+import { formatDateTime } from '@taskop/i18n';
 import { router } from 'expo-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,12 +19,22 @@ import { fileNotAcceptedText, notAcceptedText } from '@/features/sync/refusal-te
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { colors, spacing } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
-import { type CapturedMedia, ExecutionLockedError, LiveOnlyError, MediaLimitError, type MediaTarget } from '@/offline/execution-store';
+import {
+  type CapturedMedia,
+  ExecutionLockedError,
+  flaggedItems,
+  ItemNotInReworkError,
+  LiveOnlyError,
+  MediaLimitError,
+  type MediaTarget,
+  reworkEditable,
+} from '@/offline/execution-store';
 import { useNow } from '@/offline/hooks';
 import { CaptureModal, pickFromGallery, VideoPreview } from './capture';
 import { ItemField } from './item-field';
 import { CaptureError } from './media-capture';
 import { type ProblemDraft, ProblemSheet } from './problem-sheet';
+import { reworkComments, reworkOverdue, reworkProgress } from './rework';
 import { readOnlyReason, useExecution } from './use-execution';
 
 function Centered({ children }: { children: ReactNode }) {
@@ -23,13 +42,23 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 /** Spec §7.3: one scrolling screen per section, progress bar, every item type, inline follow-ups, evidence, ⚑ problems. Autosaves. */
-export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occurrenceId: string; focusItemId?: string; focusNonce?: string }) {
+export function ExecutionScreen({
+  occurrenceId,
+  focusItemId,
+  focusNonce,
+}: {
+  occurrenceId: string;
+  focusItemId?: string;
+  focusNonce?: string;
+}) {
   const { t } = useTranslation();
-  const { store, userId } = useOffline();
+  const { store, userId, timeZone } = useOffline();
   const data = useExecution(occurrenceId);
   const now = useNow();
   const [sectionIndex, setSectionIndex] = useState(0);
-  const [capture, setCapture] = useState<{ kind: MediaKind; target: MediaTarget; session: number } | null>(null);
+  const [capture, setCapture] = useState<{ kind: MediaKind; target: MediaTarget; session: number } | null>(
+    null,
+  );
   const [draft, setDraft] = useState<ProblemDraft | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const scroll = useRef<ScrollView>(null);
@@ -88,8 +117,14 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
   if (!content) {
     return (
       <Centered>
-        <Text style={styles.title}>{data.content.kind === 'needsUpdate' ? t('mobile.execution.needsUpdate') : t('mobile.checklists.startBlocked.notDownloaded')}</Text>
-        {data.content.kind === 'needsUpdate' ? <Text style={styles.muted}>{t('mobile.execution.needsUpdateHint')}</Text> : null}
+        <Text style={styles.title}>
+          {data.content.kind === 'needsUpdate'
+            ? t('mobile.execution.needsUpdate')
+            : t('mobile.checklists.startBlocked.notDownloaded')}
+        </Text>
+        {data.content.kind === 'needsUpdate' ? (
+          <Text style={styles.muted}>{t('mobile.execution.needsUpdateHint')}</Text>
+        ) : null}
       </Centered>
     );
   }
@@ -104,12 +139,21 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
   const problemItems = new Set(deriveProblems(content, current).map((p) => p.itemId));
   const lock = readOnlyReason(execution, occurrence, userId, now);
   const readOnly = lock !== null;
+  // Spec §8.1 and decision 2: a run sent back for correction. The flagged items and the follow-ups their changes revealed
+  // can change; the others are dimmed and locked.
+  const rework = execution.state === 'rework' ? execution.rework : null;
+  const flagged = flaggedItems(execution);
+  const editableItems = rework ? reworkEditable(content, execution) : null;
+  const comments = reworkComments(rework);
+  const fixed = editableItems ? reworkProgress(content, current, editableItems) : null;
+  const bar = fixed ?? { done: prog.answered, total: prog.total };
   const index = Math.min(sectionIndex, content.sections.length - 1);
   const section = content.sections[index];
   const mediaById = new Map(data.media.map((m) => [m.id, m]));
   const draftItem = draft ? (visible.find((v) => v.item.id === draft.itemId)?.item ?? null) : null;
   const note = execution.syncNote ? notAcceptedText(t, execution.syncNote) : null;
-  const refusedOn = (itemId: string) => data.refusals.filter((r) => r.itemId === itemId).map((r) => fileNotAcceptedText(t, r.errorKey));
+  const refusedOn = (itemId: string) =>
+    data.refusals.filter((r) => r.itemId === itemId).map((r) => fileNotAcceptedText(t, r.errorKey));
   const banner =
     lock === 'rejected'
       ? // A claim the server refused for good has no rejection reason: the note says why instead.
@@ -119,14 +163,16 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
       : lock === 'claimedByOther'
         ? claimRejectionText(t, 'ALREADY_CLAIMED', occurrence.claim?.executorName ?? null)
         : lock === 'completed'
-          ? t('mobile.execution.completedBanner')
+          ? t(execution.rework ? 'mobile.rework.sentBanner' : 'mobile.execution.completedBanner')
           : lock === 'locked'
             ? t('mobile.execution.locked')
             : null;
 
   const report = (e: unknown) => {
     if (e instanceof ExecutionLockedError) return; // the banner already says why
-    if (e instanceof MediaLimitError || e instanceof LiveOnlyError) Alert.alert(t('mobile.evidence.limitReached'));
+    if (e instanceof ItemNotInReworkError) return void Alert.alert(t('mobile.rework.notFlagged'));
+    if (e instanceof MediaLimitError || e instanceof LiveOnlyError)
+      Alert.alert(t('mobile.evidence.limitReached'));
     else if (e instanceof CaptureError) Alert.alert(t(`mobile.evidence.${e.problem}`));
     else Alert.alert(t('mobile.evidence.failed'));
   };
@@ -150,7 +196,12 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
     const id = await store.attachMedia(at, m, target);
     if (target.field !== 'problem') return;
     const d = draftRef.current;
-    if (session !== draftSession.current || !d || d.itemId !== target.itemId || d.mediaIds.length >= MEDIA_LIMITS.problemMaxMedia) {
+    if (
+      session !== draftSession.current ||
+      !d ||
+      d.itemId !== target.itemId ||
+      d.mediaIds.length >= MEDIA_LIMITS.problemMaxMedia
+    ) {
       // Its sheet was closed, another item's sheet is open, or the draft filled up meanwhile.
       await store.removeMedia(executionIdRef.current ?? at, id);
       return;
@@ -182,13 +233,22 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
   const confirmRemove = (mediaId: string) =>
     Alert.alert(t('mobile.evidence.removeTitle'), undefined, [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('mobile.evidence.remove'), style: 'destructive', onPress: () => run(() => store.removeMedia(executionId, mediaId)) },
+      {
+        text: t('mobile.evidence.remove'),
+        style: 'destructive',
+        onPress: () => run(() => store.removeMedia(executionId, mediaId)),
+      },
     ]);
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => router.back()} style={styles.back}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+          onPress={() => router.back()}
+          style={styles.back}
+        >
           <Text style={styles.backText}>‹</Text>
         </Pressable>
         <View style={styles.headerText}>
@@ -203,10 +263,28 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
       </View>
       <View style={styles.progressWrap}>
         <View style={styles.track}>
-          <View style={[styles.fill, { width: `${prog.total ? Math.round((prog.answered / prog.total) * 100) : 0}%` }]} />
+          <View
+            style={[styles.fill, { width: `${bar.total ? Math.round((bar.done / bar.total) * 100) : 0}%` }]}
+          />
         </View>
-        <Text style={styles.muted}>{t('mobile.execution.progress', { answered: prog.answered, total: prog.total })}</Text>
+        <Text style={styles.muted}>
+          {fixed
+            ? t('mobile.rework.progress', { done: fixed.done, total: fixed.total })
+            : t('mobile.execution.progress', { answered: prog.answered, total: prog.total })}
+        </Text>
       </View>
+      {rework ? (
+        <View testID="rework-banner" style={styles.reworkBanner}>
+          <Text
+            style={styles.reworkTitle}
+          >{`${t('corrections.reworkBanner')} · ${t('corrections.round', { round: rework.round })}`}</Text>
+          {rework.dueAt ? (
+            <Text style={reworkOverdue(rework, now) ? styles.noteText : styles.bannerText}>
+              {t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale: 'az', timeZone }) })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {note ? (
         <View style={styles.noteBanner}>
           <Text style={styles.noteText}>{note}</Text>
@@ -227,49 +305,78 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
       >
         {section ? (
           <>
-            <Text style={styles.muted}>{t('mobile.execution.section', { n: index + 1, total: content.sections.length })}</Text>
+            <Text style={styles.muted}>
+              {t('mobile.execution.section', { n: index + 1, total: content.sections.length })}
+            </Text>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             {section.instructions ? <Text style={styles.muted}>{section.instructions}</Text> : null}
             {visible
               .filter((v) => v.sectionId === section.id)
-              .map(({ item, depth }) => (
-                <View
-                  key={item.id}
-                  style={{ marginLeft: depth * spacing.md }}
-                  onLayout={(e) => {
-                    itemY.current.set(item.id, e.nativeEvent.layout.y);
-                    if (item.id !== focusItemId || focused.current) return;
-                    focused.current = true; // once: later re-layouts (answers, follow-ups) must not pull the worker back
-                    scroll.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
-                  }}
-                >
-                  <ItemField
-                    item={item}
-                    answer={current[item.id]}
-                    missing={missing.filter((m) => m.itemId === item.id)}
-                    hasProblem={problemItems.has(item.id)}
-                    refused={refusedOn(item.id)}
-                    readOnly={readOnly}
-                    media={mediaById}
-                    onPatch={(patch) => run(() => store.patchAnswer(executionId, item.id, patch))}
-                    onCapture={(kind, source) => startCapture(kind, source, { itemId: item.id, field: 'evidence' })}
-                    onRemoveMedia={confirmRemove}
-                    onOpenVideo={setPreview}
-                    onFlag={() => {
-                      const p = current[item.id]?.problem;
-                      openDraft({ itemId: item.id, severity: p?.severity ?? 'normal', note: p?.note ?? '', mediaIds: p?.mediaIds ?? [] });
+              .map(({ item, depth }) => {
+                const editable = editableItems === null || editableItems.has(item.id);
+                const comment = comments.get(item.id);
+                const revealed = editableItems !== null && editable && !flagged.has(item.id);
+                return (
+                  <View
+                    key={item.id}
+                    testID={`wrap-${item.id}`}
+                    style={[{ marginLeft: depth * spacing.md }, editable ? null : styles.dimmed]}
+                    onLayout={(e) => {
+                      itemY.current.set(item.id, e.nativeEvent.layout.y);
+                      if (item.id !== focusItemId || focused.current) return;
+                      focused.current = true; // once: later re-layouts (answers, follow-ups) must not pull the worker back
+                      scroll.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
                     }}
-                  />
-                </View>
-              ))}
+                  >
+                    {comment ? (
+                      <Text style={styles.comment}>{t('mobile.rework.managerComment', { comment })}</Text>
+                    ) : null}
+                    {revealed ? <Text style={styles.comment}>{t('mobile.rework.newQuestion')}</Text> : null}
+                    <ItemField
+                      item={item}
+                      answer={current[item.id]}
+                      missing={missing.filter((m) => m.itemId === item.id)}
+                      hasProblem={problemItems.has(item.id)}
+                      refused={refusedOn(item.id)}
+                      readOnly={readOnly || !editable}
+                      media={mediaById}
+                      onPatch={(patch) => run(() => store.patchAnswer(executionId, item.id, patch))}
+                      onCapture={(kind, source) =>
+                        startCapture(kind, source, { itemId: item.id, field: 'evidence' })
+                      }
+                      onRemoveMedia={confirmRemove}
+                      onOpenVideo={setPreview}
+                      onFlag={() => {
+                        const p = current[item.id]?.problem;
+                        openDraft({
+                          itemId: item.id,
+                          severity: p?.severity ?? 'normal',
+                          note: p?.note ?? '',
+                          mediaIds: p?.mediaIds ?? [],
+                        });
+                      }}
+                    />
+                  </View>
+                );
+              })}
           </>
         ) : null}
         <View style={styles.pager}>
-          <PrimaryButton variant="outline" title={t('mobile.execution.previous')} disabled={index === 0} onPress={() => setSectionIndex(index - 1)} />
+          <PrimaryButton
+            variant="outline"
+            title={t('mobile.execution.previous')}
+            disabled={index === 0}
+            onPress={() => setSectionIndex(index - 1)}
+          />
           {index < content.sections.length - 1 ? (
             <PrimaryButton title={t('mobile.execution.next')} onPress={() => setSectionIndex(index + 1)} />
           ) : (
-            <PrimaryButton title={t('mobile.execution.finish')} onPress={() => router.push({ pathname: '/execution/[id]/finish', params: { id: occurrenceId } })} />
+            <PrimaryButton
+              title={rework ? t('mobile.rework.resubmit') : t('mobile.execution.finish')}
+              onPress={() =>
+                router.push({ pathname: '/execution/[id]/finish', params: { id: occurrenceId } })
+              }
+            />
           )}
         </View>
       </ScrollView>
@@ -284,7 +391,9 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
           onCapture={(kind, source) => startCapture(kind, source, { itemId: draft.itemId, field: 'problem' })}
           onSave={(problem) =>
             run(async () => {
-              const dropped = [...new Set([...savedProblemMedia(draft.itemId), ...draft.mediaIds])].filter((id) => !problem?.mediaIds.includes(id));
+              const dropped = [...new Set([...savedProblemMedia(draft.itemId), ...draft.mediaIds])].filter(
+                (id) => !problem?.mediaIds.includes(id),
+              );
               await store.setProblem(executionId, draft.itemId, problem);
               endDraft();
               discard(dropped);
@@ -311,8 +420,21 @@ export function ExecutionScreen({ occurrenceId, focusItemId, focusNonce }: { occ
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
   back: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   backText: { fontSize: 28, color: colors.primary },
   headerText: { flex: 1 },
@@ -323,9 +445,26 @@ const styles = StyleSheet.create({
   fill: { height: 8, backgroundColor: colors.primary },
   banner: { marginHorizontal: spacing.md, borderRadius: 10, padding: spacing.md, backgroundColor: '#FEF3C7' },
   bannerText: { color: '#92400E' },
-  noteBanner: { marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 10, padding: spacing.md, backgroundColor: '#FEE2E2' },
+  noteBanner: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: 10,
+    padding: spacing.md,
+    backgroundColor: '#FEE2E2',
+  },
   noteText: { color: colors.danger },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.lg * 2 },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+  reworkBanner: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: 10,
+    padding: spacing.md,
+    backgroundColor: '#FEF3C7',
+    gap: spacing.xs,
+  },
+  reworkTitle: { color: '#92400E', fontWeight: '700' },
+  comment: { color: '#92400E', fontWeight: '600', marginBottom: spacing.xs },
+  dimmed: { opacity: 0.5 },
   pager: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },
 });

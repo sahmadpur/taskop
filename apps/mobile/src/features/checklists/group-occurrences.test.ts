@@ -1,6 +1,6 @@
 import type { OccurrenceView } from '@/offline/execution-store';
 import type { LocalExecution } from '@/offline/local-model';
-import { ME, OCC, OTHER, OTHER_EXECUTION, T, VERSION } from '@/offline/testing/fixtures';
+import { ME, OCC, OTHER, OTHER_EXECUTION, REWORK_DUE, reworkRequest, T, VERSION } from '@/offline/testing/fixtures';
 import { groupOccurrences, homeStats } from './group-occurrences';
 
 const view = (over: Partial<OccurrenceView> = {}): OccurrenceView => ({
@@ -9,7 +9,8 @@ const view = (over: Partial<OccurrenceView> = {}): OccurrenceView => ({
 });
 const execution = (over: Partial<LocalExecution> = {}): LocalExecution => ({
   id: 'e', occurrenceId: OCC, checklistVersionId: VERSION, state: 'active', claim: 'accepted', rejectedReason: null, rejectedBy: null,
-  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, updatedAt: T.open, syncNote: null, ...over,
+  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, updatedAt: T.open, syncNote: null,
+  reworkRound: 0, rework: null, ...over,
 });
 const at = (iso: string) => Date.parse(iso);
 const place = (o: OccurrenceView, now: string) => {
@@ -49,5 +50,36 @@ describe('groupOccurrences', () => {
     ];
     const g = groupOccurrences(list, ME, at('2026-11-02T06:30:00.000Z'), '2026-11-02');
     expect(homeStats(g, 3)).toEqual({ myTasks: 2, overdue: 2, completed: 1, issues: 3 });
+  });
+
+  it('puts a run sent back to me first, with its round, due date and flagged items, overdue once the due date passed', () => {
+    const rework = reworkRequest({ items: [{ itemId: 'a', comment: 'x' }, { itemId: 'b', comment: 'y' }] });
+    const o = view({ status: 'correction_required', localDate: '2026-10-30', execution: execution({ state: 'rework', completedAt: '2026-10-30T06:00:00.000Z', reworkRound: 1, rework }) });
+    expect(place(o, T.open)).toMatchObject({ key: 'rework', card: { action: 'continue', overdue: false, claimedBy: null, rework: { round: 1, dueAt: REWORK_DUE, items: 2 } } });
+    expect(place(o, REWORK_DUE)?.card.overdue).toBe(true);
+    const noDue = view({ status: 'correction_required', execution: execution({ state: 'rework', reworkRound: 1, rework: reworkRequest({ dueAt: null }) }) });
+    expect(place(noDue, '2026-12-01T00:00:00.000Z')?.card).toMatchObject({ overdue: false, rework: { dueAt: null } });
+  });
+
+  it('treats a run sent back to someone else as closed', () => {
+    const o = view({ status: 'correction_required', claim: { executionId: OTHER_EXECUTION, executorUserId: OTHER, executorName: 'Murad' } });
+    expect(place(o, T.open)).toMatchObject({ key: 'done', card: { action: 'none', claimedBy: 'Murad', rework: null } });
+  });
+
+  it('keeps a run I resubmitted here among the finished ones until the server answers', () => {
+    const o = view({
+      status: 'correction_required', localDate: '2026-10-30', closesAt: '2026-10-30T07:00:00.000Z', unsynced: true,
+      execution: execution({ state: 'completed', completedAt: '2026-10-30T06:00:00.000Z', reworkRound: 1, rework: reworkRequest() }),
+    });
+    expect(place(o, T.open)).toMatchObject({ key: 'done', card: { action: 'view', rework: null } });
+  });
+
+  it('counts runs to correct as my tasks, and as overdue once past their due date', () => {
+    const list = [
+      view({ id: 'r', status: 'correction_required', execution: execution({ id: 'er', occurrenceId: 'r', state: 'rework', reworkRound: 1, rework: reworkRequest({ dueAt: T.before }) }) }),
+      view({ id: 'a' }),
+    ];
+    const g = groupOccurrences(list, ME, at('2026-11-02T06:30:00.000Z'), '2026-11-02');
+    expect(homeStats(g, 0)).toEqual({ myTasks: 2, overdue: 2, completed: 0, issues: 0 });
   });
 });

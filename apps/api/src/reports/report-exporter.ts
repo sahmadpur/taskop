@@ -77,6 +77,7 @@ export class ReportExporter {
             userId: q.userId ?? null,
             checklistId: q.checklistId ?? null,
             bucket: kind === 'runs' ? (q.bucket ?? 'all') : null,
+            auditState: kind === 'runs' ? (q.auditState ?? null) : null,
             severity: kind === 'problems' ? (q.severity ?? null) : null,
           },
           rows: sections.reduce((n, s) => n + s.rows.length, 0),
@@ -104,8 +105,8 @@ export class ReportExporter {
       }
       case 'runs': {
         const bucket = q.bucket ?? 'all';
-        assertCap(await this.queries.countRuns(f, occ, bucket));
-        return [runsTable((await this.queries.runs(f, occ, bucket, { limit: null })).items, runsTitle(bucket))];
+        assertCap(await this.queries.countRuns(f, occ, bucket, q.auditState));
+        return [runsTable((await this.queries.runs(f, occ, bucket, { limit: null, auditState: q.auditState })).items, runsTitle(bucket))];
       }
       case 'problems': {
         assertCap((await this.queries.problemCounts(f, occ, q.severity)).total);
@@ -156,6 +157,7 @@ export class ReportExporter {
       out.push(`${F.checklist}: ${c?.name ?? az.reports.noValue}`);
     }
     if (kind === 'runs' && q.bucket && q.bucket !== 'all') out.push(`${F.bucket}: ${az.reports.buckets[q.bucket]}`);
+    if (kind === 'runs' && q.auditState) out.push(`${az.audits.audit}: ${az.audits.runAuditStates[q.auditState]}`);
     if (kind === 'problems' && q.severity) out.push(`${F.severity}: ${az.executions.severities[q.severity]}`);
     return out;
   }

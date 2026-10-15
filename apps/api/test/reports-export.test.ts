@@ -34,12 +34,12 @@ describe('report exports (spec §5.4)', () => {
     expect([...f.body.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const rows = csvRows(f.body);
     expect(rows[0]).toEqual([
-      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli',
+      'Tarix', 'Son vaxt', 'Yoxlama vərəqəsi', 'Obyekt', 'Status', 'İcraçılar', 'İcra edən', 'Başlanıb', 'Tamamlanıb (cihaz)', 'Serverə çatıb', 'Bal', 'Problemlər', 'Kritik', 'Gecikmə ilə', 'Saat şübhəli', 'Audit', 'Düzəliş edilib',
     ]);
     expect(rows).toHaveLength(17);
     // r7: done on the phone at 11:00 Baku on Monday, received by the server on Wednesday at 09:00 (FR-10.14).
     expect(rows.find((r) => r[9] === '04.11.2026 09:00')).toEqual([
-      '02.11.2026', '02.11.2026 10:00', 'Açılış yoxlaması', 'Zona A1', 'Tamamlanıb', 'Aynur Quliyeva', 'Aynur Quliyeva', '02.11.2026 08:10', '02.11.2026 11:00', '04.11.2026 09:00', '90.0', '0', '0', 'Bəli', 'Xeyr',
+      '02.11.2026', '02.11.2026 10:00', 'Açılış yoxlaması', 'Zona A1', 'Tamamlanıb', 'Aynur Quliyeva', 'Aynur Quliyeva', '02.11.2026 08:10', '02.11.2026 11:00', '04.11.2026 09:00', '90.0', '0', '0', 'Bəli', 'Xeyr', '', 'Xeyr',
     ]);
   });
 
@@ -89,7 +89,7 @@ describe('report exports (spec §5.4)', () => {
       {
         entity_type: 'report',
         entity_id: null,
-        after: { kind: 'runs', format: 'csv', filters: { from: '2026-11-02', to: '2026-11-04', siteId: w.sites.branchA, userId: null, checklistId: null, bucket: 'missed', severity: null }, rows: 2 },
+        after: { kind: 'runs', format: 'csv', filters: { from: '2026-11-02', to: '2026-11-04', siteId: w.sites.branchA, userId: null, checklistId: null, bucket: 'missed', auditState: null, severity: null }, rows: 2 },
       },
     ]);
   });
@@ -149,6 +149,9 @@ describe('report exports (spec §5.4)', () => {
        select gen_random_uuid(), $1, a.id, $2, $3, '2026-11-03', '2026-11-03T04:00:00Z', '2026-11-03T06:00:00Z', '2026-11-03T07:00:00Z', 'missed', $5 from a`,
       [b.s.tenantId, checklist.id, site, b.s.ownerId, checklist.versionId],
     );
+    // Fresh statistics for the 10,001 new rows, as autovacuum would give a real table: without them the planner can
+    // pick a plan built for an empty table, which took over a minute on CI (also on main before SP8).
+    await ownerQuery('analyze assignments, occurrences');
     const runs = await b.owner.get(`/api/v1/reports/runs/export?${qs({ ...PERIOD, format: 'xlsx' })}`);
     expect([runs.status, runs.body.error.code, runs.body.error.rows, runs.body.error.limit]).toEqual([422, 'REPORT_TOO_LARGE', 10001, 10000]);
     const full = await b.owner.get(`/api/v1/reports/full/export?${qs({ ...PERIOD, format: 'pdf' })}`);

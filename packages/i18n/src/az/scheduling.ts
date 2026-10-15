@@ -35,6 +35,7 @@ export default {
     cancelled: 'Ləğv edilib',
     audit_pending: 'Audit gözləyir',
     audited: 'Audit olunub',
+    correction_required: 'Düzəliş tələb olunur',
   },
   cancelReasons: {
     assignment_edited: 'Təyinat dəyişdirildi',

@@ -13,7 +13,7 @@ import { readOnlyReason, useExecution } from './use-execution';
 
 let jumps = 0;
 /** A new value per jump, so the execution screen reacts even when it is still mounted and the item is the same. */
-const nextJump = () => `${Date.now()}-${++jumps}`;
+export const nextJump = () => `${Date.now()}-${++jumps}`;
 
 /** Spec §7.3: what still blocks completion (tap to jump), a score preview, and "Tamamla" (FR-08.06). `occurrenceId` is the route's id. */
 export function FinishScreen({ occurrenceId }: { occurrenceId: string }) {

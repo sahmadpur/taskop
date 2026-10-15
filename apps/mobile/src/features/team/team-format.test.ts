@@ -33,6 +33,7 @@ describe('team formatting', () => {
       cancelled: 'neutral',
       audit_pending: 'success',
       audited: 'success',
+      correction_required: 'warning',
     });
   });
 

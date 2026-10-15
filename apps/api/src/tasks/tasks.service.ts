@@ -42,6 +42,8 @@ export class TasksService {
       if (!problem) throw new AppError('NOT_FOUND');
       // Only problems of closed runs: their rows no longer change (spec §1).
       if (problem.executionState !== 'completed' && problem.executionState !== 'partial') throw new AppError('PROBLEM_NOT_CLOSED');
+      // Ruling F3: a problem a correction cleared is no longer open, so no remediation task starts from it.
+      if (problem.pr.clearedAt !== null) throw new AppError('PROBLEM_NOT_CLOSED');
       if (problem.taskId) throw new AppError('PROBLEM_ALREADY_HAS_TASK');
       siteId = problem.pr.siteId;
     } else if (siteId) {

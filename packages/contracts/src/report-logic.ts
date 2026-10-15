@@ -10,7 +10,7 @@ export type RunCountKey = (typeof RUN_COUNT_KEYS)[number];
 export type RunCounts = Record<RunCountKey, number>;
 export type RunFlags = Record<RunCountKey, boolean>;
 
-export const COMPLETED_STATUSES = ['completed', 'audit_pending', 'audited'] as const satisfies readonly OccurrenceStatus[];
+export const COMPLETED_STATUSES = ['completed', 'audit_pending', 'audited', 'correction_required'] as const satisfies readonly OccurrenceStatus[];
 export const IN_PROGRESS_STATUSES = ['started', 'in_progress'] as const satisfies readonly OccurrenceStatus[];
 
 const isCompleted = (s: OccurrenceStatus): boolean => (COMPLETED_STATUSES as readonly OccurrenceStatus[]).includes(s);

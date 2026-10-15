@@ -19,6 +19,10 @@ export class ApiError extends Error {
     /** REPORT_TOO_LARGE: the rows the export would have, and the cap. */
     readonly rows: number | null = null,
     readonly limit: number | null = null,
+    /** AUDIT_EXISTS: the run's existing audit, so the app can open it. */
+    readonly auditId: string | null = null,
+    /** AUDIT_INCOMPLETE: the auditable items without a verdict. */
+    readonly itemIds: string[] | null = null,
   ) {
     super(code);
     this.name = 'ApiError';

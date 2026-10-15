@@ -17,9 +17,12 @@ export default {
     'task.completed': 'Tapşırıq tamamlandı',
     'task.overdue': 'Tapşırıq gecikir',
     'task.cancelled': 'Tapşırıq ləğv edildi',
+    'run.correction_required': 'İcra düzəlişə qaytarıldı',
+    'run.resubmitted': 'Düzəliş təqdim edildi',
+    'audit.finished': 'Audit tamamlandı',
     manual: 'Admin mesajı',
   },
-  groups: { checklist: 'Checklistlər', problem: 'Problemlər', task: 'Tapşırıqlar' },
+  groups: { checklist: 'Checklistlər', problem: 'Problemlər', task: 'Tapşırıqlar', audit: 'Audit və düzəlişlər' },
   audiences: { assignees: 'İcraçılar', creator: 'Yaradan' },
   channels: { inApp: 'Tətbiqdə', push: 'Push', email: 'E-poçt' },
   deliveryStatuses: { queued: 'Növbədə', sent: 'Göndərildi', delivered: 'Çatdırıldı', failed: 'Alınmadı', skipped: 'Ötürüldü' },
@@ -30,8 +33,27 @@ export default {
     leadMinutesRequired: 'Xatırlatma vaxtını seçin.',
     leadMinutesNotApplicable: 'Bu bildiriş növü üçün xatırlatma vaxtı yoxdur.',
     audienceNotApplicable: 'Bu alıcı bu bildiriş növünə aid deyil.',
+    resultFilterNotApplicable: 'Nəticə filtri yalnız «Audit tamamlandı» bildirişinə aiddir.',
   },
   leadMinutes: '{{count}} dəq əvvəl',
+  /** audit.finished's rule option (SP8 spec §7.1). */
+  resultFilters: { any: 'Bütün nəticələr', failed: 'Yalnız uğursuz auditlər' },
+  /** Push and inbox texts of the SP8 types, rendered once at fan-out. */
+  templates: {
+    'run.correction_required': {
+      title: 'Düzəliş tələb olunur',
+      body: '{{checklist}} — {{site}}: {{count}} bənd düzəliş gözləyir.',
+      due: 'Son tarix: {{date}}.',
+    },
+    'run.resubmitted': {
+      title: 'Düzəliş təqdim edildi',
+      body: '{{checklist}} — {{site}}: {{executor}} düzəlişləri təqdim etdi (raund {{round}}).',
+    },
+    'audit.finished': {
+      title: 'Audit tamamlandı',
+      body: '{{checklist}} — {{site}}: {{result}}, audit balı {{percent}}.',
+    },
+  },
   // ---- Web (Part 3): the bell, the inbox page, the rules tab, the messages page and the preferences dialog ----
   bell: {
     unread: 'Bildirişlər: {{count}} oxunmamış',
@@ -54,6 +76,8 @@ export default {
     noRoles: 'Rol seçilməyib',
     rolesCount: '{{count}} rol',
     rolesUnavailable: 'Rolların siyahısı yüklənmədi; seçilmiş rollar dəyişməz qalır.',
+    /** Under audit.finished's result filter (ruling R11). */
+    resultFilterHint: 'Filtr yalnız rollar üzrə alıcılara aiddir; icraçı həmişə bildiriş alır.',
   },
   messages: {
     compose: 'Yeni mesaj',

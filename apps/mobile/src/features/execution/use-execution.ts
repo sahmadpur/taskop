@@ -44,6 +44,8 @@ export function readOnlyReason(e: LocalExecution, o: LocalOccurrence, userId: st
   if (e.state === 'rejected') return 'rejected';
   if (o.claim && o.claim.executorUserId !== userId) return 'claimedByOther';
   if (e.state === 'completed') return 'completed';
+  // Spec §3.2: a run sent back for correction is not limited by closes_at. Which items may change is the store's rule.
+  if (e.state === 'rework') return null;
   if (e.state !== 'active' || now >= Date.parse(o.closesAt)) return 'locked';
   return null;
 }

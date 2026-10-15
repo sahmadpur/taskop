@@ -1,10 +1,16 @@
 name: CI
 on:
+  # Branches run through their pull request; pushing to a PR branch would otherwise run every job twice.
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
+  checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -15,11 +21,33 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
       - run: pnpm build
+  # Each suite on its own runner, so they don't compete for CPU with each other and the API's Postgres container.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - { name: api, filter: '@taskop/api' }
+          - { name: web, filter: '@taskop/web' }
+          - { name: mobile, filter: '@taskop/mobile' }
+          - { name: packages, filter: './packages/*' }
+    name: test (${{ matrix.suite.name }})
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run test --filter='${{ matrix.suite.filter }}'
   e2e:
     runs-on: ubuntu-latest
-    needs: build
+    timeout-minutes: 30
+    needs: [checks, test]
     services:
       postgres:
         image: postgres:18-alpine
@@ -41,11 +69,13 @@ jobs:
       MAIL_FROM: Taskop <no-reply@taskop.ci>
       COOKIE_SECURE: 'false'
       LOG_LEVEL: warn
-      # The API only needs these to boot; the e2e flow (Part 3) drives executions through the API without uploads.
+      # Every spec signs up its own tenant: 9 of the default 10 per hour, so one retry would hit the limit.
+      RL_SIGNUP_IP_PER_HOUR: '100'
+      # SeaweedFS and Mailpit run as containers (step below): the audit report is stored there and mailed (SP8).
       S3_ENDPOINT: http://localhost:8333
       S3_PUBLIC_ENDPOINT: http://localhost:8333
-      S3_ACCESS_KEY: ci
-      S3_SECRET_KEY: ci-secret
+      S3_ACCESS_KEY: taskop
+      S3_SECRET_KEY: taskop_dev_password
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -55,6 +85,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Start object storage and the mail catcher
+        env:
+          AWS_ACCESS_KEY_ID: taskop
+          AWS_SECRET_ACCESS_KEY: taskop_dev_password
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          docker run -d --name seaweedfs -p 8333:8333 -v "$PWD/docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro" chrislusf/seaweedfs:latest server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
+          docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit:latest
+          for i in $(seq 1 30); do
+            aws --endpoint-url http://localhost:8333 s3api head-bucket --bucket taskop-media 2>/dev/null && break
+            aws --endpoint-url http://localhost:8333 s3api create-bucket --bucket taskop-media 2>/dev/null && break
+            sleep 2
+          done
+          aws --endpoint-url http://localhost:8333 s3api head-bucket --bucket taskop-media
       - name: Prepare database and JWT keys
         run: |
           cd apps/api

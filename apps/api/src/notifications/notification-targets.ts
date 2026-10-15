@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { NotificationType, ProblemSeverity } from '@taskop/contracts';
-import { eq } from 'drizzle-orm';
+import { type AuditResult, type AuditScore, isAuditType, type NotificationType, type ProblemSeverity, type ReworkItem } from '@taskop/contracts';
+import { and, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { assignments, checklists, executionProblems, occurrences, sites, tasks, tenants } from '../db/schema';
-import type { AssignedPayload, ManualPayload, OccurrencePayload, ProblemPayload, TaskPayload } from './payloads';
+import { assignments, audits, checklists, executionProblems, executionReworkRequests, executions, occurrences, sites, tasks, tenants, users } from '../db/schema';
+import type { AssignedPayload, ManualPayload, OccurrencePayload, ProblemPayload, RunPayload, TaskPayload } from './payloads';
 
 export interface OccurrenceTarget {
   kind: 'occurrence';
@@ -45,9 +45,26 @@ export interface TaskTarget {
   timezone: string;
 }
 
+/** SP8: a run sent back, resubmitted or audited. Opens the run like checklist notifications do. */
+export interface RunTarget {
+  kind: 'run';
+  occurrence: OccurrenceTarget;
+  executionId: string;
+  executorUserId: string;
+  executorName: string;
+  round: number | null;
+  /** Items of the send-back round. */
+  flaggedCount: number;
+  dueAt: Date | null;
+  /** Who sent the run back: run.resubmitted's "creator" audience. */
+  sentBackByUserId: string | null;
+  auditResult: AuditResult | null;
+  auditPercent: number | null;
+}
+
 export type ManualTarget = ManualPayload & { kind: 'manual'; senderUserId: string | null };
 
-export type RuleTarget = OccurrenceTarget | ProblemTarget | AssignmentTarget | TaskTarget;
+export type RuleTarget = OccurrenceTarget | ProblemTarget | AssignmentTarget | TaskTarget | RunTarget;
 export type NotificationTarget = RuleTarget | ManualTarget;
 
 /** Spec §6.1 step 4: what an event is about, read in the fan-out's tenant transaction. Null when it no longer exists. */
@@ -57,6 +74,7 @@ export class NotificationTargets {
 
   async load(type: NotificationType, payload: unknown, actorUserId: string | null): Promise<NotificationTarget | null> {
     if (type === 'manual') return { kind: 'manual', ...(payload as ManualPayload), senderUserId: actorUserId };
+    if (isAuditType(type)) return this.run(payload as RunPayload);
     if (type === 'checklist.assigned') return this.assignment(payload as AssignedPayload);
     if (type.startsWith('checklist.')) return this.occurrence((payload as OccurrencePayload).occurrenceId);
     if (type.startsWith('problem.')) return this.problem(payload as ProblemPayload);
@@ -119,6 +137,39 @@ export class NotificationTargets {
       .innerJoin(sites, eq(sites.id, assignments.siteId))
       .where(eq(assignments.id, p.assignmentId));
     return r ? { kind: 'assignment', assignmentId: r.id, addedUserIds: p.addedUserIds, checklistName: r.checklistName, siteName: r.siteName } : null;
+  }
+
+  private async run(p: RunPayload): Promise<RunTarget | null> {
+    const occurrence = await this.occurrence(p.occurrenceId);
+    if (!occurrence) return null;
+    const tx = this.db.tx();
+    const [x] = await tx
+      .select({ executorUserId: executions.executorUserId, executorName: users.fullName })
+      .from(executions)
+      .innerJoin(users, eq(users.id, executions.executorUserId))
+      .where(eq(executions.id, p.executionId));
+    if (!x) return null;
+    const [request] =
+      p.round === undefined
+        ? []
+        : await tx
+            .select({ items: executionReworkRequests.items, dueAt: executionReworkRequests.dueAt, by: executionReworkRequests.requestedByUserId })
+            .from(executionReworkRequests)
+            .where(and(eq(executionReworkRequests.executionId, p.executionId), eq(executionReworkRequests.round, p.round)));
+    const [audit] = p.auditId ? await tx.select({ result: audits.result, score: audits.auditScore }).from(audits).where(eq(audits.id, p.auditId)) : [];
+    return {
+      kind: 'run',
+      occurrence,
+      executionId: p.executionId,
+      executorUserId: x.executorUserId,
+      executorName: x.executorName,
+      round: p.round ?? null,
+      flaggedCount: request ? (request.items as ReworkItem[]).length : 0,
+      dueAt: request?.dueAt ?? null,
+      sentBackByUserId: request?.by ?? null,
+      auditResult: audit?.result ?? null,
+      auditPercent: (audit?.score as AuditScore | null | undefined)?.percent ?? null,
+    };
   }
 
   private async task(taskId: string): Promise<TaskTarget | null> {

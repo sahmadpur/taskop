@@ -66,6 +66,16 @@ export const ErrorCode = {
   REPORT_RANGE_TOO_LONG: 'REPORT_RANGE_TOO_LONG',
   REPORT_TOO_LARGE: 'REPORT_TOO_LARGE',
   REPORT_TIMEOUT: 'REPORT_TIMEOUT',
+  EXECUTION_LOCKED: 'EXECUTION_LOCKED',
+  EXECUTION_NOT_CORRECTABLE: 'EXECUTION_NOT_CORRECTABLE',
+  ANSWERS_CONFLICT: 'ANSWERS_CONFLICT',
+  ITEM_NOT_IN_REWORK: 'ITEM_NOT_IN_REWORK',
+  MEDIA_NOT_CORRECTABLE: 'MEDIA_NOT_CORRECTABLE',
+  AUDIT_EXISTS: 'AUDIT_EXISTS',
+  AUDIT_PAUSED: 'AUDIT_PAUSED',
+  AUDIT_INCOMPLETE: 'AUDIT_INCOMPLETE',
+  AUDIT_NOT_IN_PROGRESS: 'AUDIT_NOT_IN_PROGRESS',
+  REPORT_NOT_READY: 'REPORT_NOT_READY',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -134,6 +144,16 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   REPORT_RANGE_TOO_LONG: 400,
   REPORT_TOO_LARGE: 422,
   REPORT_TIMEOUT: 503,
+  EXECUTION_LOCKED: 409,
+  EXECUTION_NOT_CORRECTABLE: 409,
+  ANSWERS_CONFLICT: 409,
+  ITEM_NOT_IN_REWORK: 422,
+  MEDIA_NOT_CORRECTABLE: 422,
+  AUDIT_EXISTS: 409,
+  AUDIT_PAUSED: 409,
+  AUDIT_INCOMPLETE: 422,
+  AUDIT_NOT_IN_PROGRESS: 409,
+  REPORT_NOT_READY: 409,
   INTERNAL: 500,
 };
 
@@ -154,6 +174,10 @@ export const errorBodySchema = z.object({
     /** REPORT_TOO_LARGE: the rows the export would have and the cap. */
     rows: z.number().int().optional(),
     limit: z.number().int().optional(),
+    /** AUDIT_EXISTS: the run's existing audit. */
+    auditId: z.string().optional(),
+    /** AUDIT_INCOMPLETE: the auditable items without a verdict. */
+    itemIds: z.array(z.string()).optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;

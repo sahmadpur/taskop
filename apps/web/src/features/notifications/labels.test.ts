@@ -20,6 +20,13 @@ describe('notificationLink', () => {
     expect(notificationLink(notificationItem({ type: 'manual', targetKind: 'none', targetId: null }))).toBeNull();
   });
 
+  it('opens the run on the tab each audit notification is about', () => {
+    const at = { targetKind: 'occurrence' as const, targetId: 'o1', targetDate: '2026-11-02' };
+    expect(notificationLink(notificationItem({ type: 'run.correction_required', ...at }))).toEqual({ to: '/schedule', search: { date: '2026-11-02', occurrence: 'o1', tab: 'execution' } });
+    expect(notificationLink(notificationItem({ type: 'run.resubmitted', ...at }))).toEqual({ to: '/schedule', search: { date: '2026-11-02', occurrence: 'o1', tab: 'corrections' } });
+    expect(notificationLink(notificationItem({ type: 'audit.finished', ...at }))).toEqual({ to: '/schedule', search: { date: '2026-11-02', occurrence: 'o1', tab: 'audit' } });
+  });
+
   it('gives a notification without a target id no page, and an occurrence without a date the current week', () => {
     expect(notificationLink(notificationItem({ targetKind: 'task', targetId: null }))).toBeNull();
     expect(notificationLink(notificationItem({ type: 'checklist.available', targetKind: 'occurrence', targetId: null, targetDate: '2026-11-02' }))).toBeNull();

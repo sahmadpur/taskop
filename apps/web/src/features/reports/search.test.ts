@@ -44,6 +44,12 @@ describe('reportsPageSearch', () => {
   it('gives the dashboard only the shared filters', () => {
     expect(reportSearch({ period: 'last_7', siteId: SITE, tab: 'runs', bucket: 'overdue' })).toEqual({ period: 'last_7', siteId: SITE });
   });
+
+  it('keeps a valid audit state of the runs table and drops an unknown one', () => {
+    expect(reportsPageSearch({ tab: 'runs', auditState: 'failed' })).toEqual({ tab: 'runs', auditState: 'failed' });
+    expect(reportsPageSearch({ tab: 'runs', auditState: 'rejected' })).toEqual({ tab: 'runs' });
+    expect(pageExtras({ tab: 'runs', bucket: 'all', auditState: 'waiting', siteId: SITE })).toEqual({ tab: 'runs', bucket: 'all', auditState: 'waiting' });
+  });
 });
 
 describe('resolveReportFilters', () => {

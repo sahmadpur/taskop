@@ -3,7 +3,7 @@ import { type ChecklistContent, PROBLEM_SEVERITIES, type ProblemSeverity } from 
 import { type Answers, computeScore, isAnswered, type MissingKind, requirements, visibleItems } from './checklist-logic.js';
 import { idSchema } from './common.js';
 
-export const EXECUTION_STATES = ['active', 'completed', 'partial', 'rejected'] as const;
+export const EXECUTION_STATES = ['active', 'completed', 'partial', 'rejected', 'rework'] as const;
 export const executionStateSchema = z.enum(EXECUTION_STATES);
 export type ExecutionState = z.infer<typeof executionStateSchema>;
 
@@ -29,6 +29,8 @@ export const scoreSchema = z.object({
   percent: z.number().nullable(),
   problems: z.array(z.object({ itemId: idSchema, severity: problemSeveritySchema })),
 });
+/** A run's score as the API sends it (the schema of ScoreResult). */
+export type Score = z.infer<typeof scoreSchema>;
 
 export interface DerivedProblem {
   itemId: string;

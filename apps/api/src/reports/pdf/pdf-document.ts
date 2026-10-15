@@ -64,6 +64,11 @@ export function pdfDefinition(doc: ReportDocument): TDocumentDefinitions {
   };
 }
 
+/** Renders any definition with the Noto Sans fonts and the access policies above; SP8's audit report uses it too. */
+export function renderPdf(definition: TDocumentDefinitions): Promise<Buffer> {
+  return pdfmake.createPdf(definition).getBuffer();
+}
+
 export function toPdf(doc: ReportDocument): Promise<Buffer> {
-  return pdfmake.createPdf(pdfDefinition(doc)).getBuffer();
+  return renderPdf(pdfDefinition(doc));
 }

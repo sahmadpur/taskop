@@ -1,4 +1,5 @@
 import type { ProblemDto } from '@taskop/contracts';
+import { az } from '@taskop/i18n';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,7 +26,7 @@ const problem = (over: Partial<ProblemDto> = {}): ProblemDto => ({
   id: 'p1', executionId: 'x1', occurrenceId: 'o1', localDate: '2026-11-02', siteId: 'site1', siteName: 'Anbar', checklistId: 'c1',
   checklistName: 'Açılış', itemId: 'i1', itemLabel: 'Temperatur', source: 'manual', severity: 'critical', note: 'Kondisioner xarabdır',
   mediaIds: ['m1', 'm2'], media: [{ id: 'm1', kind: 'photo', status: 'uploaded' }, { id: 'm2', kind: 'video', status: 'pending' }],
-  executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', resolution: 'none', taskId: null, executionState: 'completed', ...over,
+  executorName: 'Aysel', createdAt: '2026-11-02T04:20:00.000Z', resolution: 'none', taskId: null, executionState: 'completed', clearedAt: null, ...over,
 });
 
 beforeEach(() => {
@@ -42,6 +43,28 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('ProblemsPage', () => {
+  it('hides problems a correction cleared unless asked, and marks them', async () => {
+    mocks.api.problems.list.mockImplementation(async (q: { includeCleared?: string }) => ({
+      items: q.includeCleared === 'true' ? [problem(), problem({ id: 'p2', itemId: 'i2', itemLabel: 'Qapı', clearedAt: '2026-11-03T08:00:00.000Z' })] : [problem()],
+      nextCursor: null,
+    }));
+    renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
+    await screen.findByRole('link', { name: 'Temperatur' });
+    expect(mocks.api.problems.list.mock.calls[0]![0]).not.toHaveProperty('includeCleared');
+    expect(screen.queryByRole('link', { name: 'Qapı' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Aradan qaldırılanları göstər' }));
+    const cleared = (await screen.findByRole('link', { name: 'Qapı' })).closest('tr')!;
+    expect(mocks.api.problems.list).toHaveBeenLastCalledWith(expect.objectContaining({ includeCleared: 'true' }));
+    expect(cleared).toHaveAttribute('data-cleared', 'true');
+    expect(within(cleared).getByText(az.corrections.cleared)).toBeInTheDocument();
+    const active = screen.getByRole('link', { name: 'Temperatur' }).closest('tr')!;
+    expect(active).not.toHaveAttribute('data-cleared');
+    // Ruling F3: no task starts from a cleared problem.
+    expect(within(cleared).queryByRole('button', { name: 'Tapşırıq yarat' })).not.toBeInTheDocument();
+    expect(within(cleared).getByText(az.tasks.resolutions.none)).toBeInTheDocument();
+    expect(within(active).getByRole('button', { name: 'Tapşırıq yarat' })).toBeEnabled();
+  });
+
   it('lists problems with place, item, severity and source, and links a row to the occurrence drawer', async () => {
     const router = renderWithRouter(<ProblemsPage today="2026-11-04" />, '/problems');
     await screen.findByText('Kondisioner xarabdır');

@@ -1,0 +1,56 @@
+/** Web-only strings of corrections, send-back and the corrections timeline (SP8 Part 3). Part 1's keys are reused. */
+export default {
+  edit: {
+    banner: 'Düzəliş rejimi: dəyişdirmək istədiyiniz cavabları redaktə edin. Foto və videolar dəyişdirilmir.',
+    save: 'Düzəlişləri yadda saxla',
+    discard: 'İmtina et',
+    changed: '{{count}} bənd dəyişdirilib',
+    noChanges: 'Hələ heç nə dəyişdirilməyib.',
+    clear: 'Cavabı sil',
+    note: '{{item}} — qeyd',
+    mediaLocked: 'Foto və videolar düzəliş zamanı dəyişdirilmir.',
+    requirements: 'Bu düzəlişlə tələb olunan sahələr boş qalır.',
+    conflict: 'İcra bu vaxt başqa yerdə dəyişdirilib. Ən son cavablar yükləndi — düzəlişləri yenidən edin.',
+    saved: 'Düzəlişlər yadda saxlanıldı',
+    reasonTitle: 'Düzəlişin səbəbi',
+    reasonHint: 'Səbəb düzəlişlər tarixçəsində və audit hesabatında görünəcək.',
+  },
+  sendBack: {
+    title: 'İcranı düzəlişə qaytar',
+    hint: 'İcraçı yalnız seçilmiş bəndləri telefonda düzəldə biləcək.',
+    selected: '{{count}} bənd seçilib',
+    noItems: 'Ən azı bir bənd seçin.',
+    commentRequired: 'Hər seçilmiş bənd üçün şərh yazın.',
+    comment: '{{item}} — şərh',
+    dueHint: 'İstəyə bağlıdır. Son tarix keçəndə avtomatik heç nə baş vermir.',
+    done: 'İcra icraçıya qaytarıldı',
+  },
+  withdraw: {
+    title: 'Qaytarmanı geri götür',
+    description: 'İcra əvvəlki statusuna qayıdacaq. Cavablar qaytarmadan əvvəlki halına bərpa olunacaq, icraçının yarımçıq düzəlişləri ləğv ediləcək.',
+    done: 'Qaytarma geri götürüldü',
+  },
+  rework: {
+    requestedBy: '{{name}} · {{time}}',
+    flagged: 'Düzəliş tələb olunan bəndlər',
+  },
+  timeline: {
+    title: 'Tarixçə',
+    sentBack: '{{name}} icranı düzəlişə qaytardı',
+    resubmitted: 'İcraçı düzəlişləri təqdim etdi',
+    withdrawn: '{{name}} qaytarmanı geri götürdü',
+    reason: 'Səbəb: {{reason}}',
+    comment: 'Şərh: {{comment}}',
+  },
+  diff: {
+    title: 'İlkin və cari cavablar',
+    item: 'Bənd',
+    capturedAt: 'İlkin nəticə {{time}} tarixində saxlanılıb',
+  },
+  score: {
+    original: 'İlkin bal: {{value}}',
+    current: 'Cari bal: {{value}}',
+  },
+  media: '{{photos}} foto, {{videos}} video',
+  showCleared: 'Aradan qaldırılanları göstər',
+} as const;

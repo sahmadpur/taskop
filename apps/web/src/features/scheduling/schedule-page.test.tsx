@@ -112,7 +112,9 @@ describe('SchedulePage', () => {
 
   it('reads only valid link parameters', () => {
     expect(scheduleSearch({ date: '2026-11-02', occurrence: 'o1', tab: 'execution' })).toEqual({ date: '2026-11-02', occurrence: 'o1', tab: 'execution' });
-    expect(scheduleSearch({ date: '2.11.2026', occurrence: 5, tab: 'audit' })).toEqual({});
+    expect(scheduleSearch({ date: '2.11.2026', occurrence: 5, tab: 'history' })).toEqual({});
+    expect(scheduleSearch({ occurrence: 'o1', tab: 'audit' })).toEqual({ occurrence: 'o1', tab: 'audit' });
+    expect(scheduleSearch({ occurrence: 'o1', tab: 'corrections' })).toEqual({ occurrence: 'o1', tab: 'corrections' });
     expect(scheduleSearch({ date: '2026-13-45' })).toEqual({});
   });
 });

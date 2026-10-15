@@ -101,7 +101,7 @@ describe('TaskScreen', () => {
         { id: PROBLEM_PHOTO, kind: 'photo', status: 'uploaded' },
         { id: PROBLEM_VIDEO, kind: 'video', status: 'pending' },
       ],
-      executorName: 'Aysel Əliyeva', createdAt: T.open, resolution: 'open', taskId: TASK, executionState: 'completed',
+      executorName: 'Aysel Əliyeva', createdAt: T.open, resolution: 'open', taskId: TASK, executionState: 'completed', clearedAt: null,
     };
     await opened(
       {

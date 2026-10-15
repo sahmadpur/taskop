@@ -20,5 +20,18 @@ export default {
     notification_rule: 'Bildiriş qaydası',
     notification_message: 'Bildiriş mesajı',
     report: 'Hesabat',
+    audit: 'Audit',
+    execution: 'İcra',
+  },
+  /** The SP8 actions (AUDIT_FLOW_AUDIT_ACTIONS). Other actions are shown as their code. */
+  actions: {
+    'audit.started': 'Audit başladı',
+    'audit.finished': 'Audit bitdi',
+    'audit.cancelled': 'Audit ləğv edildi',
+    'audit.report_sent': 'Audit hesabatı göndərildi',
+    'execution.corrected': 'İcranın cavabları düzəldildi',
+    'execution.sent_back': 'İcra düzəlişə qaytarıldı',
+    'execution.send_back_withdrawn': 'Düzəlişə qaytarma geri götürüldü',
+    'execution.resubmitted': 'İcra yenidən təqdim edildi',
   },
 } as const;

@@ -4,7 +4,8 @@ import { executionMedia, executionProblems, executions, users } from '../db/sche
 
 /** Media of the execution in the current row not yet confirmed as uploaded (spec §6.7 `mediaPending`). */
 export const mediaPendingSql = sql<number>`(select count(*)::int from execution_media m where m.execution_id = "executions"."id" and m.status = 'pending')`;
-export const problemCountSql = sql<number>`(select count(*)::int from execution_problems pr where pr.execution_id = "executions"."id")`;
+/** Active problems only: a correction's cleared problems no longer count (SP8 spec §4.1). */
+export const problemCountSql = sql<number>`(select count(*)::int from execution_problems pr where pr.execution_id = "executions"."id" and pr.cleared_at is null)`;
 
 /** Select shape for summaries: `from(executions).innerJoin(users, executor)`. */
 export const executionSummaryColumns = {
@@ -64,6 +65,7 @@ export const toProblemEntry = (p: typeof executionProblems.$inferSelect, taskId:
   createdAt: p.createdAt.toISOString(),
   resolution: problemResolutionOf(taskStatus),
   taskId,
+  clearedAt: p.clearedAt?.toISOString() ?? null,
 });
 
 export const asDevice = (v: unknown): DeviceInfo => v as DeviceInfo;

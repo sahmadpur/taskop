@@ -1,5 +1,6 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, type S3ClientConfig } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { MEDIA_LIMITS } from '@taskop/contracts';
 import { APP_CONFIG, type AppConfig } from '../config/config';
@@ -70,6 +71,33 @@ export class S3Service implements OnModuleDestroy {
     try {
       const r = await this.internal.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
       return { contentLength: r.ContentLength ?? 0, contentType: r.ContentType ?? null };
+    } catch (e) {
+      if (isNotFound(e)) return null;
+      throw e;
+    }
+  }
+
+  /** Stores a whole object from the server (SP8: the audit report PDF). */
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    await this.internal.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType, ContentLength: body.length }));
+  }
+
+  /** The whole object, or null when it does not exist (SP8: report download and photos for the report). */
+  async getObject(key: string): Promise<Buffer | null> {
+    try {
+      const r = await this.internal.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return r.Body ? Buffer.from(await r.Body.transformToByteArray()) : null;
+    } catch (e) {
+      if (isNotFound(e)) return null;
+      throw e;
+    }
+  }
+
+  /** The object as a stream with its length, or null when it does not exist (SP8: the report download never buffers the PDF). */
+  async getStream(key: string): Promise<{ stream: Readable; contentLength: number | undefined } | null> {
+    try {
+      const r = await this.internal.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return r.Body ? { stream: r.Body as Readable, contentLength: r.ContentLength } : null;
     } catch (e) {
       if (isNotFound(e)) return null;
       throw e;
