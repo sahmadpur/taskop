@@ -90,6 +90,39 @@ describe('rework on the phone (spec §3.2, §6.2)', () => {
     ]);
   });
 
+  it('clamps a resubmit stamped before the send-back to the send-back time', async () => {
+    const a = await sentBack();
+    await save(a, 2, fixedTemp(a));
+    // A slow phone clock: the tap reads 04:30Z, half an hour before the manager sent the run back at 05:00Z.
+    const res = await resubmit(a.worker.api, a.executionId, '2026-11-02T04:30:00.000Z');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await reworkRows(a.executionId))[0]!.resubmitted_at?.toISOString()).toBe('2026-11-02T05:00:00.000Z');
+    expect((await historyOf(a.w.occurrenceId)).at(-1)).toEqual(['correction_required', 'completed', '2026-11-02T05:00:00.000Z', null, a.worker.id]);
+  });
+
+  it('never lets a replayed resubmit of an older round close a newer one (R21)', async () => {
+    const a = await sentBack();
+    await save(a, 2, fixedTemp(a));
+    expect((await resubmit(a.worker.api, a.executionId, LATER, 1)).status).toBe(200);
+    // The response was lost; the manager sends the run back again before the phone replays.
+    clock.set('2026-11-03T05:00:00Z');
+    const second = await sendBack(a.manager.api, a.executionId, { items: [{ itemId: a.w.c.photo.id, comment: 'Foto bulanıqdır' }] });
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    const stored = await executionRow(a.executionId);
+    const history = await historyOf(a.w.occurrenceId);
+    const replay = await resubmit(a.worker.api, a.executionId, LATER, 1);
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    // Nothing changed: round 2 is still open and the run is still with the worker.
+    expect(await executionRow(a.executionId)).toMatchObject({ state: 'rework', rework_round: 2, answers_rev: stored.answers_rev });
+    expect(await statusOf(a.w.occurrenceId)).toBe('correction_required');
+    expect(await historyOf(a.w.occurrenceId)).toEqual(history);
+    expect((await reworkRows(a.executionId)).map((r) => [r.round, r.resubmitted_at !== null, r.withdrawn_at !== null])).toEqual([[1, true, false], [2, false, false]]);
+    expect(await correctionRows(a.executionId)).toHaveLength(1);
+    // A round that never existed is refused.
+    const unknown = await resubmit(a.worker.api, a.executionId, LATER, 3);
+    expect([unknown.status, unknown.body.error.code]).toEqual([409, 'EXECUTION_NOT_ACTIVE']);
+  });
+
   it('goes to audit_pending when the checklist requires audit', async () => {
     const a = await sentBack();
     await ownerQuery('update checklists set requires_audit = true where id = $1', [a.w.checklistId]);
@@ -233,7 +266,7 @@ describe('rework on the phone (spec §3.2, §6.2)', () => {
     expect(during.executions.find((x: { id: string }) => x.id === a.executionId)).toMatchObject({
       state: 'rework',
       reworkRound: 1,
-      rework: { round: 1, items: [{ itemId: a.w.c.temp.id, comment: 'Temperaturu yenidən ölçün' }], dueAt: null, requestedBy: { id: a.manager.id, fullName: 'Menecer' } },
+      rework: { round: 1, items: [{ itemId: a.w.c.temp.id, comment: 'Temperaturu yenidən ölçün' }], dueAt: null, requestedBy: { id: a.manager.id, fullName: 'Menecer' }, answersBefore: a.answers },
     });
     expect(during.occurrences.find((o: { id: string }) => o.id === a.w.occurrenceId)).toMatchObject({ status: 'correction_required', checklistVersionId: a.w.versionId });
     expect(during.checklistVersions.map((v: { id: string }) => v.id)).toContain(a.w.versionId);

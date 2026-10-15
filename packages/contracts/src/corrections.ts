@@ -112,6 +112,8 @@ export type ExecutionCorrections = z.infer<typeof executionCorrectionsSchema>;
 
 /** POST /executions/:id/resubmit: the device time of the tap, with the usual command timing (spec §6.6 of SP4). */
 export const resubmitCommandSchema = z.object({
+  /** The rework round being closed: a replay of an older round never closes a newer one. */
+  round: z.number().int().min(1),
   resubmittedAt: isoDateTimeSchema,
   deviceTime: isoDateTimeSchema,
   clientOffsetMs: z.number().int().min(-2_000_000_000).max(2_000_000_000),

@@ -72,8 +72,8 @@ export async function auditWorld(t: TestApp, clock: FakeClock, opts: { requiresA
 export const correct = (api: Api, executionId: string, body: object) => api.post(`/api/v1/executions/${executionId}/corrections`, body);
 export const sendBack = (api: Api, executionId: string, body: object) => api.post(`/api/v1/executions/${executionId}/send-back`, body);
 export const withdraw = (api: Api, executionId: string) => api.post(`/api/v1/executions/${executionId}/send-back/cancel`);
-export const resubmit = (api: Api, executionId: string, at: string) =>
-  api.post(`/api/v1/executions/${executionId}/resubmit`, { resubmittedAt: at, deviceTime: at, clientOffsetMs: 0 });
+export const resubmit = (api: Api, executionId: string, at: string, round = 1) =>
+  api.post(`/api/v1/executions/${executionId}/resubmit`, { round, resubmittedAt: at, deviceTime: at, clientOffsetMs: 0 });
 export const startAudit = (api: Api, executionId: string) => api.post(`/api/v1/executions/${executionId}/audits`);
 
 export interface CorrectionDbRow {

@@ -673,7 +673,7 @@ describe('audit and correction endpoints', () => {
     expect(await t.corrections.sendBack(id, { items: [{ itemId: id, comment: 'Foto' }] })).toEqual(request);
     expect(await t.corrections.withdraw(id)).toEqual(request);
     expect(await t.corrections.history(id)).toEqual(history);
-    expect(await t.executions.resubmit(id, { resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 })).toEqual(resubmitted);
+    expect(await t.executions.resubmit(id, { round: 1, resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 })).toEqual(resubmitted);
     expect(calls).toEqual([
       `GET /api/v1/audits?queue=waiting&siteId=${id}`,
       `POST /api/v1/executions/${id}/audits {}`,
@@ -686,7 +686,7 @@ describe('audit and correction endpoints', () => {
       `POST /api/v1/executions/${id}/send-back {"items":[{"itemId":"${id}","comment":"Foto"}]}`,
       `POST /api/v1/executions/${id}/send-back/cancel {}`,
       `GET /api/v1/executions/${id}/corrections`,
-      `POST /api/v1/executions/${id}/resubmit {"resubmittedAt":"${AT}","deviceTime":"${AT}","clientOffsetMs":0}`,
+      `POST /api/v1/executions/${id}/resubmit {"round":1,"resubmittedAt":"${AT}","deviceTime":"${AT}","clientOffsetMs":0}`,
     ]);
   });
 

@@ -21,6 +21,16 @@ export class ReworkRequests {
     return r ?? null;
   }
 
+  /** The request of one round, whatever its outcome. */
+  async byRound(executionId: string, round: number): Promise<ReworkRequestRow | null> {
+    const [r] = await this.db
+      .tx()
+      .select()
+      .from(executionReworkRequests)
+      .where(and(eq(executionReworkRequests.executionId, executionId), eq(executionReworkRequests.round, round)));
+    return r ?? null;
+  }
+
   async latest(executionId: string): Promise<ReworkRequestRow | null> {
     const [r] = await this.db
       .tx()

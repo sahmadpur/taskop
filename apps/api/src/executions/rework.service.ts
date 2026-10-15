@@ -69,17 +69,19 @@ export class ReworkService {
    * Requirements, then one `rework` correction per changed item (the manager's comment as the reason), recalculation,
    * resubmitted_at, state completed and the status of nextStatusAfterResubmit. Verdicts of an open audit on the changed
    * items are reset (Spec decision 7). completed_at, completed_received_at and late keep their first values.
-   * Idempotent: a repeat after success answers 200 (Spec decision 6).
+   * Idempotent per round: a repeat of a resubmitted round answers 200 and writes nothing (Spec decision 6); a round that is
+   * withdrawn, unknown or no longer the open one is EXECUTION_NOT_ACTIVE.
    */
   async resubmit(p: Principal, id: string, cmd: ResubmitCommandDto): Promise<ResubmitResult> {
     const receivedAt = this.clock.now();
     const { e, o } = await lockOwnRun(this.db, p, id);
-    const resubmittedAt = new Date(cmd.resubmittedAt);
-    const bounds = assertDeviceTimes([new Date(cmd.deviceTime), resubmittedAt], receivedAt, cmd.clientOffsetMs);
-    if (e.state === 'completed' && (await this.requests.latest(e.id))?.resubmittedAt) return this.result(e, o.status);
-    if (e.state !== 'rework') throw new AppError('EXECUTION_NOT_ACTIVE');
-    const request = await this.requests.open(e.id);
-    if (!request) throw new AppError('EXECUTION_NOT_ACTIVE');
+    const bounds = assertDeviceTimes([new Date(cmd.deviceTime), new Date(cmd.resubmittedAt)], receivedAt, cmd.clientOffsetMs);
+    // The command names its round: a replay of an older round never closes a newer one (R21).
+    const request = await this.requests.byRound(e.id, cmd.round);
+    if (request?.resubmittedAt) return this.result(e, o.status);
+    if (!request || request.withdrawnAt || e.state !== 'rework') throw new AppError('EXECUTION_NOT_ACTIVE');
+    // Like complete() clamps to startedAt: a slow device clock never puts the resubmit before the send-back.
+    const resubmittedAt = new Date(Math.max(+new Date(cmd.resubmittedAt), +request.requestedAt));
     const content = await this.lookups.content(e.checklistVersionId);
     const answers = e.answers as Answers;
     const missing = requirements(content, answers);

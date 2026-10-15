@@ -92,8 +92,11 @@ describe('correction inputs', () => {
   });
 
   it('takes the resubmit timing like the other phone commands', () => {
-    expect(resubmitCommandSchema.parse({ resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 })).toEqual({ resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 });
+    expect(resubmitCommandSchema.parse({ round: 1, resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 })).toEqual({ round: 1, resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 });
     expect(resubmitCommandSchema.safeParse({ resubmittedAt: AT }).success).toBe(false);
+    // The round is required and positive.
+    expect(resubmitCommandSchema.safeParse({ resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 }).success).toBe(false);
+    expect(resubmitCommandSchema.safeParse({ round: 0, resubmittedAt: AT, deviceTime: AT, clientOffsetMs: 0 }).success).toBe(false);
   });
 });
 
