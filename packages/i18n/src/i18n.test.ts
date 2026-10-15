@@ -163,7 +163,13 @@ describe('mobile execution translations', () => {
   });
 
   it('uses the spec wording', () => {
-    expect(az.mobile.checklists.sections).toEqual({ now: 'İndi', inProgress: 'Davam edən', upcoming: 'Gələcək', done: 'Bitmiş' });
+    expect(az.mobile.checklists.sections).toEqual({
+      rework: 'Düzəliş tələb olunur',
+      now: 'İndi',
+      inProgress: 'Davam edən',
+      upcoming: 'Gələcək',
+      done: 'Bitmiş',
+    });
     expect(az.mobile.checklists.claimedBy.replace('{{name}}', 'Murad')).toBe('Murad icra edir');
     expect(az.mobile.checklists.startBlocked.clockAhead).toBe('Telefonun saatı irəlidədir. Saatı düzəldin və yenidən cəhd edin.');
     expect(az.mobile.sync.pending.replace('{{count}}', '3')).toBe('3 gözləyir');
@@ -534,5 +540,37 @@ describe('audit and correction translations', () => {
   it('fills placeholders and leaves unknown ones visible', () => {
     expect(interpolate('{{a}} və {{b}}', { a: 1, b: 'iki' })).toBe('1 və iki');
     expect(interpolate('{{a}} {{x}}', { a: 'A' })).toBe('A {{x}}');
+  });
+});
+
+describe('mobile audit and correction translations', () => {
+  it('labels the rework flow on the worker’s phone', () => {
+    expect(az.mobile.checklists.sections.rework).toBe('Düzəliş tələb olunur');
+    expect(az.mobile.rework.items.replace('{{count}}', '2')).toBe('2 bənd düzəliş tələb edir');
+    expect(az.mobile.rework.fix).toBe('Düzəliş et');
+    expect(az.mobile.rework.managerComment.replace('{{comment}}', 'Yenidən ölçün')).toBe('Rəhbərin şərhi: Yenidən ölçün');
+    expect(az.mobile.rework.progress.replace('{{done}}', '1').replace('{{total}}', '2')).toBe('1/2 qaytarılan bənd hazırdır');
+    expect(az.mobile.rework.resubmit).toBe('Yenidən təqdim et');
+    expect(az.mobile.rework.resubmitted).toBe('Düzəlişlər göndərildi.');
+    expect(az.mobile.rework.newQuestion).toBe('Yeni sual');
+    expect(az.mobile.sync.kinds.resubmit).toBe('Yenidən təqdim');
+    for (const k of ['notFlagged', 'title', 'flaggedTitle', 'ready', 'sentBanner'] as const) expect(az.mobile.rework[k], k).toBeTypeOf('string');
+  });
+
+  it('labels the Team tab’s audit, correction, send-back and history screens', () => {
+    expect(az.mobile.team.correct.next).toBe('Davam et');
+    expect(az.mobile.team.correct.noChanges).toBe('Heç bir cavab dəyişməyib.');
+    expect(az.mobile.team.sendBack.title).toBe('İcraçıya qaytar');
+    expect(az.mobile.team.sendBack.noItems).toBe('Ən azı bir bənd seçin.');
+    expect(az.mobile.team.history.requested.replace('{{name}}', 'Leyla').replace('{{count}}', '2')).toBe('Leyla 2 bəndi qaytarıb');
+    expect(az.mobile.team.audit.reportTo.replace('{{emails}}', 'a@b.az')).toBe('Hesabat göndəriləcək: a@b.az');
+    for (const group of ['audit', 'correct', 'sendBack', 'history'] as const) {
+      for (const [k, v] of Object.entries(az.mobile.team[group])) expect(v, `${group}.${k}`).toBeTypeOf('string');
+    }
+  });
+
+  it('uses Part 1’s wording for the new statuses', () => {
+    expect(az.scheduling.statuses.correction_required).toBe('Düzəliş tələb olunur');
+    expect(az.executions.states.rework).toBe('Düzəlişdə');
   });
 });

@@ -10,6 +10,7 @@ import {
   type NumberItem,
   type PhotoItem,
   type PushData,
+  type ReworkRequest,
   type SyncChecklistVersion,
   type SyncOccurrence,
   type SyncResponse,
@@ -236,3 +237,61 @@ export const notificationItem = (over: Partial<NotificationItem> = {}): Notifica
   readAt: null,
   ...over,
 });
+
+export const REWORK_EXECUTION = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ec0';
+export const REWORK_PHOTO = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ec1';
+export const REWORK_REQUEST = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ec2';
+/** 18:00 on Tuesday 3 Nov 2026 in Baku. */
+export const REWORK_DUE = '2026-11-03T14:00:00.000Z';
+/** The manager who sends runs back (SP8). */
+export const MANAGER_REF = { id: OTHER, fullName: 'Murad Həsənov' };
+
+/** An open send-back request of round 1 (Part 1 `ReworkRequest`); give it the flagged `items` and the starting answers. */
+export const reworkRequest = (over: Partial<ReworkRequest> = {}): ReworkRequest => ({
+  id: REWORK_REQUEST,
+  round: 1,
+  items: [],
+  answersBefore: {},
+  dueAt: REWORK_DUE,
+  requestedBy: MANAGER_REF,
+  requestedAt: '2026-11-02T08:00:00.000Z',
+  resubmittedAt: null,
+  withdrawnAt: null,
+  withdrawnBy: null,
+  ...over,
+});
+
+/** Answers of `checklist()` that meet every requirement: "Xeyr", 5 °C, one photo. */
+export const completedAnswers = (c: Checklist): MyExecution['answers'] => ({
+  [c.problem.id]: { optionIds: [c.no.id] },
+  [c.temp.id]: { number: 5 },
+  [c.photo.id]: { photos: [REWORK_PHOTO] },
+});
+
+/**
+ * /me/sync with OCC completed by me and then sent back with `items` flagged (Part 1 decision 8): the occurrence is
+ * correction_required, the execution is in rework with round 1 and the open request.
+ */
+export function reworkSync(
+  c: Checklist,
+  items: ReworkRequest['items'],
+  o: { request?: Partial<ReworkRequest>; execution?: Partial<MyExecution> } = {},
+): SyncResponse {
+  return syncResponse({
+    occurrences: [occurrence({ status: 'correction_required', claim: { executionId: REWORK_EXECUTION, executorUserId: ME, executorName: 'Aysel Əliyeva' } })],
+    checklistVersions: [versionOf(c.content)],
+    executions: [
+      myExecution({
+        id: REWORK_EXECUTION,
+        state: 'rework',
+        completedAt: T.due,
+        answers: completedAnswers(c),
+        answersRev: 3,
+        progress: { answered: 3, total: 4, requiredMissing: 0 },
+        reworkRound: 1,
+        rework: reworkRequest({ items, answersBefore: completedAnswers(c), ...o.request }),
+        ...o.execution,
+      }),
+    ],
+  });
+}

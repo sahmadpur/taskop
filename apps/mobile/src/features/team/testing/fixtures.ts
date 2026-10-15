@@ -1,6 +1,11 @@
 import {
+  type AuditBrief,
+  type AuditDetail,
+  type AuditItemVerdict,
+  type Correction,
   type DataScope,
   type EmployeeReportRow,
+  type ExecutionCorrections,
   type ExecutionDetail,
   type ExecutionMediaDto,
   type ExecutionProblem,
@@ -11,6 +16,7 @@ import {
   type PermissionKey,
   type ReportRun,
   type ReportSummary,
+  type ReworkRequest,
   RUN_COUNT_KEYS,
   type RunCounts,
 } from '@taskop/contracts';
@@ -233,6 +239,95 @@ export function executionDetail(c: Checklist, over: Partial<ExecutionDetail> = {
     rework: null,
     corrected: false,
     audit: null,
+    ...over,
+  };
+}
+
+export const AUDIT = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ed0';
+/** An audit another auditor started first (AUDIT_EXISTS). */
+export const AUDIT2 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ed1';
+export const CORRECTION = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ed2';
+export const CORRECTION2 = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ed3';
+export const REQUEST = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4ed4';
+/** The Team viewer (teamMe), as the API names her. */
+export const LEYLA = { id: ME, fullName: 'Leyla Məmmədova' };
+
+export const auditBrief = (over: Partial<AuditBrief> = {}): AuditBrief => ({ id: AUDIT, status: 'in_progress', result: null, percent: null, paused: false, ...over });
+
+export const auditVerdict = (itemId: string, over: Partial<AuditItemVerdict> = {}): AuditItemVerdict => ({
+  itemId,
+  verdict: 'approved',
+  comment: null,
+  updatedBy: LEYLA,
+  updatedAt: RUN_T.received,
+  ...over,
+});
+
+export const executionCorrections = (over: Partial<ExecutionCorrections> = {}): ExecutionCorrections => ({
+  original: null,
+  corrections: [],
+  reworkRequests: [],
+  diff: [],
+  ...over,
+});
+
+/** Leyla corrected ITEM from 10 to 5. */
+export const correction = (over: Partial<Correction> = {}): Correction => ({
+  id: CORRECTION,
+  itemId: ITEM,
+  kind: 'manual',
+  round: 0,
+  before: { number: 10 },
+  after: { number: 5 },
+  reason: 'Termometr səhv göstərirdi',
+  actor: { kind: 'user', name: LEYLA.fullName },
+  at: RUN_T.received,
+  ...over,
+});
+
+/** Leyla's open send-back of round 1, due 18:00 on 3 Nov in Baku. */
+export const teamRework = (over: Partial<ReworkRequest> = {}): ReworkRequest => ({
+  id: REQUEST,
+  round: 1,
+  items: [{ itemId: ITEM, comment: 'Yenidən ölçün' }],
+  answersBefore: {},
+  dueAt: '2026-11-03T14:00:00.000Z',
+  requestedBy: LEYLA,
+  requestedAt: RUN_T.received,
+  resubmittedAt: null,
+  withdrawnAt: null,
+  withdrawnBy: null,
+  ...over,
+});
+
+/**
+ * GET /audits/:id of Aynur's run (`executionDetail(c)`), in progress and nothing reviewed. The auditable items are the
+ * visible ones in checklist order: the "Bəli" answer shows the follow-up comment.
+ */
+export function auditDetail(c: Checklist, over: Partial<AuditDetail> = {}): AuditDetail {
+  return {
+    id: AUDIT,
+    executionId: EXECUTION,
+    occurrenceId: OCC,
+    status: 'in_progress',
+    paused: false,
+    auditor: { kind: 'user', id: ME, name: LEYLA.fullName },
+    startedAt: RUN_T.received,
+    finishedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    result: null,
+    score: null,
+    comment: null,
+    reportStatus: 'none',
+    reportRecipients: [],
+    reportSentAt: null,
+    verdicts: [],
+    execution: executionDetail(c),
+    corrections: executionCorrections(),
+    auditableItemIds: [c.problem.id, c.comment.id, c.temp.id, c.photo.id, c.note.id],
+    checklistReportEmails: ['audit@demo.taskop.az'],
+    requiresAudit: false,
     ...over,
   };
 }

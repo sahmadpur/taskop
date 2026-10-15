@@ -27,6 +27,7 @@ export function statusTone(status: OccurrenceStatus): StatusTone {
     case 'missed':
       return 'danger';
     case 'partial':
+    case 'correction_required':
       return 'warning';
     default:
       return 'neutral';
