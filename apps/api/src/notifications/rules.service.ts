@@ -47,6 +47,7 @@ export class NotificationRules {
       notifyCreator: input.notifyCreator,
       roleIds: input.roleIds,
       leadMinutes: input.leadMinutes,
+      resultFilter: input.resultFilter,
     };
     const now = this.clock.now();
     await tx

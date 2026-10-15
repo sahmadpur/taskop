@@ -92,6 +92,9 @@ export class NotificationRecipients {
         return [];
       case 'task':
         return [...(rule.notifyAssignees ? await this.taskAssignees(target) : []), ...(rule.notifyCreator ? [target.createdByUserId] : [])];
+      case 'run':
+        // Spec decision 16: "assignees" is the executor; "creator" is whoever sent the run back.
+        return [...(rule.notifyAssignees ? [target.executorUserId] : []), ...(rule.notifyCreator && target.sentBackByUserId ? [target.sentBackByUserId] : [])];
       default: {
         const unhandled: never = target;
         throw new Error(`Unhandled target: ${JSON.stringify(unhandled)}`);
@@ -137,6 +140,11 @@ export class NotificationRecipients {
       case 'task': {
         if (!s.permissions.has('tasks.view') && !s.permissions.has('tasks.manage')) return false;
         const [r] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.id, target.taskId), this.taskScope.readable(s)));
+        return r !== undefined;
+      }
+      case 'run': {
+        if (!(['assignments.view', 'reports.view', 'audits.perform', 'executions.correct'] as const).some((k) => s.permissions.has(k))) return false;
+        const [r] = await tx.select({ id: occurrences.id }).from(occurrences).where(and(eq(occurrences.id, target.occurrence.occurrenceId), this.scheduling.occurrences(s)));
         return r !== undefined;
       }
       default: {

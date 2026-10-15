@@ -45,6 +45,22 @@ export class NotificationListeners implements OnModuleInit {
     );
     for (const name of TASK_TYPES) this.events.on(name, (e) => this.guarded(name, () => this.notifications.record(name, { taskId: e.taskId }, e.actorUserId)));
     this.events.on('task.submitted', (e) => this.guarded('task.submitted', (sp) => this.onSubmitted(sp, e)));
+    // SP8 spec §7.1. Dedupe keys make a replayed command's second event a no-op.
+    this.events.on('execution.sent_back', (e) =>
+      this.guarded('execution.sent_back', () =>
+        this.notifications.record('run.correction_required', { occurrenceId: e.occurrenceId, executionId: e.executionId, round: e.round }, e.actorUserId, `run.correction_required:${e.executionId}:${e.round}`),
+      ),
+    );
+    this.events.on('execution.resubmitted', (e) =>
+      this.guarded('execution.resubmitted', () =>
+        this.notifications.record('run.resubmitted', { occurrenceId: e.occurrenceId, executionId: e.executionId, round: e.round }, e.actorUserId, `run.resubmitted:${e.executionId}:${e.round}`),
+      ),
+    );
+    this.events.on('audit.finished', (e) =>
+      this.guarded('audit.finished', () =>
+        this.notifications.record('audit.finished', { occurrenceId: e.occurrenceId, executionId: e.executionId, auditId: e.auditId }, e.actorUserId, `audit.finished:${e.auditId}`),
+      ),
+    );
     this.events.on('user.access_changed', (e) => this.guarded('user.access_changed', (sp) => this.onAccessChanged(sp, e.userId)));
   }
 
