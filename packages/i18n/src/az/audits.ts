@@ -1,3 +1,5 @@
+import web from './audits-web.js';
+
 export default {
   title: 'Auditlər',
   audit: 'Audit',
@@ -81,4 +83,5 @@ export default {
     subject: 'Audit hesabatı: {{checklist}} — {{site}}, {{date}}',
     body: 'Salam!\n\n{{checklist}} — {{site}} ({{date}}) icrasının auditi tamamlandı.\nNəticə: {{result}}.\nAuditor: {{auditor}}.\n\nPDF hesabat məktuba əlavə olunub.\n\nTaskop',
   },
+  web,
 } as const;

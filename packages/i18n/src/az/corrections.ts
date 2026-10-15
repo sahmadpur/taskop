@@ -1,3 +1,5 @@
+import web from './corrections-web.js';
+
 export default {
   title: 'Düzəlişlər',
   kinds: { manual: 'Rəhbər düzəlişi', rework: 'İcraçı düzəlişi' },
@@ -17,4 +19,5 @@ export default {
     dueInPast: 'Son tarix keçmişdə ola bilməz.',
     duplicateItem: 'Bu bənd artıq seçilib.',
   },
+  web,
 } as const;

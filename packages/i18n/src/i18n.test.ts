@@ -574,3 +574,35 @@ describe('mobile audit and correction translations', () => {
     expect(az.executions.states.rework).toBe('Düzəlişdə');
   });
 });
+
+describe('audit and correction web translations', () => {
+  it('nests the web strings under az.audits.web and az.corrections.web, beside Part 1 keys', () => {
+    expect(az.audits.web.page.columns.executor).toBe('İcraçı');
+    expect(az.audits.web.page.empty.waiting).toBe('Audit gözləyən icra yoxdur.');
+    expect(az.audits.web.page.range.incomplete).toBe('Başlanğıc və son tarixi birlikdə seçin.');
+    expect(az.audits.web.screen.items).toBe('Bəndlər');
+    expect(az.audits.web.screen.keyboard).toBe('Klaviatura: ↑/↓ — bənd seçimi, A — təsdiqlə, R — rədd et');
+    expect(az.audits.web.screen.missing).toBe('{{count}} bənd hələ qiymətləndirilməyib.');
+    expect(az.audits.web.finish.title).toBe('Auditi bitir');
+    expect(az.audits.web.cancel.title).toBe('Auditi ləğv et');
+    expect(az.audits.web.report.preparing).toBe('Hesabat hazırlanır…');
+    expect(az.audits.web.report.checkAgain).toBe('Yenidən yoxla');
+    expect(az.audits.web.emails.remove).toBe('Sil: {{email}}');
+    expect(az.audits.web.emails.tooMany).toBe('Ən çox {{max}} ünvan əlavə etmək olar.');
+    expect(az.audits.web.settings.title).toBe('Audit');
+    expect(az.audits.web.resultFilter).toBe('Audit nəticəsi');
+    expect(az.corrections.web.edit.save).toBe('Düzəlişləri yadda saxla');
+    expect(az.corrections.web.edit.reasonTitle).toBe('Düzəlişin səbəbi');
+    expect(az.corrections.web.sendBack.title).toBe('İcranı düzəlişə qaytar');
+    expect(az.corrections.web.sendBack.comment).toBe('{{item}} — şərh');
+    expect(az.corrections.web.withdraw.title).toBe('Geri qaytarmanı ləğv et');
+    expect(az.corrections.web.timeline.sentBack).toBe('{{name}} icranı düzəlişə qaytardı');
+    expect(az.corrections.web.score.original).toBe('İlkin bal: {{value}}');
+    expect(az.corrections.web.showCleared).toBe('Aradan qaldırılanları göstər');
+    // Part 1's keys are untouched.
+    expect(az.audits.paused).toBe('İcraçıya düzəlişə qaytarılıb — yenidən təqdim gözlənilir');
+    expect(az.corrections.original).toBe('İlkin');
+    expect(az.corrections.emptyAnswer).toBe('Cavab yoxdur');
+    expect(az.nav.audits).toBe('Auditlər');
+  });
+});
