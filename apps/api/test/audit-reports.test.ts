@@ -1,7 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './app';
-import { auditWorld, correct, markUploaded, sendBack, startAudit, verdictAll } from './audit-fixtures';
+import { auditWorld, correct, markUploaded, sendBack, startAudit, verdictAll, withdraw } from './audit-fixtures';
 import { FakeClock } from './fake-clock';
 import { staffAt } from './notification-fixtures';
 import { type Api, MONDAY_0800 } from './scheduling-fixtures';
@@ -35,6 +35,21 @@ describe('reports after audits and corrections (spec §3.1, §8.3)', () => {
     expect(await runs(a.w.owner, { bucket: 'completed' })).toEqual([
       expect.objectContaining({ occurrenceId: a.w.occurrenceId, status: 'correction_required', completedAt: '2026-11-02T04:20:00.000Z', late: false }),
     ]);
+  });
+
+  it('a send-back then a withdrawal, with no correction, leaves the run not corrected (ruling F4)', async () => {
+    const a = await auditWorld(t, clock);
+    clock.set('2026-11-02T05:00:00Z');
+    expect((await sendBack(a.manager.api, a.executionId, { items: [{ itemId: a.w.c.temp.id, comment: 'Yenidən ölçün' }] })).status).toBe(200);
+    expect((await withdraw(a.manager.api, a.executionId)).status).toBe(200);
+    expect((await runs(a.w.owner))[0]).toMatchObject({ occurrenceId: a.w.occurrenceId, corrected: false });
+    const detail = await a.manager.api.get(`/api/v1/executions/${a.executionId}`);
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body).toMatchObject({ corrected: false, rework: null });
+    const fix = await correct(a.manager.api, a.executionId, { answersRev: 2, changes: [{ itemId: a.w.c.note.id, answer: { text: 'Qeyd' } }], reason: 'Qeyd unudulmuşdu' });
+    expect(fix.status, JSON.stringify(fix.body)).toBe(200);
+    expect((await runs(a.w.owner))[0]).toMatchObject({ corrected: true });
+    expect((await a.manager.api.get(`/api/v1/executions/${a.executionId}`)).body).toMatchObject({ corrected: true });
   });
 
   it('report problem counts skip cleared problems', async () => {

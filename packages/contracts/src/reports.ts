@@ -146,7 +146,7 @@ export const reportRunSchema = z.object({
   clockSuspect: z.boolean(),
   /** waiting / in_progress / passed / failed; null without an audit (SP8 spec §8.3). */
   auditState: runAuditStateSchema.nullable().default(null),
-  /** The answers were corrected (the original snapshot exists). */
+  /** The answers were corrected (at least one correction row exists). */
   corrected: z.boolean().default(false),
 });
 export type ReportRun = z.infer<typeof reportRunSchema>;

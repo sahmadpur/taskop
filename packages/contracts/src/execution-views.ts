@@ -110,7 +110,7 @@ export const executionDetailSchema = executionSummarySchema.extend({
   reworkRound: z.number().int().default(0),
   /** The open send-back, or null. */
   rework: reworkRequestSchema.nullable().default(null),
-  /** The original answers were snapshotted: at least one correction or send-back happened. */
+  /** At least one correction row exists (a send-back alone does not count). */
   corrected: z.boolean().default(false),
   /** The run's latest audit, cancelled ones included; null when none was ever started. */
   audit: auditBriefSchema.nullable().default(null),

@@ -4,7 +4,7 @@ import { asc, eq, getTableColumns } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
-import { checklistVersions, executionMedia, executionProblems, executions, occurrences, tasks, users } from '../db/schema';
+import { checklistVersions, executionCorrections, executionMedia, executionProblems, executions, occurrences, tasks, users } from '../db/schema';
 import { toOccurrenceDto } from '../scheduling/mappers';
 import { OccurrenceQueries } from '../scheduling/occurrence-queries';
 import { AuditLookup } from './audit-lookup';
@@ -84,7 +84,8 @@ export class ExecutionQueries {
       problems: problems.map((r) => toProblemEntry(r.p, r.taskId, r.taskStatus)),
       reworkRound: row.x.reworkRound,
       rework: (await this.requests.openByExecution([id])).get(id) ?? null,
-      corrected: row.x.originalCapturedAt !== null,
+      // Ruling F4: corrected means a correction row exists; a send-back alone (withdrawn, or resubmitted unchanged) takes the snapshot but corrects nothing.
+      corrected: (await tx.select({ id: executionCorrections.id }).from(executionCorrections).where(eq(executionCorrections.executionId, id)).limit(1)).length > 0,
       audit: await this.audits.brief(id, occurrence!.o.status),
     };
   }

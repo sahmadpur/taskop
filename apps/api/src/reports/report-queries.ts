@@ -353,7 +353,7 @@ export class ReportQueries {
                            from occurrence_assignees oa join users u on u.id = oa.user_id where oa.occurrence_id = r.id), '[]'::json) as assignees,
                x.executor_user_id, eu.full_name as executor_name, x.started_at, x.completed_at, x.completed_received_at, r.score_percent,
                coalesce(x.late, false) as late, coalesce(x.clock_suspect, false) as clock_suspect, r.problem_count, r.critical_count,
-               au.status::text as audit_status, au.result::text as audit_result, coalesce(x.original_captured_at is not null, false) as corrected
+               au.status::text as audit_status, au.result::text as audit_result, exists (select 1 from execution_corrections ec where ec.execution_id = x.id) as corrected
           from runs r
           join checklists c on c.id = r.checklist_id
           join sites s on s.id = r.site_id
