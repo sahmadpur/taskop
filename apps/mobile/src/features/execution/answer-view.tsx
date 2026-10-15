@@ -74,7 +74,8 @@ export function ReadOnlyAnswers(p: { content: ChecklistContent; answers: Answers
   );
 }
 
-function ReadOnlyItem({ item, answer, media, flagged, load }: { item: Item; answer: Answer | undefined; media: readonly ExecutionMediaDto[]; flagged: boolean; load: LoadUrl }) {
+/** One item's answer, read-only (SP7); the audit (SP8) draws each item with it. */
+export function ReadOnlyItem({ item, answer, media, flagged, load }: { item: Item; answer: Answer | undefined; media: readonly ExecutionMediaDto[]; flagged: boolean; load: LoadUrl }) {
   const { t } = useTranslation();
   const options = choiceOptions(item, t);
   const text = answerText(item, answer);
