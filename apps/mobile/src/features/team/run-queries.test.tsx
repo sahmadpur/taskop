@@ -73,6 +73,24 @@ describe('run commands (Global Constraints: one at a time, then refresh)', () =>
     expect(invalidate).not.toHaveBeenCalled();
     expect(result.current.error).toBeNull();
   });
+
+  it('refreshes the viewer’s queries after a refusal only when refreshOnError says the screen is stale', async () => {
+    const client = testQueryClient();
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await hook(() => useRunCommand(ME), client);
+    const refuse = (code: 'ANSWERS_CONFLICT' | 'EXECUTION_LOCKED') => async () => {
+      throw new ApiError(409, code, `errors.${code}`);
+    };
+    const stale = (e: ApiError) => e.code === 'EXECUTION_LOCKED';
+    await act(async () => {
+      await result.current.run(refuse('ANSWERS_CONFLICT'), { refreshOnError: stale });
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.run(refuse('EXECUTION_LOCKED'), { refreshOnError: stale });
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['team', ME] });
+  });
 });
 
 describe('audit and corrections queries', () => {

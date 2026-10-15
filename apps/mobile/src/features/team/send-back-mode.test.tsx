@@ -89,7 +89,7 @@ describe('Send back (spec §8.2)', () => {
     await fireEvent.press(sendButton());
     await flush();
     expect(await screen.findByText(tr(`errors.${code}`))).toBeTruthy();
-    expect(refresh).toHaveBeenCalledWith({ queryKey: ['team'] });
+    expect(refresh).toHaveBeenCalledWith({ queryKey: ['team', ME] });
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe('Send back (spec §8.2)', () => {
     await fireEvent.press(sendButton());
     await flush();
     expect(await screen.findByText(tr('executions.issues.unknownItem'))).toBeTruthy();
-    expect(refresh).toHaveBeenCalledWith({ queryKey: ['team'] });
+    expect(refresh).toHaveBeenCalledWith({ queryKey: ['team', ME] });
   });
 
   it('a second tap while sending sends once', async () => {

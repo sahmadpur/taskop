@@ -83,9 +83,16 @@ export const useTeamCorrections = (viewerId: string, executionId: string | null,
 
 export type CommandResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
+export interface RunOptions {
+  /** `false`: a success leaves the cache alone (a verdict updates the cached audit itself). */
+  refresh?: boolean;
+  /** True for a refusal that means the screen shows stale data: the viewer's team queries are refreshed. */
+  refreshOnError?: (e: ApiError) => boolean;
+}
+
 export interface RunCommand {
   /** Null when another action of this screen is still in flight (a second tap does nothing). */
-  run<T>(job: () => Promise<T>, o?: { refresh?: boolean }): Promise<CommandResult<T> | null>;
+  run<T>(job: () => Promise<T>, o?: RunOptions): Promise<CommandResult<T> | null>;
   busy: boolean;
   /** The last failure, for the screen to show; cleared by the next action. */
   error: unknown;
@@ -95,7 +102,8 @@ export interface RunCommand {
 /**
  * The Team run screen's server actions (audit, verdict, correction, send-back, withdraw): one at a time. A success
  * refreshes every team query of the viewer (the run's status, its execution and audit, the list's buckets) unless
- * `refresh: false` (a verdict updates the cached audit itself).
+ * `refresh: false` (a verdict updates the cached audit itself). A refusal refreshes them only when `refreshOnError`
+ * says the screen was showing stale data.
  */
 export function useRunCommand(viewerId: string): RunCommand {
   const client = useQueryClient();
@@ -103,7 +111,7 @@ export function useRunCommand(viewerId: string): RunCommand {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const run = useCallback(
-    async <T>(job: () => Promise<T>, o: { refresh?: boolean } = {}): Promise<CommandResult<T> | null> => {
+    async <T>(job: () => Promise<T>, o: RunOptions = {}): Promise<CommandResult<T> | null> => {
       if (inFlight.current) return null;
       inFlight.current = true;
       setBusy(true);
@@ -114,6 +122,7 @@ export function useRunCommand(viewerId: string): RunCommand {
         return { ok: true, value };
       } catch (e) {
         setError(e);
+        if (e instanceof ApiError && o.refreshOnError?.(e)) void client.invalidateQueries({ queryKey: teamKeys.all(viewerId) });
         return { ok: false, error: e };
       } finally {
         inFlight.current = false;

@@ -1,6 +1,5 @@
 import { ApiError } from '@taskop/api-client';
 import { AUDIT_LIMITS, type ExecutionDetail, sendBackInputSchema, visibleItems } from '@taskop/contracts';
-import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -12,6 +11,12 @@ import { Choice } from '@/features/execution/parts';
 import { api } from '@/lib/session';
 import { colors, spacing } from '@/lib/theme';
 import type { RunCommand } from './queries';
+
+/** An item the server no longer knows (`items.<n>.itemId`): the run changed since this screen loaded. */
+const UNKNOWN_ITEM = /^items\.\d+\.itemId$/;
+const hasUnknownItem = (e: ApiError) => Object.keys(e.fields ?? {}).some((k) => UNKNOWN_ITEM.test(k));
+/** The refusals that mean the run moved on: the command refreshes the team queries so the screen follows. */
+const staleRun = (e: ApiError) => e.code === 'EXECUTION_NOT_CORRECTABLE' || e.code === 'EXECUTION_LOCKED' || (e.code === 'VALIDATION_FAILED' && hasUnknownItem(e));
 
 interface Props {
   detail: ExecutionDetail;
@@ -27,7 +32,6 @@ interface Props {
  */
 export function SendBackMode({ detail, online, command, onDone, onCancel }: Props) {
   const { t } = useTranslation();
-  const client = useQueryClient();
   /** Picked items and their comments. */
   const [comments, setComments] = useState<ReadonlyMap<string, string>>(new Map());
   const [due, setDue] = useState('');
@@ -53,7 +57,7 @@ export function SendBackMode({ detail, online, command, onDone, onCancel }: Prop
     if (due.trim() && !dueAt) return setDueError(t('mobile.execution.invalidDate'));
     const body = sendBackInputSchema.safeParse({ items: picked, dueAt });
     if (!body.success) return setProblem(t('errors.VALIDATION_FAILED'));
-    const r = await command.run(() => api.corrections.sendBack(detail.id, body.data));
+    const r = await command.run(() => api.corrections.sendBack(detail.id, body.data), { refreshOnError: staleRun });
     if (!r) return;
     if (r.ok) {
       Alert.alert(t('mobile.team.sendBack.sent'));
@@ -64,15 +68,11 @@ export function SendBackMode({ detail, online, command, onDone, onCancel }: Prop
     if (e instanceof ApiError && (e.code === 'EXECUTION_NOT_CORRECTABLE' || e.code === 'EXECUTION_LOCKED')) {
       // The run moved on (resubmitted, audited, already sent back) since this screen loaded: say so and reload it.
       setProblem(mobileErrorText(t, e));
-      void client.invalidateQueries({ queryKey: ['team'] });
     } else if (e instanceof ApiError && e.code === 'VALIDATION_FAILED' && e.fields) {
-      const keys = Object.keys(e.fields);
       if (e.fields.dueAt) setDueError(t(e.fields.dueAt));
-      // An item that is gone from the checklist's version (`items.<n>.itemId`): refresh so the list drops it.
-      if (keys.some((k) => k.startsWith('items.'))) {
-        setProblem(t('executions.issues.unknownItem'));
-        void client.invalidateQueries({ queryKey: ['team'] });
-      } else if (!e.fields.dueAt) setProblem(mobileErrorText(t, e));
+      // An item that is gone from the checklist's version (`items.<n>.itemId`): the command refreshed the list.
+      if (hasUnknownItem(e)) setProblem(t('executions.issues.unknownItem'));
+      else if (!e.fields.dueAt) setProblem(mobileErrorText(t, e));
     } else setProblem(mobileErrorText(t, e));
   };
 

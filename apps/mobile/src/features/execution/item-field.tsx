@@ -101,7 +101,10 @@ function DateTimeInput(p: { item: DateTimeItem; value: string | undefined; disab
   );
 }
 
-function AnswerInput(p: ItemFieldProps) {
+/** The value editors alone (no evidence, note or ⚑): the worker's field and the manager's correction (SP8) share them. */
+export type AnswerInputProps = Pick<ItemFieldProps, 'item' | 'answer' | 'readOnly' | 'onPatch'>;
+
+export function AnswerInput(p: AnswerInputProps) {
   const { t } = useTranslation();
   const { item, answer } = p;
   switch (item.type) {
@@ -140,11 +143,15 @@ function AnswerInput(p: ItemFieldProps) {
   }
 }
 
+/** Whether an item shows its note field: a matching rule asks for a note, or one was written. */
+export const needsNote = (item: Item, answer: Answer | undefined): boolean =>
+  (hasRules(item) && item.rules.some((r) => r.then.requireNote && ruleMatches(r, item, answer))) || Boolean(answer?.note);
+
 /** One item: its input, evidence, the note its rule asks for, what is still missing, and the ⚑ problem flag. */
 export function ItemField(p: ItemFieldProps) {
   const { t } = useTranslation();
   const { item, answer } = p;
-  const needsNote = (hasRules(item) && item.rules.some((r) => r.then.requireNote && ruleMatches(r, item, answer))) || Boolean(answer?.note);
+  const showNote = needsNote(item, answer);
   // A photo/video item's own media, or the evidence its settings and rules allow: one row per allowed kind.
   const evidenceKinds = MEDIA_KINDS.filter((k) => mediaLimitFor(item, k) > 0);
   return (
@@ -169,7 +176,7 @@ export function ItemField(p: ItemFieldProps) {
           onOpenVideo={p.onOpenVideo}
         />
       ))}
-      {needsNote ? (
+      {showNote ? (
         <CommitInput
           accessibilityLabel={`${t('mobile.execution.note')}: ${item.label}`}
           placeholder={t('mobile.execution.notePlaceholder')}
