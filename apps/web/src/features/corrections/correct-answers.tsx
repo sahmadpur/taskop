@@ -50,6 +50,9 @@ export function CorrectAnswers({ detail, conflict, onConflict, onDone }: { detai
       } else if (e instanceof ApiError && e.code === 'REQUIREMENTS_UNMET') {
         setAsking(false);
         setServerMissing(e.missing ?? []);
+      } else if (e instanceof ApiError && (e.code === 'EXECUTION_LOCKED' || e.code === 'EXECUTION_NOT_CORRECTABLE')) {
+        // The run was audited or sent back meanwhile: the views ask again, so the actions stop offering "Correct".
+        void refreshRunViews(qc);
       }
     },
   });

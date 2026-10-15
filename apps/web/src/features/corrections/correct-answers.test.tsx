@@ -145,6 +145,34 @@ describe('Correct answers', () => {
     expect(await within(dialog).findByText(az.errors.EXECUTION_LOCKED)).toBeInTheDocument();
   });
 
+  it.each(['EXECUTION_LOCKED', 'EXECUTION_NOT_CORRECTABLE'] as const)('reloads the run views after %s', async (code) => {
+    renderTab();
+    mocks.api.corrections.correct.mockRejectedValue(apiError(409, code));
+    await userEvent.click(await screen.findByRole('button', { name: CORRECT }));
+    await userEvent.type(within(editor()).getByRole('textbox', { name: 'Təsvir edin' }), '!');
+    await userEvent.click(within(editor()).getByRole('button', { name: 'Düzəlişləri yadda saxla' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Düzəlişin səbəbi' });
+    await userEvent.type(within(dialog).getByLabelText(az.corrections.fields.reason), 'Səbəb');
+    const loads = mocks.api.executions.get.mock.calls.length;
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Təsdiqlə' }));
+    expect(await within(dialog).findByText(az.errors[code])).toBeInTheDocument();
+    await waitFor(() => expect(mocks.api.executions.get.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it('does not reload the run views after a refusal unrelated to its state', async () => {
+    renderTab();
+    mocks.api.corrections.correct.mockRejectedValue(apiError(422, 'VALIDATION_FAILED'));
+    await userEvent.click(await screen.findByRole('button', { name: CORRECT }));
+    await userEvent.type(within(editor()).getByRole('textbox', { name: 'Təsvir edin' }), '!');
+    await userEvent.click(within(editor()).getByRole('button', { name: 'Düzəlişləri yadda saxla' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Düzəlişin səbəbi' });
+    await userEvent.type(within(dialog).getByLabelText(az.corrections.fields.reason), 'Səbəb');
+    const loads = mocks.api.executions.get.mock.calls.length;
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Təsdiqlə' }));
+    expect(await within(dialog).findByText(az.errors.VALIDATION_FAILED)).toBeInTheDocument();
+    expect(mocks.api.executions.get.mock.calls.length).toBe(loads);
+  });
+
   it('leaves the edit without saving', async () => {
     renderTab();
     await userEvent.click(await screen.findByRole('button', { name: CORRECT }));
