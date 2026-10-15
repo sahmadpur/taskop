@@ -1,0 +1,23 @@
+export default {
+  title: 'Платформа Taskop',
+  login: { title: 'Администратор платформы', email: 'Электронная почта', password: 'Пароль', submit: 'Войти' },
+  tenants: {
+    title: 'Организации',
+    search: 'Название или код',
+    name: 'Организация',
+    orgCode: 'Код',
+    users: 'Пользователи',
+    created: 'Создана',
+    status: 'Статус',
+    active: 'Активна',
+    suspended: 'Приостановлена',
+    suspend: 'Приостановить',
+    reactivate: 'Возобновить',
+    checklists: 'Чек-листы',
+    confirmSuspend: 'Приостановить «{{name}}»? Сессии всех пользователей будут закрыты.',
+  },
+  nav: { tenants: 'Организации', templates: 'Шаблоны' },
+  workspaceBanner: 'Вы работаете в организации «{{name}}» как администратор Taskop.',
+  backToTenants: 'К организациям',
+  logout: 'Выйти',
+} as const;

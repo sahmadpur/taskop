@@ -1,0 +1,23 @@
+export default {
+  title: 'Taskop platform',
+  login: { title: 'Platform administrator', email: 'Email', password: 'Password', submit: 'Sign in' },
+  tenants: {
+    title: 'Organisations',
+    search: 'Name or code',
+    name: 'Organisation',
+    orgCode: 'Code',
+    users: 'Users',
+    created: 'Created',
+    status: 'Status',
+    active: 'Active',
+    suspended: 'Suspended',
+    suspend: 'Suspend',
+    reactivate: 'Reactivate',
+    checklists: 'Checklists',
+    confirmSuspend: 'Suspend "{{name}}"? All user sessions will be closed.',
+  },
+  nav: { tenants: 'Organisations', templates: 'Templates' },
+  workspaceBanner: 'You are working in the organisation "{{name}}" as a Taskop administrator.',
+  backToTenants: 'Back to organisations',
+  logout: 'Sign out',
+} as const;

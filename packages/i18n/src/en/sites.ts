@@ -1,0 +1,30 @@
+export default {
+  title: 'Sites',
+  types: {
+    title: 'Site types',
+    add: 'Add type',
+    name: 'Type name',
+    order: 'Order',
+  },
+  tree: {
+    title: 'Site structure',
+    addRoot: 'Add top-level site',
+    addChild: 'Add sub-site',
+    move: 'Move',
+    moveTitle: 'Move "{{name}}"',
+    moveTarget: 'New location',
+    root: '— Top level —',
+    empty: 'No sites yet.',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    confirmDeactivate: 'Deactivate "{{name}}"? Sub-sites will not change automatically.',
+  },
+  form: {
+    createTitle: 'New site',
+    editTitle: 'Edit site',
+    name: 'Name',
+    type: 'Type',
+    address: 'Address',
+    parent: 'Parent site: {{name}}',
+  },
+} as const;

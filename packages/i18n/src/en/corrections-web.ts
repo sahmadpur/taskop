@@ -1,0 +1,56 @@
+/** Web-only strings of corrections, send-back and the corrections timeline (SP8 Part 3). Part 1's keys are reused. */
+export default {
+  edit: {
+    banner: 'Correction mode: edit the answers you want to change. Photos and videos cannot be changed.',
+    save: 'Save corrections',
+    discard: 'Discard',
+    changed: '{{count}} items changed',
+    noChanges: 'Nothing has been changed yet.',
+    clear: 'Clear answer',
+    note: '{{item}} — note',
+    mediaLocked: 'Photos and videos cannot be changed during a correction.',
+    requirements: 'With this correction, required fields are left empty.',
+    conflict: 'The run was changed elsewhere in the meantime. The latest answers were loaded — make your corrections again.',
+    saved: 'Corrections saved',
+    reasonTitle: 'Reason for the correction',
+    reasonHint: 'The reason will appear in the corrections history and in the audit report.',
+  },
+  sendBack: {
+    title: 'Send the run back',
+    hint: 'The worker will be able to fix only the selected items on the phone.',
+    selected: '{{count}} items selected',
+    noItems: 'Select at least one item.',
+    commentRequired: 'Add a comment for every selected item.',
+    comment: '{{item}} — comment',
+    dueHint: 'Optional. Nothing happens automatically when the due date passes.',
+    done: 'The run was sent back to the worker',
+  },
+  withdraw: {
+    title: 'Withdraw the send-back',
+    description: 'The run will return to its previous status. The answers will be restored to how they were before the send-back, and any unfinished corrections by the worker will be discarded.',
+    done: 'Send-back withdrawn',
+  },
+  rework: {
+    requestedBy: '{{name}} · {{time}}',
+    flagged: 'Items that need correction',
+  },
+  timeline: {
+    title: 'History',
+    sentBack: '{{name}} sent the run back',
+    resubmitted: 'The worker resubmitted the corrections',
+    withdrawn: '{{name}} withdrew the send-back',
+    reason: 'Reason: {{reason}}',
+    comment: 'Comment: {{comment}}',
+  },
+  diff: {
+    title: 'Original and current answers',
+    item: 'Item',
+    capturedAt: 'Original result saved at {{time}}',
+  },
+  score: {
+    original: 'Original score: {{value}}',
+    current: 'Current score: {{value}}',
+  },
+  media: '{{photos}} photos, {{videos}} videos',
+  showCleared: 'Show cleared',
+} as const;
