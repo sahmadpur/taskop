@@ -149,6 +149,9 @@ describe('report exports (spec §5.4)', () => {
        select gen_random_uuid(), $1, a.id, $2, $3, '2026-11-03', '2026-11-03T04:00:00Z', '2026-11-03T06:00:00Z', '2026-11-03T07:00:00Z', 'missed', $5 from a`,
       [b.s.tenantId, checklist.id, site, b.s.ownerId, checklist.versionId],
     );
+    // Fresh statistics for the 10,001 new rows, as autovacuum would give a real table: without them the planner can
+    // pick a plan built for an empty table, which took over a minute on CI (also on main before SP8).
+    await ownerQuery('analyze assignments, occurrences');
     const runs = await b.owner.get(`/api/v1/reports/runs/export?${qs({ ...PERIOD, format: 'xlsx' })}`);
     expect([runs.status, runs.body.error.code, runs.body.error.rows, runs.body.error.limit]).toEqual([422, 'REPORT_TOO_LARGE', 10001, 10000]);
     const full = await b.owner.get(`/api/v1/reports/full/export?${qs({ ...PERIOD, format: 'pdf' })}`);
