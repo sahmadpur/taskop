@@ -5,6 +5,7 @@ import { PlatformModule } from '../platform/platform.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { AuditLookup } from './audit-lookup';
+import { CorrectionHistory } from './correction-history';
 import { PlatformTenantCorrectionsController, TenantCorrectionsController } from './corrections.controller';
 import { CorrectionsService } from './corrections.service';
 import { ExecutionAccess } from './execution-access';
@@ -43,7 +44,9 @@ import { SyncService } from './sync.service';
     ReworkRequests,
     ReworkService,
     AuditLookup,
+    CorrectionHistory,
     PlatformTenantInterceptor,
   ],
+  exports: [ExecutionQueries, CorrectionHistory, ExecutionLookups, AuditLookup],
 })
 export class ExecutionsModule {}

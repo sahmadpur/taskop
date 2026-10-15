@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Page, ProblemDto } from '@taskop/contracts';
-import { and, between, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, between, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
 import { executionProblems, occurrences } from '../db/schema';
@@ -23,6 +23,8 @@ export class ProblemsService {
     if (q.severity) conds.push(eq(executionProblems.severity, q.severity));
     if (q.source) conds.push(eq(executionProblems.source, q.source));
     if (q.resolution) conds.push(resolutionFilter(q.resolution));
+    // Cleared by a correction (SP8 spec §8.3): hidden unless asked for.
+    if (!q.includeCleared) conds.push(isNull(executionProblems.clearedAt));
     if (q.cursor) {
       conds.push(sql`(${executionProblems.createdAt}, ${executionProblems.id}) < (select c.created_at, c.id from execution_problems c where c.id = ${q.cursor})`);
     }

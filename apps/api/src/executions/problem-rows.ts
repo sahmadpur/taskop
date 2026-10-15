@@ -82,7 +82,7 @@ export async function toProblemDtos(tx: Executor, rows: ProblemRow[]): Promise<P
     resolution: problemResolutionOf(r.taskStatus),
     taskId: r.taskId,
     executionState: r.executionState,
-    clearedAt: null,
+    clearedAt: r.pr.clearedAt?.toISOString() ?? null,
   }));
 }
 

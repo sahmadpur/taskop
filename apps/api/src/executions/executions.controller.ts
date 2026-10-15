@@ -1,10 +1,10 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { ClaimResult, CompleteResult, ExecutionDetail, MediaUploadTicket, ResubmitResult, SaveAnswersResult } from '@taskop/contracts';
+import type { ClaimResult, CompleteResult, ExecutionCorrections, ExecutionDetail, MediaUploadTicket, ResubmitResult, SaveAnswersResult } from '@taskop/contracts';
 import { CurrentPrincipal } from '../common/decorators';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import type { Principal } from '../common/request';
-import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, ExecutionDetailResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, ResubmitCommandDto, ResubmitResultResponse, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
+import { ClaimCommandDto, ClaimResultResponse, CompleteCommandDto, CompleteResultResponse, ExecutionCorrectionsResponse, ExecutionDetailResponse, MediaUploadTicketResponse, RegisterMediaCommandDto, ResubmitCommandDto, ResubmitResultResponse, SaveAnswersCommandDto, SaveAnswersResultResponse } from './dto';
 import { ExecutionQueries } from './execution-queries';
 import { ExecutionsService } from './executions.service';
 import { MediaService } from './media.service';
@@ -27,6 +27,13 @@ export class ExecutionsController {
   @ApiOkResponse({ type: ExecutionDetailResponse })
   get(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string): Promise<ExecutionDetail> {
     return this.queries.detail(p, id);
+  }
+
+  /** NFR-07.05: the original, the corrections, the rework rounds and the diff; for anyone who can read the run. */
+  @Get(':id/corrections')
+  @ApiOkResponse({ type: ExecutionCorrectionsResponse })
+  corrections(@CurrentPrincipal() p: Principal, @Param('id', ParseIdPipe) id: string): Promise<ExecutionCorrections> {
+    return this.queries.corrections(p, id);
   }
 
   /** A rejected claim is a normal 200 so the outbox moves on (spec §6.2). */
