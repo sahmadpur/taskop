@@ -13,6 +13,7 @@ import { MediaService } from './media.service';
 import { ProblemWriter } from './problem-writer';
 import { ProblemsController } from './problems.controller';
 import { ProblemsService } from './problems.service';
+import { ExecutionRecalculator } from './recalculation';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 
@@ -20,6 +21,6 @@ import { SyncService } from './sync.service';
 @Module({
   imports: [SchedulingModule, TasksModule, NotificationsModule],
   controllers: [ExecutionsController, MediaController, ProblemsController, SyncController],
-  providers: [ExecutionsService, ExecutionQueries, ExecutionAccess, ExecutionLookups, MediaJobs, MediaService, ProblemWriter, ProblemsService, SyncService],
+  providers: [ExecutionsService, ExecutionQueries, ExecutionAccess, ExecutionLookups, MediaJobs, MediaService, ProblemWriter, ProblemsService, ExecutionRecalculator, SyncService],
 })
 export class ExecutionsModule {}
