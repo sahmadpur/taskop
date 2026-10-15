@@ -1,5 +1,5 @@
 import { NOTIFICATION_TYPES } from '@taskop/contracts';
-import { ME, OCC, OCC2, OCC3, occurrence, OTHER, pushData, reworkSync, syncResponse, syncTask, TASK, TASK2, versionOf } from '@/offline/testing/fixtures';
+import { ME, OCC, OCC2, OCC3, occurrence, OTHER, pushData, reworkSync, REWORK_EXECUTION, syncResponse, syncTask, TASK, TASK2, versionOf } from '@/offline/testing/fixtures';
 import { createTestServices } from '@/offline/testing/test-services';
 import { createRouteContext, HOME, INBOX, type RouteContext, routeForPush, routeForTarget, startTapRouting, TEAM_RUN_TYPES } from './notification-router';
 import { fakeEvents } from './testing/fakes';
@@ -187,6 +187,31 @@ describe('sub-project 8 run notifications (Spec decision 15)', () => {
     expect(await routeForTarget({ targetKind: 'occurrence', targetId: OCC3, type: 'problem.critical' }, stubCtx({ ...notOnPhone, canSeeTeam: () => true }))).toEqual(INBOX);
     expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC3 }), stubCtx(notOnPhone))).toEqual(INBOX);
     expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC3 }), stubCtx({ ...notOnPhone, canSeeTeam: () => false }))).toEqual(INBOX);
+  });
+
+  it('opens the Team run, not Home, for a viewer whose phone holds the occurrence claimed by someone else', async () => {
+    const t = await createTestServices({ online: true });
+    const res = syncResponse({
+      occurrences: [occurrence({ claim: { executionId: REWORK_EXECUTION, executorUserId: OTHER, executorName: 'Murad Həsənov' } })],
+      checklistVersions: [versionOf(t.c.content)],
+    });
+    await t.seed(res);
+    t.api.sync = res;
+    const ctx = createRouteContext(t.services, () => false, () => true);
+    expect(await ctx.occurrenceOnPhone(OCC)).toBe('notStarted');
+    for (const type of ['run.resubmitted', 'audit.finished'] as const) {
+      expect(await routeForPush(pushData({ type, targetId: OCC }), ctx)).toEqual({ pathname: '/team/run/[id]', params: { id: OCC } });
+    }
+    // Without the Team tab, or for another notification type, it is still Home.
+    expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC }), createRouteContext(t.services, () => false))).toEqual(HOME);
+    expect(await routeForPush(pushData({ type: 'checklist.available', targetId: OCC }), ctx)).toEqual(HOME);
+  });
+
+  it('keeps a run the phone does not hold in the inbox with the default context (no Team tab)', async () => {
+    const t = await createTestServices({ online: true });
+    t.api.sync = syncResponse({ occurrences: [] });
+    const ctx = createRouteContext(t.services, () => false);
+    expect(await routeForPush(pushData({ type: 'run.resubmitted', targetId: OCC3 }), ctx)).toEqual(INBOX);
   });
 
   it('names only notification types that exist', () => {

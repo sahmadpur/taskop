@@ -3,7 +3,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { formatDateTime } from '@taskop/i18n';
 import { StyleSheet } from 'react-native';
 import '@/lib/i18n';
-import { ME, NOTIFICATION, NOTIFICATION2, NOTIFICATION3, notificationItem, OCC, syncResponse, syncTask, T, TASK, versionOf } from '@/offline/testing/fixtures';
+import { ME, NOTIFICATION, NOTIFICATION2, NOTIFICATION3, notificationItem, OCC, OCC3, syncResponse, syncTask, T, TASK, versionOf } from '@/offline/testing/fixtures';
 import { eventually, renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
 import { readUnreadNotifications } from '@/offline/unread';
@@ -21,12 +21,13 @@ jest.mock('expo-router', () => ({
     react.useEffect(() => (focused ? effect() : undefined), [effect, focused]);
   },
 }));
+const mockMe = { current: { permissions: [] as string[], role: { dataScope: 'own' } } };
 const mockList = jest.fn();
 const mockMarkRead = jest.fn();
 const mockMarkAllRead = jest.fn();
 const mockUnreadCount = jest.fn();
 jest.mock('@/lib/session', () => ({
-  useSession: () => ({ status: 'authenticated', offline: false, me: { permissions: [] } }),
+  useSession: () => ({ status: 'authenticated', offline: false, me: mockMe.current }),
   api: {
     notifications: {
       list: (...a: unknown[]) => mockList(...a),
@@ -63,6 +64,7 @@ async function world(o: { online?: boolean } = {}) {
 
 beforeEach(() => {
   mockPush.mockReset();
+  mockMe.current = { permissions: [], role: { dataScope: 'own' } };
   mockFocus.set = () => undefined;
   mockList.mockReset();
   mockList.mockResolvedValue({ items: [A, B], nextCursor: null });
@@ -195,6 +197,17 @@ describe('Bildirişlər inbox', () => {
     await fireEvent.press(screen.getByRole('button', { name: /^Oxunmamış: Admin mesajı\./ }));
     await eventually(async () => expect(mockMarkRead).toHaveBeenCalledWith(C.id));
     expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a resubmitted run on the Team tab for a viewer who has it and does not hold it', async () => {
+    mockMe.current = { permissions: ['reports.view'], role: { dataScope: 'tenant' } };
+    const R = notificationItem({ id: NOTIFICATION3, type: 'run.resubmitted', title: 'Yoxlama yenidən təqdim edildi', targetKind: 'occurrence', targetId: OCC3, targetDate: '2026-11-02' });
+    mockList.mockResolvedValue({ items: [R], nextCursor: null });
+    const t = await world();
+    await renderWithServices(t.services, <InboxScreen />);
+    await fireEvent.press(await screen.findByRole('button', { name: /^Oxunmamış: Yoxlama yenidən təqdim edildi\./ }));
+    await eventually(async () => expect(mockPush).toHaveBeenCalledWith({ pathname: '/team/run/[id]', params: { id: OCC3 } }));
+    expect(mockMarkRead).toHaveBeenCalledWith(R.id);
   });
 
   it('Hamısını oxunmuş et marks every row read and re-reads the count from the server', async () => {

@@ -70,9 +70,10 @@ export async function routeForTarget(target: NotificationTarget, ctx: RouteConte
   if (target.targetKind === 'occurrence') {
     const where = await ctx.occurrenceOnPhone(id);
     if (where === 'execution') return { pathname: '/execution/[id]', params: { id } };
-    if (where === 'notStarted') return HOME;
-    // SP8: a manager's (or auditor's) run notification opens the run on the Team tab.
-    return target.type !== undefined && TEAM_RUN_TYPES.has(target.type) && ctx.canSeeTeam?.() ? { pathname: '/team/run/[id]', params: { id } } : INBOX;
+    // SP8: a manager's (or auditor's) run notification opens the run on the Team tab, also when the phone holds the
+    // occurrence (claimed by someone else, so not startable here) without an execution of it.
+    if (target.type !== undefined && TEAM_RUN_TYPES.has(target.type) && ctx.canSeeTeam?.()) return { pathname: '/team/run/[id]', params: { id } };
+    return where === 'notStarted' ? HOME : INBOX;
   }
   if (await ctx.taskOnPhone(id)) return { pathname: '/task/[id]', params: { id } };
   return ctx.canManageTasks() ? { pathname: '/review/[id]', params: { id, n: ctx.nonce() } } : INBOX;
