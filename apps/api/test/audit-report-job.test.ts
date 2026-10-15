@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditReportJob } from '../src/audits/report/audit-report.job';
 import { AuditReportLoader } from '../src/audits/report/audit-report-loader';
+import { DbService } from '../src/db/db.service';
 import { JobsService } from '../src/scheduling/jobs.service';
 import { createTestApp, type TestApp } from './app';
 import { auditLogOf, auditWorld, markUploaded, startAudit, verdictAll } from './audit-fixtures';
@@ -89,6 +90,32 @@ describe('the audit report job (spec §7.2)', () => {
     expect((await a.outsider.api.get(`/api/v1/audits/${auditId}/report.pdf`)).status).toBe(404);
     expect((await a.worker.api.get(`/api/v1/audits/${auditId}/report.pdf`)).status).toBe(403);
     expect((await a.auditor.api.get(`/api/v1/audits/${auditId}`)).body).toMatchObject({ reportStatus: 'ready', reportSentAt: '2026-11-02T06:01:00.000Z' });
+  });
+
+  it('does not open the stored PDF when the file name cannot be read', async () => {
+    const { a, auditId, job } = await finished();
+    expect(await run(job)).toBe('sent');
+    const db = t.app.get(DbService);
+    const realTx = db.tx.bind(db);
+    // Fault injection: the checklist/occurrence query of the file name fails.
+    vi.spyOn(db, 'tx').mockImplementation(() => {
+      const tx = realTx();
+      return new Proxy(tx, {
+        get(target, prop) {
+          const v = Reflect.get(target, prop, target) as unknown;
+          if (prop === 'select') {
+            return (cols?: Record<string, unknown>) => {
+              if (cols && 'name' in cols && 'localDate' in cols) throw new Error('database unavailable');
+              return (v as (c?: unknown) => unknown).call(target, cols);
+            };
+          }
+          return typeof v === 'function' ? (v as (...args: unknown[]) => unknown).bind(target) : v;
+        },
+      });
+    });
+    const getStream = vi.spyOn(storage, 'getStream');
+    expect((await a.auditor.api.get(`/api/v1/audits/${auditId}/report.pdf`)).status).toBe(500);
+    expect(getStream).not.toHaveBeenCalled();
   });
 
   it('sends to the remaining recipients when one fails', async () => {

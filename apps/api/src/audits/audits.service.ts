@@ -194,14 +194,15 @@ export class AuditsService {
   async report(a: Actor, auditId: string): Promise<{ stream: Readable; length: number | undefined; filename: string }> {
     const row = await this.readable(a, auditId);
     if (row.reportStatus !== 'ready' || !row.reportStorageKey) throw new AppError('REPORT_NOT_READY');
-    const file = await this.s3.getStream(row.reportStorageKey);
-    if (!file) throw new AppError('REPORT_NOT_READY');
+    // The file name first: once the stream is open, nothing may throw before it is handed to the response.
     const [r] = await this.db
       .tx()
       .select({ name: checklists.name, localDate: occurrences.localDate })
       .from(occurrences)
       .innerJoin(checklists, eq(checklists.id, occurrences.checklistId))
       .where(eq(occurrences.id, row.occurrenceId));
+    const file = await this.s3.getStream(row.reportStorageKey);
+    if (!file) throw new AppError('REPORT_NOT_READY');
     return { stream: file.stream, length: file.contentLength, filename: auditReportFileName(r!.name, r!.localDate) };
   }
 
