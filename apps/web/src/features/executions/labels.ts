@@ -23,7 +23,7 @@ export const formatPercent = (value: number, locale = 'az'): string =>
   new Intl.NumberFormat(intlLocale(locale), { maximumFractionDigits: 1 }).format(value);
 
 export const executionStateVariant = (s: ExecutionState): Variant =>
-  s === 'completed' ? 'default' : s === 'active' ? 'secondary' : s === 'partial' ? 'destructive' : 'outline';
+  s === 'completed' ? 'default' : s === 'active' || s === 'rework' ? 'secondary' : s === 'partial' ? 'destructive' : 'outline';
 
 export const severityVariant = (s: ProblemSeverity): Variant => (s === 'critical' ? 'destructive' : 'secondary');
 

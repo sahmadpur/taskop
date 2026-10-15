@@ -1,5 +1,5 @@
 import { MEDIA_LIMITS, type MediaUrl, type ProblemListQuery } from '@taskop/contracts';
-import { type QueryKey, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { type QueryClient, type QueryKey, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/session';
 
 /** Presigned GETs live 5 minutes (spec §6.7). Reuse one for 4, so a cached URL always has a minute left. */
@@ -41,3 +41,11 @@ export const useProblems = (filters: ProblemFilters, enabled: boolean) =>
 /** Every checklist of the tenant, archived ones included, for the problems filter. */
 export const useChecklistOptions = () =>
   useQuery({ queryKey: ['checklists', 'options'], queryFn: async () => (await api.checklists.list({ limit: 200 })).items });
+
+/**
+ * After a correction, a send-back, a withdrawal or an audit change (SP8): every view that shows a run's state, answers,
+ * audit, problems or report numbers asks again.
+ */
+export async function refreshRunViews(qc: QueryClient): Promise<void> {
+  await Promise.all(['occurrences', 'executions', 'corrections', 'audits', 'problems', 'reports'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+}

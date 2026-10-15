@@ -25,5 +25,7 @@ describe('scheduling labels', () => {
     expect(occurrenceVariant('in_progress')).toBe('secondary');
     expect(occurrenceVariant('started')).toBe('secondary');
     expect(occurrenceVariant('completed')).toBe('default');
+    expect(occurrenceVariant('correction_required')).toBe('destructive');
+    expect(occurrenceVariant('audit_pending')).toBe('default');
   });
 });

@@ -30,6 +30,7 @@ describe('execution labels', () => {
     expect(executionStateVariant('completed')).toBe('default');
     expect(executionStateVariant('partial')).toBe('destructive');
     expect(executionStateVariant('rejected')).toBe('outline');
+    expect(executionStateVariant('rework')).toBe('secondary');
     expect(severityVariant('critical')).toBe('destructive');
     expect(severityVariant('normal')).toBe('secondary');
   });
