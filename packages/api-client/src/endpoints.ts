@@ -1,4 +1,20 @@
 import {
+  auditDetailSchema,
+  auditDtoSchema,
+  auditItemVerdictSchema,
+  auditQueuePageSchema,
+  type AuditQueueQuery,
+  type AuditVerdictInput,
+  type CancelAuditInput,
+  type CorrectAnswersInput,
+  correctionResultSchema,
+  executionCorrectionsSchema,
+  type FinishAuditInput,
+  type ResubmitCommand,
+  resubmitResultSchema,
+  reworkRequestSchema,
+  type SendAuditReportInput,
+  type SendBackInput,
   assignmentDetailSchema,
   type AssignmentListQuery,
   assignmentDtoSchema,
@@ -207,6 +223,7 @@ export function createTaskopApi(c: ApiClient) {
     ...createTasksApi(c),
     ...createNotificationsApi(c),
     ...createReportsApi(c),
+    ...createAuditsApi(c),
   };
 }
 /** `base` is '' for tenant users or `/platform/tenants/<id>` for platform admins working in a tenant. */
@@ -319,6 +336,8 @@ export function createExecutionsApi(c: ApiClient) {
       claim: (body: ClaimCommand) => c.request('POST', '/executions', { body, schema: claimResultSchema }),
       saveAnswers: (id: string, body: SaveAnswersCommand) => c.request('PUT', `/executions/${id}/answers`, { body, schema: saveAnswersResultSchema }),
       complete: (id: string, body: CompleteCommand) => c.request('POST', `/executions/${id}/complete`, { body, schema: completeResultSchema }),
+      /** SP8: closes a rework round (the outbox sends it after answers and media). */
+      resubmit: (id: string, body: ResubmitCommand) => c.request('POST', `/executions/${id}/resubmit`, { body, schema: resubmitResultSchema }),
       registerMedia: (executionId: string, body: RegisterMediaCommand) =>
         c.request('POST', `/executions/${executionId}/media`, { body, schema: mediaUploadTicketSchema }),
       get: (id: string) => c.request('GET', `/executions/${id}`, { schema: executionDetailSchema }),
@@ -416,3 +435,34 @@ export function createReportsApi(c: ApiClient) {
   };
 }
 export type ReportsApi = ReturnType<typeof createReportsApi>;
+
+/**
+ * Sub-project 8: audits (audits.perform; the detail and the PDF also reports.view) and corrections (executions.correct;
+ * the history also for anyone who can read the run).
+ */
+export function createAuditsApi(c: ApiClient) {
+  return {
+    audits: {
+      list: (query: AuditQueueQuery) => c.request('GET', '/audits', { query: q(query), schema: auditQueuePageSchema }),
+      start: (executionId: string) => c.request('POST', `/executions/${executionId}/audits`, { body: {}, schema: auditDtoSchema }),
+      get: (id: string) => c.request('GET', `/audits/${id}`, { schema: auditDetailSchema }),
+      setVerdict: (id: string, itemId: string, body: AuditVerdictInput) => c.request('PUT', `/audits/${id}/items/${itemId}`, { body, schema: auditItemVerdictSchema }),
+      clearVerdict: (id: string, itemId: string) => c.request<void>('DELETE', `/audits/${id}/items/${itemId}`),
+      finish: (id: string, body: FinishAuditInput) => c.request('POST', `/audits/${id}/finish`, { body, schema: auditDtoSchema }),
+      cancel: (id: string, body: CancelAuditInput) => c.request('POST', `/audits/${id}/cancel`, { body, schema: auditDtoSchema }),
+      sendReport: (id: string, body: SendAuditReportInput = {}) => c.request('POST', `/audits/${id}/report/send`, { body, schema: auditDtoSchema }),
+      /** The stored PDF; REPORT_NOT_READY (409) while it is being built. */
+      downloadReport: async (id: string): Promise<ReportFile> => {
+        const file = await c.download(`/audits/${id}/report.pdf`);
+        return { blob: file.blob, filename: file.filename ?? `audit-${id}.pdf` };
+      },
+    },
+    corrections: {
+      correct: (executionId: string, body: CorrectAnswersInput) => c.request('POST', `/executions/${executionId}/corrections`, { body, schema: correctionResultSchema }),
+      sendBack: (executionId: string, body: SendBackInput) => c.request('POST', `/executions/${executionId}/send-back`, { body, schema: reworkRequestSchema }),
+      withdraw: (executionId: string) => c.request('POST', `/executions/${executionId}/send-back/cancel`, { body: {}, schema: reworkRequestSchema }),
+      history: (executionId: string) => c.request('GET', `/executions/${executionId}/corrections`, { schema: executionCorrectionsSchema }),
+    },
+  };
+}
+export type AuditsApi = ReturnType<typeof createAuditsApi>;
