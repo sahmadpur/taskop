@@ -1,8 +1,9 @@
-import { intlLocale } from '@taskop/i18n';
+import { formatTime as formatTimeIn } from '@taskop/i18n';
+import { currentLanguage } from './language';
 
-/** HH:MM in the tenant's time zone (24 h). */
-export function formatTime(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat(intlLocale('az'), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(new Date(iso));
+/** HH:MM in the tenant's time zone (24 h), in the UI language. */
+export function formatTime(iso: string, timeZone: string, locale: string = currentLanguage()): string {
+  return formatTimeIn(iso, { locale, timeZone });
 }
 
 /** The tenant-local calendar date of an instant, as YYYY-MM-DD (the form of `localDate` on occurrences). */

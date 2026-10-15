@@ -34,7 +34,7 @@ describe('native configuration', () => {
 
   it('adds the notifications plugin once, with the default Android channel and the monochrome icon', () => {
     expect(plugins.filter((p) => (Array.isArray(p) ? p[0] : p) === 'expo-notifications')).toHaveLength(1);
-    expect(options('expo-notifications')).toEqual({ icon: './assets/android-icon-monochrome.png', color: '#1D5BD8', defaultChannel: 'default' });
+    expect(options('expo-notifications')).toEqual({ icon: './assets/android-icon-monochrome.png', color: '#005E8C', defaultChannel: 'default' });
     for (const m of ['expo-notifications', 'expo-device']) expect(Object.keys(pkg.dependencies)).toContain(m);
   });
 

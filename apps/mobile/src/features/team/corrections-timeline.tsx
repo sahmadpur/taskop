@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
 import { answerSummary } from './correction-format';
+import { useLocale } from '@/lib/language';
 
 type Entry = { at: number; request: ReworkRequest; correction?: undefined } | { at: number; correction: Correction; request?: undefined };
 
@@ -14,9 +15,10 @@ type Entry = { at: number; request: ReworkRequest; correction?: undefined } | { 
  */
 export function CorrectionsTimeline({ content, history, timeZone }: { content: ChecklistContent; history: ExecutionCorrections; timeZone: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const items = new Map<string, Item>();
   walkItems(content, (item) => items.set(item.id, item));
-  const at = (iso: string) => formatDateTime(iso, { locale: 'az', timeZone });
+  const at = (iso: string) => formatDateTime(iso, { locale, timeZone });
   const label = (itemId: string) => items.get(itemId)?.label ?? t('executions.problemsPage.unknownItem');
   // Rounds first at equal times: a round's request comes before the corrections it caused (stable sort).
   const entries: Entry[] = [

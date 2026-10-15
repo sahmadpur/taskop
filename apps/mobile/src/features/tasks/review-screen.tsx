@@ -14,10 +14,12 @@ import { useOffline } from '@/offline/context';
 import { useSyncStatus } from '@/offline/hooks';
 import { RemoteMediaStrip } from './remote-media';
 import { ScreenHeader } from './screen-header';
+import { useLocale } from '@/lib/language';
 
 /** Spec §7.2: approve, or send back with a comment (required to reject), a task awaiting the caller's review. Online only. */
 export function ReviewScreen({ taskId }: { taskId: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { timeZone } = useOffline();
   const { online } = useSyncStatus();
   const session = useSession();
@@ -114,7 +116,7 @@ export function ReviewScreen({ taskId }: { taskId: string }) {
       {submission ? (
         <>
           <Text style={styles.label}>{t('mobile.tasks.review.submission')}</Text>
-          <Text style={styles.muted}>{formatDateTime(submission.submittedAt, { locale: 'az', timeZone })}</Text>
+          <Text style={styles.muted}>{formatDateTime(submission.submittedAt, { locale, timeZone })}</Text>
           {submission.text ? <Text style={styles.text}>{submission.text}</Text> : null}
           <RemoteMediaStrip items={media.map((m) => ({ id: m.id, kind: m.kind, status: m.status }))} load={(id) => api.taskMedia.url(id)} />
         </>

@@ -4,8 +4,10 @@
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@hookform/resolvers": "^5.9.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.104.1",
     "@taskop/api-client": "workspace:*",
+    "@taskop/brand": "workspace:*",
     "@taskop/contracts": "workspace:*",
     "@taskop/i18n": "workspace:*",
     "expo": "~57.0.30",
@@ -18,10 +20,12 @@
     "expo-image-manipulator": "~57.0.21",
     "expo-image-picker": "~57.0.20",
     "expo-linking": "~57.0.13",
+    "expo-localization": "~57.0.2",
     "expo-network": "~57.0.2",
     "expo-notifications": "~57.0.23",
     "expo-router": "~57.0.28",
     "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "~57.0.10",
     "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-video": "~57.0.5",
@@ -63,7 +67,10 @@
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|expo-router|react-navigation|@react-navigation/.*|@taskop/.*|zod))"
+      "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo\\+[^/]+/.*|expo-router|react-navigation|@react-navigation/.*|@taskop/.*|zod))"
+    ],
+    "setupFiles": [
+      "<rootDir>/src/test/setup.ts"
     ]
   }
 }

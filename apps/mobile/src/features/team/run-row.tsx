@@ -3,14 +3,16 @@ import { formatDateTime } from '@taskop/i18n';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '@/features/tasks/task-row';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { runPerson, statusTone } from './team-format';
+import { useLocale } from '@/lib/language';
 
 /** Spec §7.1: checklist, site, person, due time, status badge and problem count; the clock-suspect flag too (spec §8). */
 export function RunRow({ run, timeZone, onPress }: { run: ReportRun; timeZone: string; onPress: () => void }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const person = runPerson(t, run);
-  const due = t('mobile.team.due', { time: formatDateTime(run.dueAt, { locale: 'az', timeZone }) });
+  const due = t('mobile.team.due', { time: formatDateTime(run.dueAt, { locale, timeZone }) });
   const status = t(`scheduling.statuses.${run.status}`);
   const problems = run.problemCount > 0 ? t('mobile.team.problems', { count: run.problemCount }) : null;
   const critical = run.criticalCount > 0 ? t('mobile.team.critical', { count: run.criticalCount }) : null;
@@ -41,8 +43,8 @@ export function RunRow({ run, timeZone, onPress }: { run: ReportRun; timeZone: s
 }
 
 const styles = StyleSheet.create({
-  card: { minHeight: 44, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
-  title: { fontSize: 16, fontWeight: '600', color: colors.text },
-  muted: { color: colors.muted },
+  card: { minHeight: 44, backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  title: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text },
+  muted: { fontFamily: font, fontSize: type.base, color: colors.muted },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs },
 });

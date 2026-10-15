@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { computeScore, deriveProblems, type Missing, requirements, walkItems } from '@taskop/contracts';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -67,7 +68,7 @@ export function FinishScreen({ occurrenceId }: { occurrenceId: string }) {
           onPress={() => router.push({ pathname: '/execution/[id]', params: { id: occurrenceId } })}
           style={styles.back}
         >
-          <Text style={styles.backText}>‹</Text>
+          <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
         <View style={styles.flex}>
           <Text style={styles.title}>{t('mobile.finish.title')}</Text>
@@ -108,7 +109,6 @@ export function FinishScreen({ occurrenceId }: { occurrenceId: string }) {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   back: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, color: colors.primary },
   flex: { flex: 1 },
   title: { fontSize: 22, fontWeight: '700', color: colors.text },
   muted: { color: colors.muted },

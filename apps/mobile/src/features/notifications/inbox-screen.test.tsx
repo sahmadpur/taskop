@@ -90,7 +90,7 @@ describe('Bildirişlər inbox', () => {
     await renderWithServices(t.services, <InboxScreen />);
     expect(await screen.findByRole('button', { name: /^Oxunmamış: Açılış yoxlaması açıldı\./ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Yeni tapşırıq\./ })).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByText('Açılış yoxlaması açıldı').props.style).fontWeight).toBe('700');
+    expect(StyleSheet.flatten(screen.getByText('Açılış yoxlaması açıldı').props.style).fontWeight).toBe('600');
     expect(StyleSheet.flatten(screen.getByText('Yeni tapşırıq').props.style).fontWeight).toBe('500');
     await fireEvent(screen.getByTestId('notification-list'), 'endReached');
     expect(await screen.findByText('Admin mesajı')).toBeTruthy();

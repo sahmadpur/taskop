@@ -5,7 +5,7 @@ import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { useSession } from '@/lib/session';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, spacing, type } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import { useLiveQuery, useNow } from '@/offline/hooks';
 import { groupTasks, TASK_GROUP_KEYS } from './group-tasks';
@@ -25,7 +25,9 @@ export function TasksScreen() {
   return (
     <Screen>
       <View style={styles.top}>
-        <Text style={styles.heading}>{t('mobile.tasks.title')}</Text>
+        <Text accessibilityRole="header" style={styles.heading}>
+          {t('mobile.tasks.title')}
+        </Text>
         <View style={styles.tools}>
           {canManage ? <PrimaryButton title={`+ ${t('mobile.tasks.create.open')}`} accessibilityLabel={t('mobile.tasks.create.open')} onPress={() => router.push({ pathname: '/task/new', params: { n: services.newId() } })} /> : null}
           <SyncIndicator />
@@ -55,8 +57,8 @@ export function TasksScreen() {
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   tools: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  heading: { fontSize: 24, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  heading: { fontFamily: font, fontSize: type.display, fontWeight: '600', color: colors.text, flexShrink: 1, letterSpacing: -0.5 },
   group: { gap: spacing.sm },
-  section: { fontSize: 16, fontWeight: '600', color: colors.text, marginTop: spacing.sm },
-  muted: { color: colors.muted },
+  section: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text, marginTop: spacing.sm },
+  muted: { fontFamily: font, fontSize: type.base, color: colors.muted },
 });

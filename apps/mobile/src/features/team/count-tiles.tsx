@@ -1,7 +1,7 @@
 import type { ReportSummary } from '@taskop/contracts';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { percentText } from './team-format';
 import { notCompleted } from './team-rules';
 
@@ -10,11 +10,11 @@ export function CountTiles({ summary }: { summary: ReportSummary }) {
   const { t } = useTranslation();
   const c = summary.counts;
   const tiles = [
-    { key: 'completed', label: t('reports.counts.completed'), value: String(c.completed), color: colors.success },
+    { key: 'completed', label: t('reports.counts.completed'), value: String(c.completed), color: colors.successText },
     { key: 'notCompleted', label: t('reports.notCompleted'), value: String(notCompleted(c)), color: colors.text },
-    { key: 'overdue', label: t('reports.counts.overdue'), value: String(c.overdue), color: colors.danger },
-    { key: 'partial', label: t('reports.counts.partial'), value: String(c.partial), color: colors.warning },
-    { key: 'withProblems', label: t('reports.counts.withProblems'), value: String(c.withProblems), color: colors.danger },
+    { key: 'overdue', label: t('reports.counts.overdue'), value: String(c.overdue), color: colors.dangerText },
+    { key: 'partial', label: t('reports.counts.partial'), value: String(c.partial), color: colors.warningText },
+    { key: 'withProblems', label: t('reports.counts.withProblems'), value: String(c.withProblems), color: colors.dangerText },
     { key: 'completionPercent', label: t('reports.measures.completionPercent'), value: percentText(t, summary.completionPercent), color: colors.primary },
   ];
   return (
@@ -37,11 +37,11 @@ const styles = StyleSheet.create({
     minHeight: 72,
     justifyContent: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: radius.card,
+    borderWidth: 1.5,
     borderColor: colors.border,
     padding: spacing.sm,
   },
-  value: { fontSize: 22, fontWeight: '700' },
-  label: { color: colors.muted, fontSize: 13 },
+  value: { fontFamily: font, fontSize: type.xl, fontWeight: '600', letterSpacing: -0.3 },
+  label: { fontFamily: font, color: colors.muted, fontSize: type.sm },
 });

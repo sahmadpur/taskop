@@ -153,7 +153,7 @@ describe('Needs correction (spec §8.1)', () => {
     const card = within(await screen.findByTestId(`occurrence-${OCC}`));
     expect(card.getByText('Gecikir')).toBeTruthy();
     const due = card.getByText(tr('corrections.dueAt', { date: formatDateTime(REWORK_DUE, { locale: 'az', timeZone: 'Asia/Baku' }) }));
-    expect(StyleSheet.flatten(due.props.style).color).toBe(colors.danger);
+    expect(StyleSheet.flatten(due.props.style).color).toBe(colors.dangerText);
   });
 
   it('hides the group when nothing is sent back', async () => {

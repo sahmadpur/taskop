@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CommitInput } from '@/components/commit-input';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import type { LocalMedia } from '@/offline/local-model';
 import { fromAnswerDatetime, nowInputFor, toAnswerDatetime } from './datetime-format';
@@ -217,10 +217,10 @@ export function ItemField(p: ItemFieldProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
-  cardMissing: { borderColor: colors.warning },
+  card: { backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  cardMissing: { borderLeftWidth: 5, borderLeftColor: colors.warning },
   labelRow: { flexDirection: 'row', gap: spacing.xs },
-  label: { fontSize: 16, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  label: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text, flexShrink: 1 },
   required: { color: colors.danger, fontWeight: '700' },
   help: { color: colors.muted, fontSize: 13 },
   gap: { gap: spacing.xs },

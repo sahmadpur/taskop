@@ -17,7 +17,8 @@ import { PrimaryButton } from '@/components/primary-button';
 import { claimRejectionText } from '@/features/sync/claim-rejection';
 import { fileNotAcceptedText, notAcceptedText } from '@/features/sync/refusal-text';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
-import { colors, spacing } from '@/lib/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import {
   type CapturedMedia,
@@ -36,6 +37,7 @@ import { CaptureError } from './media-capture';
 import { type ProblemDraft, ProblemSheet } from './problem-sheet';
 import { reworkComments, reworkOverdue, reworkProgress } from './rework';
 import { readOnlyReason, useExecution } from './use-execution';
+import { useLocale } from '@/lib/language';
 
 function Centered({ children }: { children: ReactNode }) {
   return <SafeAreaView style={styles.center}>{children}</SafeAreaView>;
@@ -52,6 +54,7 @@ export function ExecutionScreen({
   focusNonce?: string;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { store, userId, timeZone } = useOffline();
   const data = useExecution(occurrenceId);
   const now = useNow();
@@ -249,13 +252,13 @@ export function ExecutionScreen({
           onPress={() => router.back()}
           style={styles.back}
         >
-          <Text style={styles.backText}>‹</Text>
+          <Ionicons name="chevron-back" size={28} color={colors.onDeep} />
         </Pressable>
         <View style={styles.headerText}>
           <Text style={styles.title} numberOfLines={1}>
             {occurrence.checklistName}
           </Text>
-          <Text style={styles.muted} numberOfLines={1}>
+          <Text style={styles.subtitleOnDeep} numberOfLines={1}>
             {occurrence.siteName}
           </Text>
         </View>
@@ -267,7 +270,7 @@ export function ExecutionScreen({
             style={[styles.fill, { width: `${bar.total ? Math.round((bar.done / bar.total) * 100) : 0}%` }]}
           />
         </View>
-        <Text style={styles.muted}>
+        <Text style={styles.progressText}>
           {fixed
             ? t('mobile.rework.progress', { done: fixed.done, total: fixed.total })
             : t('mobile.execution.progress', { answered: prog.answered, total: prog.total })}
@@ -280,7 +283,7 @@ export function ExecutionScreen({
           >{`${t('corrections.reworkBanner')} · ${t('corrections.round', { round: rework.round })}`}</Text>
           {rework.dueAt ? (
             <Text style={reworkOverdue(rework, now) ? styles.noteText : styles.bannerText}>
-              {t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale: 'az', timeZone }) })}
+              {t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale, timeZone }) })}
             </Text>
           ) : null}
         </View>
@@ -362,22 +365,26 @@ export function ExecutionScreen({
           </>
         ) : null}
         <View style={styles.pager}>
-          <PrimaryButton
-            variant="outline"
-            title={t('mobile.execution.previous')}
-            disabled={index === 0}
-            onPress={() => setSectionIndex(index - 1)}
-          />
-          {index < content.sections.length - 1 ? (
-            <PrimaryButton title={t('mobile.execution.next')} onPress={() => setSectionIndex(index + 1)} />
-          ) : (
+          <View style={styles.pagerHalf}>
             <PrimaryButton
-              title={rework ? t('mobile.rework.resubmit') : t('mobile.execution.finish')}
-              onPress={() =>
-                router.push({ pathname: '/execution/[id]/finish', params: { id: occurrenceId } })
-              }
+              variant="outline"
+              title={t('mobile.execution.previous')}
+              disabled={index === 0}
+              onPress={() => setSectionIndex(index - 1)}
             />
-          )}
+          </View>
+          <View style={styles.pagerHalf}>
+            {index < content.sections.length - 1 ? (
+              <PrimaryButton title={t('mobile.execution.next')} onPress={() => setSectionIndex(index + 1)} />
+            ) : (
+              <PrimaryButton
+                title={rework ? t('mobile.rework.resubmit') : t('mobile.execution.finish')}
+                onPress={() =>
+                  router.push({ pathname: '/execution/[id]/finish', params: { id: occurrenceId } })
+                }
+              />
+            )}
+          </View>
         </View>
       </ScrollView>
       {draft && draftItem && !capture && !readOnly ? (
@@ -431,40 +438,44 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.deep,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   back: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, color: colors.primary },
   headerText: { flex: 1 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  muted: { color: colors.muted },
-  progressWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.xs },
-  track: { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' },
-  fill: { height: 8, backgroundColor: colors.primary },
-  banner: { marginHorizontal: spacing.md, borderRadius: 10, padding: spacing.md, backgroundColor: '#FEF3C7' },
-  bannerText: { color: '#92400E' },
+  title: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.onDeep },
+  muted: { fontFamily: font, fontSize: type.base, color: colors.muted },
+  progressWrap: { backgroundColor: colors.deep, paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.xs, borderBottomLeftRadius: radius.sheet, borderBottomRightRadius: radius.sheet },
+  track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.18)', overflow: 'hidden' },
+  fill: { height: 8, backgroundColor: colors.saffron, borderRadius: 4 },
+  banner: { marginHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: radius.control, padding: spacing.md, backgroundColor: colors.warningSoft },
+  bannerText: { fontFamily: font, fontSize: type.base, color: colors.warningText, fontWeight: '500' },
   noteBanner: {
     marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: 10,
+    marginTop: spacing.sm,
+    borderRadius: radius.control,
     padding: spacing.md,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
   },
-  noteText: { color: colors.danger },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.lg * 2 },
-  sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+  noteText: { fontFamily: font, fontSize: type.base, color: colors.dangerText, fontWeight: '500' },
+  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl * 2 },
+  sectionTitle: { fontFamily: font, fontSize: type.xl, fontWeight: '600', color: colors.text, letterSpacing: -0.3 },
   reworkBanner: {
     marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: 10,
+    marginTop: spacing.sm,
+    borderRadius: radius.control,
     padding: spacing.md,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.warningSoft,
     gap: spacing.xs,
   },
-  reworkTitle: { color: '#92400E', fontWeight: '700' },
-  comment: { color: '#92400E', fontWeight: '600', marginBottom: spacing.xs },
+  reworkTitle: { fontFamily: font, fontSize: type.base, color: colors.warningText, fontWeight: '700' },
+  comment: { fontFamily: font, fontSize: type.base, color: colors.warningText, fontWeight: '600', marginBottom: spacing.xs },
+  progressText: { fontFamily: font, fontSize: type.sm, color: colors.onDeepMuted },
+  subtitleOnDeep: { fontFamily: font, fontSize: type.sm, color: colors.onDeepMuted },
   dimmed: { opacity: 0.5 },
-  pager: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },
+  pager: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, marginTop: spacing.md },
+  pagerHalf: { flex: 1 },
 });

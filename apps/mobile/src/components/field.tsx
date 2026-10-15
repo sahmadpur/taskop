@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 
 interface Props extends Pick<TextInputProps, 'value' | 'onChangeText' | 'secureTextEntry' | 'keyboardType' | 'autoCapitalize' | 'autoComplete' | 'onBlur'> {
   label: string;
@@ -17,24 +17,29 @@ export function Field({ label, error, ...input }: Props) {
         placeholderTextColor={colors.muted}
         {...input}
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.xs },
-  label: { fontSize: 14, fontWeight: '500', color: colors.text },
+  label: { fontFamily: font, fontSize: type.base, fontWeight: '500', color: colors.text },
   input: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
+    minHeight: 52,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.control,
     paddingHorizontal: spacing.md,
-    fontSize: 16,
+    fontFamily: font,
+    fontSize: type.md,
     backgroundColor: colors.surface,
     color: colors.text,
   },
   inputError: { borderColor: colors.danger },
-  error: { color: colors.danger, fontSize: 13 },
+  error: { fontFamily: font, color: colors.dangerText, fontSize: type.sm },
 });
