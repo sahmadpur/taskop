@@ -53,7 +53,8 @@ export function ReadOnlyAnswers(p: { content: ChecklistContent; answers: Answers
   const { t } = useTranslation();
   if (Object.keys(p.answers).length === 0) return <Text style={styles.muted}>{t('executions.noAnswers')}</Text>;
   const visible = visibleItems(p.content, p.answers);
-  const flagged = new Set(p.problems.map((x) => x.itemId));
+  // A problem a correction cleared (SP8) no longer marks its item.
+  const flagged = new Set(p.problems.filter((x) => x.clearedAt === null).map((x) => x.itemId));
   return (
     <View style={styles.list}>
       {p.content.sections.map((section) => {
@@ -111,6 +112,7 @@ export function ReadOnlyProblems(p: { content: ChecklistContent; problems: reado
             <Badge text={t(`executions.severities.${x.severity}`)} tone={x.severity === 'critical' ? 'danger' : 'warning'} />
             <Badge text={t(`executions.problemSources.${x.source}`)} />
             <Badge text={t(`tasks.resolutions.${x.resolution}`)} tone={x.resolution === 'resolved' ? 'success' : 'neutral'} />
+            {x.clearedAt ? <Badge text={t('corrections.cleared')} tone="success" /> : null}
           </View>
           {x.note ? <Text style={styles.value}>{x.note}</Text> : null}
           <RemoteMediaStrip items={remoteMedia(x.mediaIds, p.media, 'photo')} load={p.load} />

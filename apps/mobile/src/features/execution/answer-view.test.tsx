@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react-native';
-import '@/lib/i18n';
-import { executionDetail, PHOTO, PROBLEM, PROBLEM2, PROBLEM_PHOTO, UNREGISTERED_PHOTO } from '@/features/team/testing/fixtures';
+import i18n from '@/lib/i18n';
+import { executionDetail, executionProblem, PHOTO, PROBLEM, PROBLEM2, PROBLEM_PHOTO, RUN_T, UNREGISTERED_PHOTO } from '@/features/team/testing/fixtures';
 import { checklist, type Checklist } from '@/offline/testing/fixtures';
 import { renderWithServices } from '@/offline/testing/render';
 import { createTestServices } from '@/offline/testing/test-services';
@@ -82,5 +82,12 @@ describe('read-only answers', () => {
     await show(checklist(), { answers: {}, problems: [] });
     expect(screen.getByText('Bu icrada cavab yoxdur.')).toBeTruthy();
     expect(screen.queryByText('Problemlər')).toBeNull();
+  });
+
+  it('marks a problem a correction cleared, and no longer counts it as the item’s problem', async () => {
+    const c = checklist();
+    await show(c, { problems: [executionProblem({ id: PROBLEM, itemId: c.problem.id, mediaIds: [PHOTO], clearedAt: RUN_T.received })] });
+    expect(within(screen.getByTestId(`problem-${PROBLEM}`)).getByText(i18n.t('corrections.cleared'))).toBeTruthy();
+    expect(within(screen.getByTestId(`answer-${c.problem.id}`)).queryByText('Problem qeyd olunub')).toBeNull();
   });
 });
