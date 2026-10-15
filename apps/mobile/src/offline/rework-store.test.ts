@@ -96,6 +96,14 @@ describe('editing a run sent back for correction (spec §8.1)', () => {
     expect((await outbox(h)).map((c) => [c.kind, c.rev])).toEqual([['answers', 6]]);
   });
 
+  it('does not complete a run in rework: locked, completed_at unchanged, nothing queued', async () => {
+    const h = await reworking();
+    const before = await execution(h);
+    await expect(h.store.complete(REWORK_EXECUTION)).rejects.toMatchObject({ name: 'ExecutionLockedError' });
+    expect(await execution(h)).toMatchObject({ state: 'rework', rev: before.rev, completedAt: before.completedAt });
+    expect(await kinds(h)).toEqual([]);
+  });
+
   it('is locked once resubmitted here (state completed)', async () => {
     const h = await reworking();
     await h.db.run(`UPDATE executions SET state = 'completed'`);

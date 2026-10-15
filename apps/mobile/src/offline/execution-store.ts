@@ -108,6 +108,7 @@ export const flaggedItems = (e: Pick<LocalExecution, 'rework'>): ReadonlySet<str
  */
 export function reworkEditable(content: ChecklistContent, e: Pick<LocalExecution, 'rework' | 'answers'>): ReadonlySet<string> {
   const editable = new Set(flaggedItems(e));
+  // No open request (rework is null) has no round start to compare with: the current answers are the base, so nothing counts as revealed.
   const before = new Set(visibleItems(content, e.rework?.answersBefore ?? e.answers).map((v) => v.item.id));
   for (const v of visibleItems(content, e.answers)) if (!before.has(v.item.id)) editable.add(v.item.id);
   return editable;
@@ -271,6 +272,7 @@ export function createExecutionStore(deps: StoreDeps) {
         // rolls back the whole edit, media rows included.
         if (g.e.state === 'rework') {
           const content = await usableContent(tx, g.e.checklistVersionId);
+          // rework is null only if the request is gone while the state is still rework: fall back to the current answers as the base.
           const outside = reworkViolations(content, g.e.rework?.answersBefore ?? g.e.answers, answers, flaggedItems(g.e));
           if (outside.length > 0) throw new ItemNotInReworkError(outside);
         }
@@ -392,6 +394,8 @@ export function createExecutionStore(deps: StoreDeps) {
     const out = await db.transaction(async (tx): Promise<Outcome> => {
       const g = await guard(tx, executionId, now);
       if (g.locked) return { kind: 'locked', state: g.state };
+      // The guard leaves a rework run open for edits, but resubmitting is a separate step the server owns (spec §8.1).
+      if (g.e.state === 'rework') return { kind: 'locked', state: g.e.state };
       const missing = requirements(await usableContent(tx, g.e.checklistVersionId), g.e.answers);
       if (missing.length) return { kind: 'missing', missing };
       // A clock moved backwards must not put the completion before the start.
