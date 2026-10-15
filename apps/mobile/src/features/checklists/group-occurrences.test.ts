@@ -9,7 +9,8 @@ const view = (over: Partial<OccurrenceView> = {}): OccurrenceView => ({
 });
 const execution = (over: Partial<LocalExecution> = {}): LocalExecution => ({
   id: 'e', occurrenceId: OCC, checklistVersionId: VERSION, state: 'active', claim: 'accepted', rejectedReason: null, rejectedBy: null,
-  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, updatedAt: T.open, syncNote: null, ...over,
+  startedAt: T.open, completedAt: null, lockedAt: null, answers: {}, rev: 0, syncedRev: 0, finishedSyncedAt: null, updatedAt: T.open, syncNote: null,
+  reworkRound: 0, rework: null, ...over,
 });
 const at = (iso: string) => Date.parse(iso);
 const place = (o: OccurrenceView, now: string) => {

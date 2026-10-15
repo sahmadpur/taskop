@@ -1,4 +1,4 @@
-import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus, SyncTask, TaskMediaRole, TaskStatus } from '@taskop/contracts';
+import type { Answers, ClaimRef, ClaimRejectionReason, ExecutionState, MediaKind, MediaSource, OccurrenceStatus, ReworkRequest, SyncTask, TaskMediaRole, TaskStatus } from '@taskop/contracts';
 import type { EntityType } from './outbox';
 
 export const iso = (ms: number): string => new Date(ms).toISOString();
@@ -78,6 +78,8 @@ export interface ExecutionRow {
   finished_synced_at: string | null;
   updated_at: string;
   sync_note: string | null;
+  rework_round: number;
+  rework: string | null;
 }
 
 export interface LocalExecution {
@@ -99,6 +101,13 @@ export interface LocalExecution {
   updatedAt: string;
   /** The i18n key of why the server refused this execution's work for good ("Server qəbul etmədi: …"); null when none. */
   syncNote: string | null;
+  /** How many times the run was sent back for correction (0 = never). */
+  reworkRound: number;
+  /**
+   * The open send-back request (spec §8.1) while the run is in rework, and after it was resubmitted here until the
+   * server answers; null otherwise.
+   */
+  rework: ReworkRequest | null;
 }
 
 export const toExecution = (r: ExecutionRow): LocalExecution => ({
@@ -118,6 +127,8 @@ export const toExecution = (r: ExecutionRow): LocalExecution => ({
   finishedSyncedAt: r.finished_synced_at,
   updatedAt: r.updated_at,
   syncNote: r.sync_note,
+  reworkRound: r.rework_round,
+  rework: r.rework ? (JSON.parse(r.rework) as ReworkRequest) : null,
 });
 
 export interface MediaRow {

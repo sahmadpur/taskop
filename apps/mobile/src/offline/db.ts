@@ -240,6 +240,12 @@ export const MIGRATIONS: readonly string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  // v4 (sub-project 8): a run sent back for correction. `rework` is the open request as the server sent it (JSON),
+  // with the round's starting answers (`answersBefore`) that Part 1's rework rule is checked against.
+  `
+  ALTER TABLE executions ADD COLUMN rework_round INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE executions ADD COLUMN rework TEXT;
+  `,
 ];
 
 export async function migrate(db: Db, migrations: readonly string[] = MIGRATIONS): Promise<number> {

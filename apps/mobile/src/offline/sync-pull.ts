@@ -73,19 +73,22 @@ export async function mergePull(tx: Db, res: SyncResponse, offsetMs: number, now
     [JSON.stringify(res.occurrences.map((o) => o.id))],
   );
   for (const x of res.executions) await mergeExecution(tx, x, now);
+  await settleLeftRework(tx, res.executions.map((x) => x.id), now);
   for (const task of res.tasks) await mergeTask(tx, task, now);
   return removeTasks(tx, res.removedTaskIds);
 }
 
 async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void> {
   const claim = x.state === 'rejected' ? 'rejected' : 'accepted';
+  const rework = x.rework ? JSON.stringify(x.rework) : null;
   const local = await tx.first<ExecutionRow>('SELECT * FROM executions WHERE id = ?', [x.id]);
   if (!local) {
     await tx.run(
-      `INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, rejected_reason, started_at, completed_at, answers, rev, synced_rev, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO executions (id, occurrence_id, checklist_version_id, state, claim, rejected_reason, started_at, completed_at, answers, rev, synced_rev,
+         rework_round, rework, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [x.id, x.occurrenceId, x.checklistVersionId, x.state, claim, x.rejectedReason, normIso(x.startedAt), x.completedAt ? normIso(x.completedAt) : null,
-        JSON.stringify(x.answers), x.answersRev, x.answersRev, iso(now)],
+        JSON.stringify(x.answers), x.answersRev, x.answersRev, x.reworkRound, rework, iso(now)],
     );
     return;
   }
@@ -95,13 +98,35 @@ async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void
   const state = local.state === 'partial' && x.state === 'active' ? 'partial' : x.state;
   // After a refusal was resolved (sync_note), local revisions the server never took are gone for good: the server's copy wins.
   const takeAnswers = x.answersRev > local.rev || local.sync_note !== null;
+  // Spec decision 5: a run entering rework starts clean (no old refusal note, not "finished syncing").
+  const entering = state === 'rework' && local.state !== 'rework';
   await tx.run(
-    `UPDATE executions SET state = ?, claim = ?, rejected_reason = ?, completed_at = ?, answers = ?, rev = ?, synced_rev = ?, updated_at = ?
+    `UPDATE executions SET state = ?, claim = ?, rejected_reason = ?, completed_at = ?, answers = ?, rev = ?, synced_rev = ?, rework_round = ?, rework = ?,
+       sync_note = ?, finished_synced_at = ?, updated_at = ?
      WHERE id = ?`,
     [state, claim, x.rejectedReason, x.completedAt ? normIso(x.completedAt) : local.completed_at,
       takeAnswers ? JSON.stringify(x.answers) : local.answers, takeAnswers ? x.answersRev : local.rev,
-      takeAnswers ? x.answersRev : Math.max(local.synced_rev, x.answersRev), iso(now), x.id],
+      takeAnswers ? x.answersRev : Math.max(local.synced_rev, x.answersRev), x.reworkRound, rework,
+      entering ? null : local.sync_note, entering ? null : local.finished_synced_at, iso(now), x.id],
   );
+}
+
+/**
+ * Spec decision 4: a run that left rework on the server (resubmitted from another install, or the send-back was
+ * withdrawn) and that the server no longer lists. Nothing of it is queued here, so the phone stops offering it for
+ * correction; a run still holding queued work is left to its commands' answers.
+ */
+async function settleLeftRework(tx: Db, returnedIds: string[], now: number): Promise<void> {
+  const left = await tx.all<{ id: string; occurrence_id: string }>(
+    `SELECT id, occurrence_id FROM executions
+     WHERE rework IS NOT NULL AND id NOT IN (SELECT value FROM json_each(?))
+       AND NOT EXISTS (SELECT 1 FROM outbox x WHERE x.entity_type = 'execution' AND x.entity_id = executions.id)`,
+    [JSON.stringify(returnedIds)],
+  );
+  for (const e of left) {
+    await tx.run(`UPDATE executions SET state = CASE WHEN state = 'rework' THEN 'completed' ELSE state END, rework = NULL, updated_at = ? WHERE id = ?`, [iso(now), e.id]);
+    await tx.run(`UPDATE occurrences SET status = 'completed' WHERE id = ? AND status = 'correction_required'`, [e.occurrence_id]);
+  }
 }
 
 /** The versions the phone already holds, so /me/sync sends only new content (≤ 200, Part 1 `syncQuerySchema`). */

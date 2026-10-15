@@ -3,7 +3,29 @@ import { getMeta } from './db';
 import { appendCommand } from './outbox';
 import { applyPull, knownVersionIds } from './sync-pull';
 import { knownTaskIds } from './task-records';
-import { checklist, myExecution, OCC, OCC2, occurrence, OTHER, OTHER_EXECUTION, syncResponse, syncTask, T, TASK, TASK2, TEAM, VERSION, VERSION2, versionOf } from './testing/fixtures';
+import { type ExecutionRow, toExecution } from './local-model';
+import {
+  checklist,
+  completedAnswers,
+  myExecution,
+  OCC,
+  OCC2,
+  occurrence,
+  OTHER,
+  OTHER_EXECUTION,
+  REWORK_EXECUTION,
+  reworkRequest,
+  reworkSync,
+  syncResponse,
+  syncTask,
+  T,
+  TASK,
+  TASK2,
+  TEAM,
+  VERSION,
+  VERSION2,
+  versionOf,
+} from './testing/fixtures';
 import { openTestDb } from './testing/node-db';
 
 const NOW = Date.parse(T.open);
@@ -207,5 +229,60 @@ describe('tasks in /me/sync', () => {
     await db.run('UPDATE media SET uploaded_at = ?', [T.open]);
     expect(await applyPull(db, syncResponse({ tasks: [], removedTaskIds: [TASK2] }), 0, NOW)).toEqual([`file:///doc/media/${TASK2}.jpg`]);
     expect(await db.all('SELECT id FROM tasks')).toEqual([]);
+  });
+});
+
+describe('rework runs (sub-project 8)', () => {
+  const flagged = (c: ReturnType<typeof checklist>) => [{ itemId: c.temp.id, comment: 'Temperaturu yenidən ölçün' }];
+  const stored = async (db: Awaited<ReturnType<typeof openTestDb>>) => toExecution((await db.first<ExecutionRow>('SELECT * FROM executions'))!);
+
+  it('stores a run sent back for correction with its round and open request', async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    expect(await stored(db)).toMatchObject({
+      id: REWORK_EXECUTION, state: 'rework', reworkRound: 1, rework: reworkRequest({ items: flagged(c), answersBefore: completedAnswers(c) }),
+      answers: completedAnswers(c), rev: 3, syncedRev: 3, completedAt: T.due,
+    });
+    expect(await db.first('SELECT status FROM occurrences')).toEqual({ status: 'correction_required' });
+  });
+
+  it('turns a completed copy into rework when the run is sent back, clearing its old note and finished mark', async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    await applyPull(db, reworkSync(c, flagged(c), { execution: { state: 'completed', reworkRound: 0, rework: null } }), 0, NOW);
+    await db.run(`UPDATE executions SET finished_synced_at = ?, sync_note = 'errors.EXECUTION_NOT_ACTIVE'`, [T.due]);
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    expect(await db.first('SELECT state, rework_round, finished_synced_at, sync_note FROM executions')).toEqual({
+      state: 'rework', rework_round: 1, finished_synced_at: null, sync_note: null,
+    });
+  });
+
+  it('drops the request when the server lists the run as completed again', async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    await applyPull(db, reworkSync(c, flagged(c), { execution: { state: 'completed', rework: null } }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'completed', reworkRound: 1, rework: null });
+  });
+
+  it('a rework run the server stopped listing goes back to completed when nothing of it is queued', async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    await applyPull(db, syncResponse({ occurrences: [], executions: [] }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'completed', rework: null, answers: completedAnswers(c) });
+    // The occurrence stays (it has an execution) and is no longer offered for correction.
+    expect(await db.first('SELECT id, status FROM occurrences')).toEqual({ id: OCC, status: 'completed' });
+  });
+
+  it('keeps a rework run whose work is still queued, whatever the server lists', async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    await appendCommand(db, { entityType: 'execution', entityId: REWORK_EXECUTION, kind: 'answers', rev: 4, payload: { rev: 4, answers: {} }, createdAt: T.open });
+    await applyPull(db, syncResponse({ occurrences: [], executions: [] }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'rework', rework: { round: 1 } });
+    expect(await db.first('SELECT status FROM occurrences')).toEqual({ status: 'correction_required' });
   });
 });
