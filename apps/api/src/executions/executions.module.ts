@@ -4,6 +4,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PlatformModule } from '../platform/platform.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { AuditLookup } from './audit-lookup';
 import { PlatformTenantCorrectionsController, TenantCorrectionsController } from './corrections.controller';
 import { CorrectionsService } from './corrections.service';
 import { ExecutionAccess } from './execution-access';
@@ -18,6 +19,7 @@ import { ProblemWriter } from './problem-writer';
 import { ProblemsController } from './problems.controller';
 import { ProblemsService } from './problems.service';
 import { ExecutionRecalculator } from './recalculation';
+import { ReworkRequests } from './rework-requests';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 
@@ -37,6 +39,8 @@ import { SyncService } from './sync.service';
     SyncService,
     ExecutionRecalculator,
     CorrectionsService,
+    ReworkRequests,
+    AuditLookup,
     PlatformTenantInterceptor,
   ],
 })

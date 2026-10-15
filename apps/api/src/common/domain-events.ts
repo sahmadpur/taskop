@@ -21,6 +21,8 @@ export interface DomainEventMap {
   'assignment.assignees_changed': { tenantId: string; assignmentId: string; addedUserIds: string[]; actorUserId: string | null };
   /** A counted execution's answers produced a problem row that did not exist before (not a re-save). */
   'problem.recorded': { tenantId: string; problemId: string; occurrenceId: string; severity: ProblemSeverity; actorUserId: string | null };
+  /** SP8: a manager sent a completed run back to its executor (spec §6.2). SP6 turns it into run.correction_required. */
+  'execution.sent_back': { tenantId: string; executionId: string; occurrenceId: string; round: number; actorUserId: string | null };
   'task.assigned': TaskEvent;
   'task.accepted': TaskEvent;
   'task.submitted': TaskEvent;

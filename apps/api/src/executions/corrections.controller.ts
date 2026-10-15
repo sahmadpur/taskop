@@ -1,11 +1,11 @@
 import { Body, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
-import type { CorrectionResult } from '@taskop/contracts';
+import type { CorrectionResult, ReworkRequest } from '@taskop/contracts';
 import { controllerDecorators, named, perm, type RouteMode } from '../checklists/route-mode';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { type Actor, CurrentActor } from '../scheduling/actor';
 import { CorrectionsService } from './corrections.service';
-import { CorrectAnswersDto, CorrectionResultResponse } from './dto';
+import { CorrectAnswersDto, CorrectionResultResponse, ReworkRequestResponse, SendBackDto } from './dto';
 
 /** SP8 spec §6.2: a manager's corrections and send-backs, for tenant users and platform admins (Spec decision 24). */
 export function correctionsControllerFor(mode: RouteMode) {
@@ -21,6 +21,22 @@ export function correctionsControllerFor(mode: RouteMode) {
     @ApiOkResponse({ type: CorrectionResultResponse })
     correct(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string, @Body() body: CorrectAnswersDto): Promise<CorrectionResult> {
       return this.corrections.correct(a, id, body);
+    }
+
+    @Post(':id/send-back')
+    @HttpCode(200)
+    @correct
+    @ApiOkResponse({ type: ReworkRequestResponse })
+    sendBack(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string, @Body() body: SendBackDto): Promise<ReworkRequest> {
+      return this.corrections.sendBack(a, id, body);
+    }
+
+    @Post(':id/send-back/cancel')
+    @HttpCode(200)
+    @correct
+    @ApiOkResponse({ type: ReworkRequestResponse })
+    withdraw(@CurrentActor() a: Actor, @Param('id', ParseIdPipe) id: string): Promise<ReworkRequest> {
+      return this.corrections.withdraw(a, id);
     }
   }
   return named(CorrectionsController, mode === 'tenant' ? 'CorrectionsController' : 'PlatformTenantCorrectionsController');

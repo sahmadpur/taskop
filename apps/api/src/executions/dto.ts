@@ -1,4 +1,4 @@
-import { claimCommandSchema, claimResultSchema, completeCommandSchema, completeResultSchema, correctAnswersInputSchema, correctionResultSchema, executionDetailSchema, mediaConfirmResultSchema, mediaUploadTicketSchema, mediaUrlSchema, pageOf, problemDtoSchema, problemListQuerySchema, registerMediaCommandSchema, saveAnswersCommandSchema, saveAnswersResultSchema, syncQuerySchema, syncResponseSchema } from '@taskop/contracts';
+import { claimCommandSchema, claimResultSchema, completeCommandSchema, completeResultSchema, correctAnswersInputSchema, correctionResultSchema, executionDetailSchema, mediaConfirmResultSchema, mediaUploadTicketSchema, mediaUrlSchema, pageOf, problemDtoSchema, problemListQuerySchema, registerMediaCommandSchema, reworkRequestSchema, saveAnswersCommandSchema, saveAnswersResultSchema, sendBackInputSchema, syncQuerySchema, syncResponseSchema } from '@taskop/contracts';
 import { createZodDto } from 'nestjs-zod';
 
 export class ClaimCommandDto extends createZodDto(claimCommandSchema) {}
@@ -18,3 +18,5 @@ export class ProblemListQueryDto extends createZodDto(problemListQuerySchema) {}
 export class ProblemPageResponse extends createZodDto(pageOf(problemDtoSchema)) {}
 export class CorrectAnswersDto extends createZodDto(correctAnswersInputSchema) {}
 export class CorrectionResultResponse extends createZodDto(correctionResultSchema) {}
+export class SendBackDto extends createZodDto(sendBackInputSchema) {}
+export class ReworkRequestResponse extends createZodDto(reworkRequestSchema) {}
