@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
+import { PlatformTenantInterceptor } from '../checklists/platform-tenant.interceptor';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PlatformModule } from '../platform/platform.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { PlatformTenantCorrectionsController, TenantCorrectionsController } from './corrections.controller';
+import { CorrectionsService } from './corrections.service';
 import { ExecutionAccess } from './execution-access';
 import { ExecutionLookups } from './execution-lookups';
 import { ExecutionQueries } from './execution-queries';
@@ -17,10 +21,23 @@ import { ExecutionRecalculator } from './recalculation';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 
-/** Sub-project 4: execution, evidence and problems. Depends on scheduling, never the other way round. */
+/** Sub-projects 4 and 8: execution, evidence, problems and corrections. Depends on scheduling, never the other way round. */
 @Module({
-  imports: [SchedulingModule, TasksModule, NotificationsModule],
-  controllers: [ExecutionsController, MediaController, ProblemsController, SyncController],
-  providers: [ExecutionsService, ExecutionQueries, ExecutionAccess, ExecutionLookups, MediaJobs, MediaService, ProblemWriter, ProblemsService, ExecutionRecalculator, SyncService],
+  imports: [PlatformModule, SchedulingModule, TasksModule, NotificationsModule],
+  controllers: [ExecutionsController, MediaController, ProblemsController, SyncController, TenantCorrectionsController, PlatformTenantCorrectionsController],
+  providers: [
+    ExecutionsService,
+    ExecutionQueries,
+    ExecutionAccess,
+    ExecutionLookups,
+    MediaJobs,
+    MediaService,
+    ProblemWriter,
+    ProblemsService,
+    SyncService,
+    ExecutionRecalculator,
+    CorrectionsService,
+    PlatformTenantInterceptor,
+  ],
 })
 export class ExecutionsModule {}
