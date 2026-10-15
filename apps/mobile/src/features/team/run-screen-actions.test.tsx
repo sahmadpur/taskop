@@ -1,6 +1,6 @@
 import { ApiError } from '@taskop/api-client';
 import type { PermissionKey } from '@taskop/contracts';
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import i18n from '@/lib/i18n';
 import { checklist, OCC } from '@/offline/testing/fixtures';
@@ -178,7 +178,7 @@ describe('Team run screen actions (spec §8.2)', () => {
     mockExecution.mockResolvedValue(executionDetail(c, { audit: auditBrief({ status: 'finished', result: 'passed', percent: 100 }) }));
     await fireEvent.press(screen.getByRole('button', { name: tr('corrections.actions.sendBack') }));
     // The refusal refreshes the run; an audited run cannot be sent back, so the screen returns to the run view.
-    await eventually(async () => expect(screen.queryByText('Düzəldilməli bəndləri seçin və hər biri üçün şərh yazın.')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Düzəldilməli bəndləri seçin və hər biri üçün şərh yazın.')).toBeNull());
     expect(await screen.findByText(`${tr('audits.audit')}: ${tr('audits.runAuditStates.passed')} · 100%`)).toBeTruthy();
     expect(screen.getByText(tr('errors.EXECUTION_NOT_CORRECTABLE'))).toBeTruthy(); // the reason stays on the run view
     expect(screen.getAllByText(tr('errors.EXECUTION_NOT_CORRECTABLE'))).toHaveLength(1);
