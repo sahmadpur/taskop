@@ -1,6 +1,7 @@
-import { ME, OCC, OCC2, OCC3, occurrence, OTHER, pushData, syncResponse, syncTask, TASK, TASK2, versionOf } from '@/offline/testing/fixtures';
+import { NOTIFICATION_TYPES } from '@taskop/contracts';
+import { ME, OCC, OCC2, OCC3, occurrence, OTHER, pushData, reworkSync, syncResponse, syncTask, TASK, TASK2, versionOf } from '@/offline/testing/fixtures';
 import { createTestServices } from '@/offline/testing/test-services';
-import { createRouteContext, HOME, INBOX, type RouteContext, routeForPush, routeForTarget, startTapRouting } from './notification-router';
+import { createRouteContext, HOME, INBOX, type RouteContext, routeForPush, routeForTarget, startTapRouting, TEAM_RUN_TYPES } from './notification-router';
 import { fakeEvents } from './testing/fakes';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -153,5 +154,43 @@ describe('startTapRouting', () => {
     expect(error).toHaveBeenCalled();
     stop();
     error.mockRestore();
+  });
+});
+
+describe('sub-project 8 run notifications (Spec decision 15)', () => {
+  const notOnPhone = { occurrenceOnPhone: jest.fn(async () => null) };
+
+  it('opens a run sent back to me on the execution screen once the tap’s sync brought it', async () => {
+    const t = await createTestServices({ online: true });
+    t.api.sync = reworkSync(t.c, [{ itemId: t.c.temp.id, comment: 'Temperaturu yenidən ölçün' }]);
+    const ctx = createRouteContext(t.services, () => false, () => false);
+    expect(await routeForPush(pushData({ type: 'run.correction_required', targetId: OCC }), ctx)).toEqual({ pathname: '/execution/[id]', params: { id: OCC } });
+  });
+
+  it('opens an audit result on a run the worker still holds on the execution screen', async () => {
+    expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC }), stubCtx({ canSeeTeam: () => true }))).toEqual({
+      pathname: '/execution/[id]',
+      params: { id: OCC },
+    });
+  });
+
+  it('opens the run on the Team tab for a viewer who does not hold it', async () => {
+    const ctx = stubCtx({ ...notOnPhone, canSeeTeam: () => true });
+    for (const type of ['run.resubmitted', 'audit.finished', 'run.correction_required'] as const) {
+      expect(await routeForPush(pushData({ type, targetId: OCC3 }), ctx)).toEqual({ pathname: '/team/run/[id]', params: { id: OCC3 } });
+    }
+    // An inbox row carries its type too.
+    expect(await routeForTarget({ targetKind: 'occurrence', targetId: OCC3, type: 'run.resubmitted' }, ctx)).toEqual({ pathname: '/team/run/[id]', params: { id: OCC3 } });
+  });
+
+  it('keeps other run notifications, and viewers without the Team tab, in the inbox', async () => {
+    expect(await routeForTarget({ targetKind: 'occurrence', targetId: OCC3, type: 'problem.critical' }, stubCtx({ ...notOnPhone, canSeeTeam: () => true }))).toEqual(INBOX);
+    expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC3 }), stubCtx(notOnPhone))).toEqual(INBOX);
+    expect(await routeForPush(pushData({ type: 'audit.finished', targetId: OCC3 }), stubCtx({ ...notOnPhone, canSeeTeam: () => false }))).toEqual(INBOX);
+  });
+
+  it('names only notification types that exist', () => {
+    expect([...TEAM_RUN_TYPES]).toHaveLength(3);
+    for (const type of TEAM_RUN_TYPES) expect(NOTIFICATION_TYPES).toContain(type);
   });
 });
