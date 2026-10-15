@@ -13,10 +13,12 @@ import { formatPercent } from '@/features/executions/labels';
 import { formatLocalDate } from '@/features/scheduling/labels';
 import { errorText } from '@/lib/errors';
 import { api, useCan, useMe } from '@/lib/session';
+import { AuditActions } from './audit-actions';
 import { ItemList } from './item-list';
 import { ItemPanel } from './item-panel';
 import { auditItems, resultVariant, stepItem, upsertVerdict, verdictMap } from './labels';
 import { auditKeys, useAuditDetail } from './queries';
+import { ReportPanel } from './report-panel';
 
 /** `/audits/$auditId`. A new id remounts the screen, so selection and drafts never leak between audits. */
 export function AuditRoute() {
@@ -26,17 +28,17 @@ export function AuditRoute() {
 
 export function AuditScreen({ id }: { id: string }) {
   const { t } = useTranslation();
-  const { query } = useAuditDetail(id);
+  const { query, timedOut, restartPolling } = useAuditDetail(id);
   if (query.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
   if (query.isError) return <p className="text-destructive">{errorText(t, query.error)}</p>;
-  return <AuditView audit={query.data} />;
+  return <AuditView audit={query.data} report={{ timedOut, restart: restartPolling }} />;
 }
 
 /** Keys typed into a field or a dialog are text, not shortcuts (Global Constraints). */
 const isTyping = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]') !== null;
 
-function AuditView({ audit }: { audit: AuditDetail }) {
+function AuditView({ audit, report }: { audit: AuditDetail; report: { timedOut: boolean; restart: () => void } }) {
   const { t } = useTranslation();
   const { tenant } = useMe();
   const qc = useQueryClient();
@@ -58,6 +60,12 @@ function AuditView({ audit }: { audit: AuditDetail }) {
   const reviewed = total - missing.length;
   const current = items.find((v) => v.item.id === selected) ?? items[0] ?? null;
   const commentOf = (itemId: string) => drafts[itemId] ?? audit.verdicts.find((v) => v.itemId === itemId)?.comment ?? '';
+
+  /** Decision 7: point at the items still without a verdict (the client's check, or AUDIT_INCOMPLETE's itemIds). */
+  const showMissing = (ids: readonly string[]) => {
+    setHighlight(new Set(ids));
+    if (ids[0]) setSelected(ids[0]);
+  };
 
   const store = (update: (a: AuditDetail) => AuditDetail) => qc.setQueryData<AuditDetail>(auditKeys.detail(audit.id), (a) => (a ? update(a) : a));
   /** Decision 6: a correction may have hidden the item meanwhile (`fields.itemId = 'audits.issues.notAuditable'`). */
@@ -125,11 +133,14 @@ function AuditView({ audit }: { audit: AuditDetail }) {
       <PageHeader
         title={o.checklistName}
         actions={
-          canOpenRun && (
-            <Link to="/schedule" search={{ date: o.localDate, occurrence: o.id, tab: 'execution' }} className={buttonVariants({ variant: 'outline' })}>
-              {t('audits.web.screen.openRun')}
-            </Link>
-          )
+          <>
+            {canOpenRun && (
+              <Link to="/schedule" search={{ date: o.localDate, occurrence: o.id, tab: 'execution' }} className={buttonVariants({ variant: 'outline' })}>
+                {t('audits.web.screen.openRun')}
+              </Link>
+            )}
+            <AuditActions audit={audit} missing={missing} onIncomplete={showMissing} />
+          </>
         }
       />
       <div className="text-muted-foreground -mt-4 flex flex-wrap items-center gap-2 text-sm">
@@ -147,6 +158,12 @@ function AuditView({ audit }: { audit: AuditDetail }) {
           <AlertDescription>{t('audits.paused')}</AlertDescription>
         </Alert>
       )}
+      {highlight.size > 0 && (
+        <Alert variant="destructive">
+          <AlertDescription>{t('audits.web.screen.missing', { count: highlight.size })}</AlertDescription>
+        </Alert>
+      )}
+      {audit.status === 'finished' && <ReportPanel audit={audit} timedOut={report.timedOut} onRestart={report.restart} />}
       {!canPerform && <p className="text-muted-foreground text-sm">{t('audits.web.screen.readOnly')}</p>}
       <div className="grid gap-1">
         <p id="audit-progress" className="text-sm">
