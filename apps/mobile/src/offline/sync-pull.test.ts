@@ -276,6 +276,31 @@ describe('rework runs (sub-project 8)', () => {
     expect(await db.first('SELECT id, status FROM occurrences')).toEqual({ id: OCC, status: 'completed' });
   });
 
+  it("takes the server's answers at an equal revision whenever the rework copy changes hands", async () => {
+    const db = await openTestDb();
+    const c = checklist();
+    const restored = completedAnswers(c);
+    const abandoned = { ...restored, [c.temp.id]: { number: 6 } };
+    const keepLocal = async (answers: typeof restored) => db.run('UPDATE executions SET answers = ?, rev = 4, synced_rev = 4, sync_note = NULL', [JSON.stringify(answers)]);
+    // Leaving rework: the send-back was withdrawn and the server restored the round's starting answers at the phone's revision.
+    await applyPull(db, reworkSync(c, flagged(c)), 0, NOW);
+    await keepLocal(abandoned);
+    await applyPull(db, reworkSync(c, flagged(c), { execution: { state: 'completed', rework: null, answersRev: 4 } }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'completed', rework: null, answers: restored, rev: 4, syncedRev: 4 });
+    // Entering rework at an equal revision.
+    await keepLocal(abandoned);
+    await applyPull(db, reworkSync(c, flagged(c), { request: { round: 2 }, execution: { answersRev: 4, reworkRound: 2 } }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'rework', rework: { round: 2 }, answers: restored });
+    // A different request while still in rework.
+    await keepLocal(abandoned);
+    await applyPull(db, reworkSync(c, flagged(c), { request: { id: OTHER_EXECUTION, round: 3 }, execution: { answersRev: 4, reworkRound: 3 } }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ state: 'rework', rework: { id: OTHER_EXECUTION, round: 3 }, answers: restored });
+    // The same request at an equal revision keeps the local answers.
+    await keepLocal(abandoned);
+    await applyPull(db, reworkSync(c, flagged(c), { request: { id: OTHER_EXECUTION, round: 3 }, execution: { answersRev: 4, reworkRound: 3 } }), 0, NOW);
+    expect(await stored(db)).toMatchObject({ answers: abandoned, rev: 4 });
+  });
+
   it('keeps a rework run whose work is still queued, whatever the server lists', async () => {
     const db = await openTestDb();
     const c = checklist();

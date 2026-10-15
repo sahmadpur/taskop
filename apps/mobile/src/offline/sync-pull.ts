@@ -96,10 +96,14 @@ async function mergeExecution(tx: Db, x: MyExecution, now: number): Promise<void
   if (queued > 0) return; // Local changes not sent yet win; the next pull sees their result.
   // The local lock at closes_at is sticky even before the server's sweep has run (decision 15).
   const state = local.state === 'partial' && x.state === 'active' ? 'partial' : x.state;
-  // After a refusal was resolved (sync_note), local revisions the server never took are gone for good: the server's copy wins.
-  const takeAnswers = x.answersRev > local.rev || local.sync_note !== null;
   // Spec decision 5: a run entering rework starts clean (no old refusal note, not "finished syncing").
   const entering = state === 'rework' && local.state !== 'rework';
+  // Ruling F1: when the rework copy changes hands (entering rework, leaving it, or a new request), the server's answers are the
+  // round's base. A withdrawal restores them at the revision the phone's abandoned edit may hold, so an equal revision is not enough.
+  const localRework = local.rework ? (JSON.parse(local.rework) as { id: string }) : null;
+  const handover = entering || (localRework !== null && x.rework === null) || (x.rework !== null && localRework?.id !== x.rework.id);
+  // After a refusal was resolved (sync_note), local revisions the server never took are gone for good: the server's copy wins.
+  const takeAnswers = x.answersRev > local.rev || local.sync_note !== null || handover;
   await tx.run(
     `UPDATE executions SET state = ?, claim = ?, rejected_reason = ?, completed_at = ?, answers = ?, rev = ?, synced_rev = ?, rework_round = ?, rework = ?,
        sync_note = ?, finished_synced_at = ?, updated_at = ?

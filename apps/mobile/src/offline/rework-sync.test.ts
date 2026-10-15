@@ -218,6 +218,46 @@ describe('resubmitting a run sent back for correction (spec §8.1)', () => {
     expect((await h.store.occurrence(OCC))?.status).toBe('completed');
   });
 
+  it('a send-back withdrawn while an edit was offline: the phone ends on the restored answers and can work the next round', async () => {
+    const h = await reworking();
+    // The worker edits the flagged item offline: revision 4 on the phone, not sent yet.
+    h.net.online = false;
+    await h.store.patchAnswer(REWORK_EXECUTION, h.c.temp.id, { number: 6 });
+    expect(await execution(h)).toMatchObject({ rev: 4, answers: { [h.c.temp.id]: { number: 6 } } });
+    // The manager withdraws: the server restores the round's starting answers at revision 4 (answersRev + 1) and the run is completed.
+    const server = { rev: 4, state: 'completed' as 'completed' | 'rework' };
+    const restored = completedAnswers(h.c);
+    h.api.on('saveAnswers', async (id, b) => {
+      // The real API: a revision at or below its own is acked as stale (200) before any state check; above it, a completed run refuses.
+      if (b.rev <= server.rev) return { executionId: id, rev: server.rev, stale: true, state: server.state, progress };
+      if (server.state === 'completed') throw new ApiError(409, 'EXECUTION_NOT_ACTIVE' as never, 'errors.EXECUTION_NOT_ACTIVE');
+      server.rev = b.rev;
+      return h.api.defaults.saveAnswers(id, b);
+    });
+    h.api.sync = syncResponse({
+      occurrences: [occurrence({ status: 'completed' })],
+      executions: [myExecution({ id: REWORK_EXECUTION, state: 'completed', completedAt: T.due, answers: restored, answersRev: 4, reworkRound: 1, rework: null })],
+    });
+    h.net.online = true;
+    await h.engine.run('reconnect');
+    // Revision 4 is acked as stale; the phone sends its answers again above the server's revision, which the completed run refuses.
+    expect(h.api.calls.map((c) => [c.method, (c.body as { rev?: number }).rev])).toEqual([['saveAnswers', 4], ['saveAnswers', 5], ['pull', undefined]]);
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+    expect(await execution(h)).toMatchObject({ state: 'completed', rework: null, answers: restored, rev: 4 });
+    // Round 2 flags only the note; a send-back does not bump the server's revision.
+    server.state = 'rework';
+    h.api.sync = reworkSync(h.c, [{ itemId: h.c.note.id, comment: 'Qeyd yazın' }], {
+      request: { round: 2, answersBefore: restored },
+      execution: { answers: restored, answersRev: 4, reworkRound: 2 },
+    });
+    await h.engine.run('manual');
+    expect(await execution(h)).toMatchObject({ state: 'rework', rework: { round: 2 }, answers: restored });
+    await expect(h.store.patchAnswer(REWORK_EXECUTION, h.c.note.id, { text: 'Hər şey qaydasındadır' })).resolves.toBeUndefined();
+    await h.engine.run('manual');
+    expect(await outboxCounts(h.db)).toEqual({ pending: 0, failed: 0 });
+    expect(await execution(h)).toMatchObject({ answers: { ...restored, [h.c.note.id]: { text: 'Hər şey qaydasındadır' } } });
+  });
+
   it('"Sil" on a parked resubmit puts the run back into rework with the note', async () => {
     const h = await reworking();
     h.api.on('resubmit', refuse('CLOCK_INVALID', 422));
