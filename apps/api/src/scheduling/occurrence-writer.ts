@@ -27,6 +27,8 @@ export interface Transition {
   to: OccurrenceStatus;
   at: Date;
   reason?: string | null;
+  /** A step the system takes on its own inside a user's command (SP8: completed → audit_pending): recorded with no actor. */
+  system?: boolean;
 }
 
 /** The only code that creates occurrences or changes their status (spec §5). Runs inside a tenant transaction. */
@@ -190,8 +192,8 @@ export class OccurrenceWriter {
           fromStatus: r.from,
           toStatus: r.to,
           at: r.at,
-          actorUserId: actor.userId,
-          actorPlatformAdminId: actor.platformAdminId,
+          actorUserId: r.system ? null : actor.userId,
+          actorPlatformAdminId: r.system ? null : actor.platformAdminId,
           reason: r.reason ?? null,
         })),
       );

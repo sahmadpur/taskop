@@ -22,7 +22,8 @@ import type { Principal } from '../common/request';
 import { DbService } from '../db/db.service';
 import { checklists, checklistVersions, executions, occurrences } from '../db/schema';
 import { EligibilityService } from '../scheduling/eligibility.service';
-import { OccurrenceWriter } from '../scheduling/occurrence-writer';
+import { OccurrenceWriter, type Transition } from '../scheduling/occurrence-writer';
+import { AuditLookup } from './audit-lookup';
 import { assertDeviceTimes, clampStart } from './device-time';
 import type { ClaimCommandDto, CompleteCommandDto, SaveAnswersCommandDto } from './dto';
 import { ExecutionLookups } from './execution-lookups';
@@ -49,6 +50,7 @@ export class ExecutionsService {
     private readonly lookups: ExecutionLookups,
     private readonly problems: ProblemWriter,
     private readonly reworkRequests: ReworkRequests,
+    private readonly auditLookup: AuditLookup,
   ) {}
 
   /** First claim to reach the server wins (NFR-06.05); a loser is stored as rejected and answered with 200. */
@@ -220,9 +222,10 @@ export class ExecutionsService {
       .returning();
     await this.problems.rewrite(e, o, content, answers, receivedAt);
     if (inWindow) {
-      await this.writer.applyTransitions([
-        { occurrenceId: o.id, from: o.status, to: 'completed', at: completedAt, reason: o.status === 'partial' ? 'late_sync' : null },
-      ]);
+      const steps: Transition[] = [{ occurrenceId: o.id, from: o.status, to: 'completed', at: completedAt, reason: o.status === 'partial' ? 'late_sync' : null }];
+      // SP8 Spec decision 10: a checklist that requires audit puts the run in the audit queue in the same transaction.
+      if (await this.auditLookup.requiresAudit(o.checklistId)) steps.push({ occurrenceId: o.id, from: 'completed', to: 'audit_pending', at: completedAt, system: true });
+      await this.writer.applyTransitions(steps);
     } else if (o.status !== 'partial') {
       await this.writer.applyTransitions([{ occurrenceId: o.id, from: o.status, to: 'partial', at: o.closesAt }]);
     }

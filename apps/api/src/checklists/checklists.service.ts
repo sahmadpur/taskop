@@ -69,8 +69,8 @@ export class ChecklistsService {
           ? { kind: 'version', id: row.sourceVersionId }
           : null,
       versions: versions.map(toVersionSummary),
-      requiresAudit: false,
-      auditReportEmails: [],
+      requiresAudit: row.requiresAudit,
+      auditReportEmails: row.auditReportEmails,
     };
   }
 
@@ -131,11 +131,19 @@ export class ChecklistsService {
 
   async update(id: string, input: UpdateChecklistDto): Promise<ChecklistDetail> {
     const c = await this.lockActive(id);
-    const before = { name: c.name, description: c.description, category: c.category };
+    const before = { name: c.name, description: c.description, category: c.category, requiresAudit: c.requiresAudit, auditReportEmails: c.auditReportEmails };
     await this.db
       .tx()
       .update(checklists)
-      .set({ name: input.name, description: input.description, category: input.category, updatedAt: new Date() })
+      .set({
+        name: input.name,
+        description: input.description,
+        category: input.category,
+        // SP8 spec §4.1: settings, not versioned content; undefined leaves them as they are.
+        requiresAudit: input.requiresAudit,
+        auditReportEmails: input.auditReportEmails,
+        updatedAt: new Date(),
+      })
       .where(eq(checklists.id, id));
     const after = await this.get(id);
     await this.audit.record({
@@ -143,7 +151,7 @@ export class ChecklistsService {
       entityType: 'checklist',
       entityId: id,
       before,
-      after: { name: after.name, description: after.description, category: after.category },
+      after: { name: after.name, description: after.description, category: after.category, requiresAudit: after.requiresAudit, auditReportEmails: after.auditReportEmails },
     });
     return after;
   }
