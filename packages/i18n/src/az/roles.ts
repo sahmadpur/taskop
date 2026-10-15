@@ -36,6 +36,8 @@ export default {
     tasks: 'Tapşırıqlar',
     notifications: 'Bildirişlər',
     reports: 'Hesabatlar',
+    executions: 'İcralar',
+    audits: 'Auditlər',
   },
   keys: {
     tenant_manage: 'Təşkilat parametrlərini idarə etmək',
@@ -63,5 +65,7 @@ export default {
     notifications_send: 'Bildiriş mesajları göndərmək',
     reports_view: 'Hesabatlara və idarə panelinə baxmaq',
     reports_export: 'Hesabatları yükləmək (CSV, Excel, PDF)',
+    executions_correct: 'İcraların cavablarını düzəltmək və icranı düzəlişə qaytarmaq',
+    audits_perform: 'Audit aparmaq və audit hesabatlarını göndərmək',
   },
 } as const;

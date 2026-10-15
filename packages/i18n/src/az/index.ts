@@ -1,7 +1,9 @@
 import audit from './audit.js';
+import audits from './audits.js';
 import auth from './auth.js';
 import checklists from './checklists.js';
 import common from './common.js';
+import corrections from './corrections.js';
 import errors from './errors.js';
 import executions from './executions.js';
 import mobile from './mobile.js';
@@ -18,5 +20,5 @@ import teams from './teams.js';
 import users from './users.js';
 
 // Each UI namespace is a file in this folder; register new ones here.
-export const az = { common, errors, executions, audit, auth, checklists, mobile, nav, notifications, platform, reports, roles, scheduling, settings, sites, tasks, teams, users } as const;
+export const az = { common, errors, executions, audit, audits, auth, checklists, corrections, mobile, nav, notifications, platform, reports, roles, scheduling, settings, sites, tasks, teams, users } as const;
 export type Translations = typeof az;

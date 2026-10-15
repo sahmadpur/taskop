@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_PERMISSIONS,
+  AUDIT_FLOW_AUDIT_ACTIONS,
+  AUDIT_ISSUE_CODES,
+  AUDIT_QUEUES,
+  AUDIT_REPORT_STATUSES,
+  AUDIT_RESULT_FILTERS,
+  AUDIT_RESULTS,
+  AUDIT_STATUSES,
+  AUDIT_VERDICTS,
   CANCEL_REASON_CODES,
   CLAIM_REJECTION_REASONS,
+  CORRECTION_ISSUE_CODES,
+  CORRECTION_KINDS,
   DELIVERY_STATUSES,
   describeSchedule,
   DIRECT_AUDIENCES,
@@ -11,6 +21,7 @@ import {
   EXECUTION_STATES,
   ErrorCode,
   ISSUE_CODES,
+  isAuditType,
   ITEM_TYPES,
   MEDIA_KINDS,
   MEDIA_SOURCES,
@@ -29,6 +40,7 @@ import {
   REPORT_ISSUE_CODES,
   REPORT_KINDS,
   RUN_BUCKETS,
+  RUN_AUDIT_STATES,
   RUN_COUNT_KEYS,
   SCHEDULING_ISSUE_CODES,
   TASK_HISTORY_REASONS,
@@ -40,7 +52,7 @@ import {
   TASK_STATUSES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
-import { az, formatDate, formatDateTime } from './index.js';
+import { az, formatDate, formatDateTime, interpolate } from './index.js';
 
 describe('az translations', () => {
   it('has a message for every API error code', () => {
@@ -277,7 +289,7 @@ describe('notification translations', () => {
   it('uses the agreed wording and registers the nav, audit and role labels', () => {
     expect(az.notifications.types['checklist.due_soon']).toBe('Checklistin vaxtı yaxınlaşır');
     expect(az.notifications.types.manual).toBe('Admin mesajı');
-    expect(az.notifications.groups).toEqual({ checklist: 'Checklistlər', problem: 'Problemlər', task: 'Tapşırıqlar' });
+    expect(az.notifications.groups).toEqual({ checklist: 'Checklistlər', problem: 'Problemlər', task: 'Tapşırıqlar', audit: 'Audit və düzəlişlər' });
     expect(az.notifications.audiences).toEqual({ assignees: 'İcraçılar', creator: 'Yaradan' });
     expect(az.notifications.channels).toEqual({ inApp: 'Tətbiqdə', push: 'Push', email: 'E-poçt' });
     expect(az.notifications.title).toBe('Bildirişlər');
@@ -441,5 +453,86 @@ describe('report web translations', () => {
     expect(az.reports.export.thisTable).toBe('Bu cədvəl');
     expect(az.reports.measures.completionHint).toBe('Vaxtı çatmış icralardan tamamlananların payı');
     expect(az.nav.reports).toBe('Hesabatlar');
+  });
+});
+
+describe('audit and correction translations', () => {
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], az);
+
+  it('labels every audit status, result, verdict, report status, queue, run audit state, correction kind and issue', () => {
+    for (const s of AUDIT_STATUSES) expect(az.audits.statuses[s], s).toBeTypeOf('string');
+    for (const r of AUDIT_RESULTS) expect(az.audits.results[r], r).toBeTypeOf('string');
+    for (const v of AUDIT_VERDICTS) expect(az.audits.verdicts[v], v).toBeTypeOf('string');
+    expect(az.audits.verdicts.unreviewed).toBeTypeOf('string');
+    for (const s of AUDIT_REPORT_STATUSES) expect(az.audits.reportStatuses[s], s).toBeTypeOf('string');
+    for (const q of AUDIT_QUEUES) expect(az.audits.queues[q], q).toBeTypeOf('string');
+    for (const s of RUN_AUDIT_STATES) expect(az.audits.runAuditStates[s], s).toBeTypeOf('string');
+    for (const k of CORRECTION_KINDS) expect(az.corrections.kinds[k], k).toBeTypeOf('string');
+    for (const code of [...AUDIT_ISSUE_CODES, ...CORRECTION_ISSUE_CODES]) expect(lookup(code), code).toBeTypeOf('string');
+    expect(Object.keys(az.audits.issues).sort()).toEqual(AUDIT_ISSUE_CODES.map((c) => c.split('.').pop()).sort());
+    expect(Object.keys(az.corrections.issues).sort()).toEqual(CORRECTION_ISSUE_CODES.map((c) => c.split('.').pop()).sort());
+  });
+
+  it('has the actions, fields, PDF and e-mail texts with their placeholders', () => {
+    for (const k of ['start', 'open', 'finish', 'cancel', 'approve', 'reject', 'clearVerdict', 'downloadReport', 'resendReport', 'retryReport'] as const) {
+      expect(az.audits.actions[k], k).toBeTypeOf('string');
+    }
+    for (const k of ['result', 'comment', 'extraEmails', 'reportEmails', 'requiresAudit', 'cancelReason', 'auditor', 'startedAt', 'finishedAt', 'recipients', 'sentAt'] as const) {
+      expect(az.audits.fields[k], k).toBeTypeOf('string');
+    }
+    for (const k of [
+      'title', 'run', 'executor', 'window', 'startedAt', 'completedAt', 'syncedAt', 'auditor', 'finishedAt', 'result', 'auditScore', 'runScore', 'originalScore',
+      'comment', 'item', 'answer', 'verdict', 'original', 'correctedBy', 'problem', 'videos', 'morePhotos', 'generatedAt', 'auditId', 'page',
+      'checklist', 'site', 'version', 'photos', 'noAnswer', 'none',
+    ] as const) {
+      expect(az.audits.report[k], k).toBeTypeOf('string');
+    }
+    expect(az.audits.report.videos).toContain('{{count}}');
+    expect(az.audits.report.morePhotos).toContain('{{count}}');
+    expect(az.audits.report.page).toBe('Səhifə {{page}} / {{pages}}');
+    expect(az.audits.progress).toContain('{{reviewed}}');
+    for (const p of ['{{checklist}}', '{{site}}', '{{date}}']) expect(az.audits.email.subject, p).toContain(p);
+    for (const p of ['{{checklist}}', '{{site}}', '{{date}}', '{{result}}', '{{auditor}}']) expect(az.audits.email.body, p).toContain(p);
+    for (const k of ['correct', 'sendBack', 'withdraw', 'resubmit'] as const) expect(az.corrections.actions[k], k).toBeTypeOf('string');
+    for (const k of ['reason', 'itemComment', 'dueAt', 'items'] as const) expect(az.corrections.fields[k], k).toBeTypeOf('string');
+    expect(az.corrections.round).toContain('{{round}}');
+    expect(az.corrections.dueAt).toContain('{{date}}');
+  });
+
+  it('uses the FR-19.15 wording and the agreed labels', () => {
+    expect(az.scheduling.statuses.correction_required).toBe('Düzəliş tələb olunur');
+    expect(az.corrections.reworkBanner).toBe('Düzəliş tələb olunur');
+    expect(az.executions.states.rework).toBe('Düzəlişdə');
+    expect(az.scheduling.statuses.audit_pending).toBe('Audit gözləyir');
+    expect(az.scheduling.statuses.audited).toBe('Audit olunub');
+    expect(az.audits.title).toBe('Auditlər');
+    expect(az.nav.audits).toBe('Auditlər');
+    expect(az.corrections.title).toBe('Düzəlişlər');
+    expect(az.corrections.kinds).toEqual({ manual: 'Rəhbər düzəlişi', rework: 'İcraçı düzəlişi' });
+    expect(az.roles.groups.executions).toBeTypeOf('string');
+    expect(az.roles.groups.audits).toBeTypeOf('string');
+    expect(az.roles.keys.executions_correct).toBeTypeOf('string');
+    expect(az.roles.keys.audits_perform).toBeTypeOf('string');
+    expect(az.audit.entityTypes.audit).toBe('Audit');
+    expect(az.audit.entityTypes.execution).toBe('İcra');
+    for (const a of AUDIT_FLOW_AUDIT_ACTIONS) expect(az.audit.actions[a], a).toBeTypeOf('string');
+  });
+
+  it('has the notification labels, filters and templates of the three audit types', () => {
+    for (const f of AUDIT_RESULT_FILTERS) expect(az.notifications.resultFilters[f], f).toBeTypeOf('string');
+    for (const ty of NOTIFICATION_TYPES.filter(isAuditType)) {
+      const tpl = az.notifications.templates[ty as keyof typeof az.notifications.templates];
+      expect(tpl.title, ty).toBeTypeOf('string');
+      expect(tpl.body, ty).toContain('{{checklist}}');
+    }
+    expect(az.notifications.templates['run.correction_required'].body).toContain('{{count}}');
+    expect(az.notifications.templates['run.correction_required'].due).toContain('{{date}}');
+    expect(az.notifications.templates['run.resubmitted'].body).toContain('{{executor}}');
+    expect(az.notifications.templates['audit.finished'].body).toContain('{{result}}');
+  });
+
+  it('fills placeholders and leaves unknown ones visible', () => {
+    expect(interpolate('{{a}} və {{b}}', { a: 1, b: 'iki' })).toBe('1 və iki');
+    expect(interpolate('{{a}} {{x}}', { a: 'A' })).toBe('A {{x}}');
   });
 });
