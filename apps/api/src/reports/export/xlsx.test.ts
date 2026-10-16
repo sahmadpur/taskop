@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { ReportDocument, ReportTable } from './report-table';
 import { sheetName, toXlsx } from './xlsx';
 
-const doc = (sections: ReportTable[]): ReportDocument => ({
-  title: 'T', tenantName: 'Acme MMC', from: '2026-11-02', to: '2026-11-04', filters: [], generatedAt: new Date('2026-11-04T08:00:00Z'), timezone: 'Asia/Baku', sections,
+const doc = (sections: ReportTable[], locale: ReportDocument['locale'] = 'az'): ReportDocument => ({
+  title: 'T', tenantName: 'Acme MMC', from: '2026-11-02', to: '2026-11-04', filters: [], generatedAt: new Date('2026-11-04T08:00:00Z'), timezone: 'Asia/Baku', locale, sections,
 });
 
 describe('XLSX writer', () => {
@@ -33,6 +33,12 @@ describe('XLSX writer', () => {
     expect(Math.abs(+(a1![4] as unknown as Date) - +new Date('2026-11-02T11:00:00.000Z'))).toBeLessThan(1000);
     expect(a2).toEqual(['Zona A2', 5, null, null, null, 'Xeyr']);
     expect(sheets[1]!.data).toEqual([['Tarix']]);
+  });
+
+  it('writes booleans in the export language', async () => {
+    const section: ReportTable = { title: 'A', columns: [{ label: 'Active', type: 'bool' }], rows: [[true], [false]] };
+    expect((await readXlsxFile(await toXlsx(doc([section], 'en'))))[0]!.data.slice(1)).toEqual([['Yes'], ['No']]);
+    expect((await readXlsxFile(await toXlsx(doc([section], 'ru'))))[0]!.data.slice(1)).toEqual([['Да'], ['Нет']]);
   });
 
   it('keeps sheet names valid (31 characters, no []:*?/\\) and unique', () => {

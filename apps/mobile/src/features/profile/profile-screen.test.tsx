@@ -265,7 +265,7 @@ describe('notification settings', () => {
     expect(screen.getByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeTruthy();
     await fireEvent(emailSwitch(), 'valueChange', true);
     await eventually(async () => expect(mockPatchUser).toHaveBeenCalledWith({ emailNotifications: false }, '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01'));
-    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: true, locale: null });
+    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: true });
     await eventually(async () => expect(emailSwitch().props.disabled).toBe(false));
     expect(emailSwitch().props.value).toBe(false);
   });

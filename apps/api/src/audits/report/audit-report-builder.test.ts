@@ -43,6 +43,7 @@ const reportData = (over: Partial<AuditReportData> = {}): AuditReportData => ({
     },
   ],
   generatedAt: new Date('2026-11-02T06:01:00Z'),
+  locale: 'az',
   ...over,
 });
 
@@ -101,5 +102,22 @@ describe('audit report builder (spec §7.2)', () => {
     expect(embedded.has('i14')).toBe(false);
     expect([skipped.get('i0'), skipped.get('i13'), skipped.get('i19')]).toEqual([1, 3, 4]);
     expect(selectReportPhotos(['x'], new Map()).embedded.size).toBe(0);
+  });
+});
+
+describe('audit report languages', () => {
+  const flatText = async (pdf: Buffer) => (await extractText(new Uint8Array(pdf), { mergePages: true })).text.replace(/\s+/g, ' ');
+
+  it('prints the labels in English', async () => {
+    const flat = await flatText(await buildAuditReport(reportData({ locale: 'en' })));
+    for (const s of ['Audit report', 'Açılış yoxlaması · Version 3', 'Result Failed', 'Audit score 75.0% (3/4)', 'Run score 100.0% (Original score: 50.0%)', 'Approved', 'Rejected', 'Not reviewed', 'Page 1 / 1']) {
+      expect(flat, s).toContain(s);
+    }
+    expect(flat).not.toContain('Audit hesabatı');
+  });
+
+  it('prints the labels in Russian', async () => {
+    const flat = await flatText(await buildAuditReport(reportData({ locale: 'ru' })));
+    for (const s of ['Отчёт аудита', 'Результат Не пройден', 'Страница 1 / 1']) expect(flat, s).toContain(s);
   });
 });

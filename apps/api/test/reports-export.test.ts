@@ -43,6 +43,23 @@ describe('report exports (spec §5.4)', () => {
     ]);
   });
 
+  it('exports in the requesting user’s language, the tenant’s without a choice', async () => {
+    await ownerQuery('update users set locale = $2 where id = $1', [w.s.ownerId, 'en']);
+    try {
+      const csv = csvRows((await file(w.owner, 'runs', { ...PERIOD, format: 'csv' })).body);
+      expect(csv[0]!.slice(0, 5)).toEqual(['Date', 'Due by', 'Checklist', 'Site', 'Status']);
+      expect(csv.find((r) => r[9] === '04.11.2026 09:00')?.slice(13, 15)).toEqual(['Yes', 'No']);
+      await ownerQuery('update users set locale = $2 where id = $1', [w.s.ownerId, 'ru']);
+      const text = await pdfText((await file(w.owner, 'summary', { ...PERIOD, format: 'pdf' })).body);
+      for (const s of ['Сводный отчёт', 'Период: 02.11.2026 – 04.11.2026', 'Фильтры: нет']) expect(text, s).toContain(s);
+      const sheets = await readXlsxFile((await file(w.owner, 'sites', { ...PERIOD, format: 'xlsx' })).body);
+      expect(sheets[0]!.sheet).toBe('Объекты');
+    } finally {
+      await ownerQuery('update users set locale = null where id = $1', [w.s.ownerId]);
+    }
+    expect(csvRows((await file(w.owner, 'runs', { ...PERIOD, format: 'csv' })).body)[0]![0]).toBe('Tarix');
+  });
+
   it('keeps problem notes intact and neutralises formulas in CSV', async () => {
     const rows = csvRows((await file(w.owner, 'problems', { ...PERIOD, format: 'csv' })).body);
     expect(rows.map((r) => r[6])).toEqual(['Qeyd', '', "'=1+2", 'Kondisioner, "xarab"\nyenisi lazımdır', 'Qapı sınıqdır']);

@@ -4,7 +4,7 @@ import { csvField, neutralise, toCsv } from './csv';
 import type { ReportDocument, ReportTable } from './report-table';
 
 const doc = (sections: ReportTable[]): ReportDocument => ({
-  title: 'T', tenantName: 'Acme MMC', from: '2026-11-02', to: '2026-11-04', filters: [], generatedAt: new Date('2026-11-04T08:00:00Z'), timezone: 'Asia/Baku', sections,
+  title: 'T', tenantName: 'Acme MMC', from: '2026-11-02', to: '2026-11-04', filters: [], generatedAt: new Date('2026-11-04T08:00:00Z'), timezone: 'Asia/Baku', locale: 'az', sections,
 });
 const text = (b: Buffer) => b.toString('utf8');
 

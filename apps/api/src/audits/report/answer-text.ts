@@ -1,10 +1,10 @@
 import { type Answer, isAnswered, type Item } from '@taskop/contracts';
-import { az, interpolate } from '@taskop/i18n';
-
-const L = az.audits.report;
+import { interpolate, type Language, translationsFor } from '@taskop/i18n';
 
 /** An answer as the audit report prints it (spec §7.2). */
-export function answerText(item: Item, a: Answer | undefined): string {
+export function answerText(item: Item, a: Answer | undefined, locale: Language): string {
+  const T = translationsFor(locale);
+  const L = T.audits.report;
   if (!a || !isAnswered(item, a)) return L.noAnswer;
   switch (item.type) {
     case 'yes_no':
@@ -12,7 +12,7 @@ export function answerText(item: Item, a: Answer | undefined): string {
       return (a.optionIds ?? [])
         .map((id) => {
           const o = (item.options as ReadonlyArray<{ id: string; key: 'yes' | 'no' | 'confirm' | 'deny' }>).find((x) => x.id === id);
-          return o ? az.checklists.builder.fixedOptions[o.key] : id;
+          return o ? T.checklists.builder.fixedOptions[o.key] : id;
         })
         .join(', ');
     case 'single_choice':
@@ -33,7 +33,7 @@ export function answerText(item: Item, a: Answer | undefined): string {
 }
 
 /** The answer followed by the item's note. */
-export function answerLine(item: Item, a: Answer | undefined): string {
+export function answerLine(item: Item, a: Answer | undefined, locale: Language): string {
   const note = a?.note?.trim();
-  return note ? `${answerText(item, a)} — ${note}` : answerText(item, a);
+  return note ? `${answerText(item, a, locale)} — ${note}` : answerText(item, a, locale);
 }

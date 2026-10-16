@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { az } from '@taskop/i18n';
+import { type Language, translationsFor } from '@taskop/i18n';
 import pdfmake from 'pdfmake';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { cellText, formatDate, formatInstant, type ReportDocument, type ReportTable } from '../export/report-table';
@@ -15,15 +15,14 @@ pdfmake.setFonts({ NotoSans: { normal: REGULAR, bold: BOLD, italics: REGULAR, bo
 pdfmake.setUrlAccessPolicy(() => false);
 pdfmake.setLocalAccessPolicy((p) => p === REGULAR || p === BOLD);
 
-const L = az.reports.pdf;
-
-function section(t: ReportTable, tz: string): Content[] {
+function section(t: ReportTable, tz: string, locale: Language): Content[] {
+  const L = translationsFor(locale).reports.pdf;
   if (!t.rows.length) return [{ text: t.title, style: 'section' }, { text: L.empty, style: 'muted' }];
   const header: TableCell[] = t.columns.map((c) => ({ text: c.label, bold: true, fillColor: '#eeeeee' }));
   const body: TableCell[][] = t.rows.map((r) =>
     r.map((v, i) => {
       const col = t.columns[i]!;
-      return { text: cellText(col, v, tz) || az.reports.noValue, alignment: col.type === 'text' ? 'left' : 'right' };
+      return { text: cellText(col, v, tz, locale) || translationsFor(locale).reports.noValue, alignment: col.type === 'text' ? 'left' : 'right' };
     }),
   );
   return [
@@ -34,6 +33,7 @@ function section(t: ReportTable, tz: string): Content[] {
 
 /** A4 landscape; header: tenant, title, period, filters, generation time (spec §5.4); one heading per section. */
 export function pdfDefinition(doc: ReportDocument): TDocumentDefinitions {
+  const L = translationsFor(doc.locale).reports.pdf;
   return {
     pageSize: 'A4',
     pageOrientation: 'landscape',
@@ -59,7 +59,7 @@ export function pdfDefinition(doc: ReportDocument): TDocumentDefinitions {
       { text: `${L.period}: ${formatDate(doc.from)} – ${formatDate(doc.to)}` },
       { text: `${L.filters}: ${doc.filters.length ? doc.filters.join('; ') : L.noFilters}` },
       { text: `${L.generatedAt}: ${formatInstant(doc.generatedAt, doc.timezone)}`, style: 'muted' },
-      ...doc.sections.flatMap((s) => section(s, doc.timezone)),
+      ...doc.sections.flatMap((s) => section(s, doc.timezone, doc.locale)),
     ],
   };
 }

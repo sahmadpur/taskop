@@ -1,10 +1,8 @@
 import { AUDIT_LIMITS, type AuditResult, type AuditScore, type AuditVerdict, type ProblemSeverity } from '@taskop/contracts';
-import { az, interpolate } from '@taskop/i18n';
+import { interpolate, type Language, translationsFor } from '@taskop/i18n';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { formatInstant } from '../../reports/export/report-table';
 import { renderPdf } from '../../reports/pdf/pdf-document';
-
-const L = az.audits.report;
 
 /** One item row, already printable: the loader (Task 15) turns the run into these. */
 export interface ReportItem {
@@ -59,6 +57,8 @@ export interface AuditReportData {
   comment: string | null;
   sections: ReportSection[];
   generatedAt: Date;
+  /** The auditor's language: every label of the PDF. */
+  locale: Language;
 }
 
 /** Spec §7.2: up to 3 photos per item and 40 per report, in checklist order; the rest are counted, not embedded. */
@@ -76,11 +76,12 @@ export function selectReportPhotos(itemIds: readonly string[], photosByItem: Rea
   return { embedded, skipped };
 }
 
-const percent = (v: number | null): string => (v === null ? L.none : `${v.toFixed(1)}%`);
-const at = (d: Date | null, tz: string): string => (d ? formatInstant(d, tz) : L.none);
-
 /** A4 portrait: the header table, one table per section (item, answer, verdict), and a footer with time, id and page. */
 export function auditReportDefinition(d: AuditReportData): TDocumentDefinitions {
+  const T = translationsFor(d.locale);
+  const L = T.audits.report;
+  const percent = (v: number | null): string => (v === null ? L.none : `${v.toFixed(1)}%`);
+  const at = (x: Date | null, tz: string): string => (x ? formatInstant(x, tz) : L.none);
   const tz = d.timezone;
   const images: Record<string, string> = {};
   const image = (dataUrl: string): string => {
@@ -99,7 +100,7 @@ export function auditReportDefinition(d: AuditReportData): TDocumentDefinitions 
     [L.syncedAt, at(d.syncedAt, tz)],
     [L.auditor, d.auditorName],
     [L.finishedAt, at(d.finishedAt, tz)],
-    [L.result, az.audits.results[d.result]],
+    [L.result, T.audits.results[d.result]],
     [L.auditScore, `${percent(d.auditScore.percent)} (${d.auditScore.approved}/${d.auditScore.reviewed})`],
     [L.runScore, runScore],
     [L.comment, d.comment ?? L.none],
@@ -115,14 +116,14 @@ export function auditReportDefinition(d: AuditReportData): TDocumentDefinitions 
       const answer: Content[] = [{ text: it.answer }];
       if (it.original !== null) answer.push({ text: `${L.original}: ${it.original}`, style: 'muted' });
       if (it.correctedBy) answer.push({ text: interpolate(L.correctedBy, { name: it.correctedBy.name, reason: it.correctedBy.reason }), style: 'muted' });
-      if (it.problem) answer.push({ text: `${L.problem}: ${az.executions.severities[it.problem.severity]}${it.problem.note ? ` — ${it.problem.note}` : ''}`, color: '#b42318' });
+      if (it.problem) answer.push({ text: `${L.problem}: ${T.executions.severities[it.problem.severity]}${it.problem.note ? ` — ${it.problem.note}` : ''}`, color: '#b42318' });
       // The same caps selectReportPhotos applies, so a caller that skips it cannot embed everything; the cut photos are counted.
       const shown = it.photos.slice(0, Math.min(AUDIT_LIMITS.photosPerItem, AUDIT_LIMITS.photosPerReport - Object.keys(images).length));
       if (shown.length) answer.push({ columns: shown.map((p): Content => ({ image: image(p), fit: [150, 150] })), columnGap: 6, margin: [0, 4, 0, 0] });
       const more = it.morePhotos + it.photos.length - shown.length;
       const extras = [more ? interpolate(L.morePhotos, { count: more }) : null, it.videos ? interpolate(L.videos, { count: it.videos }) : null].filter(Boolean);
       if (extras.length) answer.push({ text: extras.join(' · '), style: 'muted' });
-      const verdict: Content[] = [{ text: it.verdict ? az.audits.verdicts[it.verdict] : az.audits.verdicts.unreviewed, bold: it.verdict === 'rejected' }];
+      const verdict: Content[] = [{ text: it.verdict ? T.audits.verdicts[it.verdict] : T.audits.verdicts.unreviewed, bold: it.verdict === 'rejected' }];
       if (it.verdictComment) verdict.push({ text: it.verdictComment, style: 'muted' });
       body.push([{ text: it.label, margin: [it.depth * 10, 0, 0, 0] }, { stack: answer }, { stack: verdict }]);
     }

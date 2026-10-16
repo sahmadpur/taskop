@@ -1,5 +1,5 @@
 import { tzOffsetMinutes } from '@taskop/contracts';
-import { az } from '@taskop/i18n';
+import { type Language, translationsFor } from '@taskop/i18n';
 
 /** How a column is typed in Excel and printed in CSV and PDF. */
 export type ColumnType = 'text' | 'int' | 'decimal' | 'number' | 'date' | 'datetime' | 'bool';
@@ -30,6 +30,8 @@ export interface ReportDocument {
   filters: string[];
   generatedAt: Date;
   timezone: string;
+  /** The requesting user's language: titles, headers, enum cells and the PDF's fixed texts. */
+  locale: Language;
   sections: ReportTable[];
 }
 
@@ -49,7 +51,7 @@ export function formatInstant(instant: string | Date, tz: string): string {
 }
 
 /** A cell as CSV and PDF print it; null is empty. */
-export function cellText(col: ReportColumn, v: CellValue, tz: string): string {
+export function cellText(col: ReportColumn, v: CellValue, tz: string, locale: Language): string {
   if (v === null) return '';
   switch (col.type) {
     case 'text':
@@ -63,6 +65,6 @@ export function cellText(col: ReportColumn, v: CellValue, tz: string): string {
     case 'datetime':
       return formatInstant(v as string, tz);
     case 'bool':
-      return v ? az.reports.yes : az.reports.no;
+      return v ? translationsFor(locale).reports.yes : translationsFor(locale).reports.no;
   }
 }

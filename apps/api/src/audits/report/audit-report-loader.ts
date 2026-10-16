@@ -96,7 +96,7 @@ export class AuditReportLoader {
   async load(tenantId: string, auditId: string): Promise<AuditReportData | null> {
     const plan = await this.db.withTenant(tenantId, null, async (tx) => {
       const [a] = await tx
-        .select({ audit: audits, auditorName: users.fullName })
+        .select({ audit: audits, auditorName: users.fullName, auditorLocale: users.locale })
         .from(audits)
         .leftJoin(users, eq(users.id, audits.auditorUserId))
         .where(eq(audits.id, auditId));
@@ -110,7 +110,9 @@ export class AuditReportLoader {
         .innerJoin(sites, eq(sites.id, occurrences.siteId))
         .innerJoin(checklistVersions, eq(checklistVersions.id, executions.checklistVersionId))
         .where(eq(executions.id, a.audit.executionId));
-      const [tenant] = await tx.select({ name: tenants.name, timezone: tenants.timezone }).from(tenants);
+      const [tenant] = await tx.select({ name: tenants.name, timezone: tenants.timezone, locale: tenants.locale }).from(tenants);
+      // The auditor's language, the tenant's for a platform admin or a deleted auditor (same rule as mailInfo).
+      const locale = pickLanguage(a.auditorLocale, tenant?.locale);
       const content = await this.lookups.content(x!.e.checklistVersionId);
       const verdicts = await tx.select().from(auditItemVerdicts).where(eq(auditItemVerdicts.auditId, auditId));
       const corrections = await tx
@@ -127,10 +129,10 @@ export class AuditReportLoader {
         .select({ id: executionMedia.id, kind: executionMedia.kind, status: executionMedia.status, storageKey: executionMedia.storageKey })
         .from(executionMedia)
         .where(eq(executionMedia.executionId, x!.e.id));
-      return { a, x: x!, tenant: tenant!, content, verdicts, corrections, problems, media };
+      return { a, x: x!, tenant: tenant!, locale, content, verdicts, corrections, problems, media };
     });
     if (!plan) return null;
-    const { a, x, tenant, content, verdicts, corrections, problems, media } = plan;
+    const { a, x, tenant, locale, content, verdicts, corrections, problems, media } = plan;
     const answers = x.e.answers as Answers;
     const original = (x.e.originalAnswers as Answers | null) ?? null;
     const visible = visibleItems(content, answers);
@@ -172,8 +174,8 @@ export class AuditReportLoader {
             itemId: item.id,
             label: item.label,
             depth,
-            answer: answerLine(item, current),
-            original: changed ? answerLine(item, original![item.id]) : null,
+            answer: answerLine(item, current, locale),
+            original: changed ? answerLine(item, original![item.id], locale) : null,
             correctedBy: correction ? { name: correction.actorName ?? 'Taskop', reason: correction.reason } : null,
             verdict: verdict?.verdict ?? null,
             verdictComment: verdict?.comment ?? null,
@@ -206,6 +208,7 @@ export class AuditReportLoader {
       comment: a.audit.comment,
       sections,
       generatedAt: new Date(),
+      locale,
     };
   }
 }
