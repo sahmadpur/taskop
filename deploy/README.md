@@ -21,7 +21,11 @@ The images: [`apps/api/Dockerfile`](../apps/api/Dockerfile), [`apps/web/Dockerfi
 
 ## Routine deploy
 
-Every command runs in `/opt/taskop` as `deploy`.
+**Automatic:** every push to `main` that passes CI runs [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). It builds the three images, pushes them to GHCR as `sha-<commit>` and `latest`, copies the stack files here, and runs `deploy.sh sha-<commit>` over SSH. GitHub secrets: `DEPLOY_HOST`, `DEPLOY_SSH_KEY` (a key used only for this, in `deploy`'s `authorized_keys` as `github-actions-deploy@taskop`), `DEPLOY_KNOWN_HOSTS`.
+
+**Rollback:** Actions → Deploy → Run workflow, with the tag of an earlier deploy (`sha-<commit>`). It skips the build and keeps the server's current stack files.
+
+**By hand** on the server, in `/opt/taskop` as `deploy` (pulling from GHCR needs `docker login ghcr.io` with a token that can read packages):
 
 ```bash
 ./deploy.sh sha-1a2b3c4   # pull ghcr.io/sahmadpur/taskop-*:sha-1a2b3c4 and deploy it
@@ -30,7 +34,7 @@ Every command runs in `/opt/taskop` as `deploy`.
 
 `deploy.sh` takes a `pg_dump` into `backups/pre-deploy-*.dump` before migrating and fails with the API logs if the health check does not pass within two minutes.
 
-**Rollback:** `./deploy.sh sha-<previous commit>`. Migrations are not rolled back; if one must be undone, restore the pre-deploy dump (below).
+Migrations are not rolled back; if one must be undone, restore the pre-deploy dump (below).
 
 ## Common tasks
 

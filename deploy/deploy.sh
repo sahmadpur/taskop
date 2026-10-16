@@ -35,6 +35,8 @@ fi
 compose up -d postgres seaweedfs
 compose run --rm migrate
 compose up -d --remove-orphans
+# The Caddyfile is bind-mounted, so a changed one needs a reload (a no-op when unchanged).
+compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 
 echo "Waiting for the API health check…"
 for _ in $(seq 1 60); do
