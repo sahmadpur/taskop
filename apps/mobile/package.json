@@ -56,7 +56,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest"
+    "test": "jest",
+    "eas-build-post-install": "pnpm --filter \"@taskop/mobile^...\" run build"
   },
   "private": true,
   "version": "0.1.0",

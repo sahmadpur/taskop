@@ -9,6 +9,9 @@
     "ios": {
       "bundleIdentifier": "az.taskop.app",
       "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "icon": {
         "light": "./assets/icon.png",
         "dark": "./assets/icon-dark.png",
@@ -122,6 +125,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f8634f3e-451c-4158-9272-703ae3226431"
+      }
+    },
+    "owner": "s.ahmadpur"
   }
 }
