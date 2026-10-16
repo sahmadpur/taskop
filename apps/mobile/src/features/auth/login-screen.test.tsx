@@ -55,7 +55,7 @@ describe('LoginScreen', () => {
   it('switches to staff login', async () => {
     mockLoginStaff.mockResolvedValue({ accessToken: 's' });
     await render(<LoginScreen />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Rəhbər' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Rəhbər' }));
     await fireEvent.changeText(screen.getByLabelText('E-poçt'), ' Leyla@Acme.az ');
     await fireEvent.changeText(screen.getByLabelText('Şifrə'), 'manager password');
     await fireEvent.press(screen.getByRole('button', { name: 'Daxil ol' }));

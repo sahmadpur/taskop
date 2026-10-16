@@ -10,10 +10,11 @@ import { PrimaryButton } from '@/components/primary-button';
 import { ScreenHeader } from '@/features/tasks/screen-header';
 import { canSeeTeam } from '@/features/team/team-rules';
 import { api, useSession } from '@/lib/session';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { createRouteContext, INBOX, routeForTarget } from '@/notifications/notification-router';
 import { useOffline } from '@/offline/context';
 import { useSyncStatus } from '@/offline/hooks';
+import { useLocale } from '@/lib/language';
 
 /** Spec §6.4: GET /me/notifications returns 30 per page. */
 export const INBOX_PAGE_SIZE = 30;
@@ -195,8 +196,9 @@ export function InboxScreen() {
 
 function InboxRow({ item, timeZone, opening, onPress }: { item: NotificationItem; timeZone: string; opening: boolean; onPress: () => void }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const unread = item.readAt === null;
-  const when = formatDateTime(item.createdAt, { locale: 'az', timeZone });
+  const when = formatDateTime(item.createdAt, { locale, timeZone });
   return (
     <Pressable
       accessibilityRole="button"
@@ -222,12 +224,12 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   pad: { padding: spacing.lg, gap: spacing.md },
   list: { padding: spacing.lg, gap: spacing.sm },
-  row: { minHeight: 44, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
-  unreadRow: { borderColor: colors.primary },
+  row: { minHeight: 44, backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, borderLeftWidth: 5, borderLeftColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  unreadRow: { borderLeftColor: colors.primary },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  title: { fontSize: 16, fontWeight: '500', color: colors.text, flexShrink: 1 },
-  bold: { fontWeight: '700' },
-  body: { color: colors.text },
-  muted: { color: colors.muted },
+  title: { fontFamily: font, fontSize: type.md, fontWeight: '500', color: colors.text, flexShrink: 1 },
+  bold: { fontWeight: '600' },
+  body: { fontFamily: font, fontSize: type.base, color: colors.text },
+  muted: { fontFamily: font, fontSize: type.sm, color: colors.muted },
 });

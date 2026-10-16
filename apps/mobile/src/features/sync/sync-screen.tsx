@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { formatDateTime } from '@taskop/i18n';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -11,6 +12,7 @@ import { useOffline } from '@/offline/context';
 import { useLiveQuery, useSyncStatus } from '@/offline/hooks';
 import { mediaErrorKey } from '@/offline/media-queue';
 import { listCommands } from '@/offline/outbox';
+import { useLocale } from '@/lib/language';
 
 interface Row {
   key: string;
@@ -26,6 +28,7 @@ interface Row {
  */
 export function SyncScreen() {
   const { t } = useTranslation();
+  const locale = useLocale();
   const services = useOffline();
   const status = useSyncStatus();
   const [busy, setBusy] = useState(false);
@@ -87,13 +90,13 @@ export function SyncScreen() {
     <Screen>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backText}>‹</Text>
+          <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.title}>{t('mobile.sync.title')}</Text>
       </View>
       <Text style={styles.muted}>
         {status.lastSyncedAt
-          ? t('mobile.sync.lastSynced', { time: formatDateTime(status.lastSyncedAt, { locale: 'az', timeZone: services.timeZone }) })
+          ? t('mobile.sync.lastSynced', { time: formatDateTime(status.lastSyncedAt, { locale, timeZone: services.timeZone }) })
           : t('mobile.sync.never')}
       </Text>
       {isClockSkewed(status.clockOffsetMs) ? (
@@ -128,10 +131,9 @@ export function SyncScreen() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   back: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, color: colors.primary },
   title: { fontSize: 22, fontWeight: '700', color: colors.text },
   muted: { color: colors.muted },
-  warning: { color: '#92400E', backgroundColor: '#FEF3C7', borderRadius: 10, padding: spacing.md },
+  warning: { color: colors.warningText, backgroundColor: colors.warningSoft, borderRadius: 10, padding: spacing.md },
   row: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   rowFailed: { borderColor: colors.danger },
   rowTitle: { color: colors.text, fontWeight: '500' },

@@ -2,7 +2,7 @@ import type { Item, MediaKind, MediaSource } from '@taskop/contracts';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import type { LocalMedia } from '@/offline/local-model';
 
 export function Choice(p: { label: string; selected: boolean; role: 'radio' | 'checkbox'; disabled?: boolean; onPress: () => void }) {
@@ -139,18 +139,18 @@ export function EvidenceRow(p: {
 
 const styles = StyleSheet.create({
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  choice: { minHeight: 44, minWidth: 64, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  choice: { minHeight: 48, minWidth: 72, borderWidth: 1.5, borderColor: colors.borderStrong, borderRadius: radius.control, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   choiceOn: { borderColor: colors.primary, backgroundColor: colors.primary },
-  choiceText: { color: colors.text, fontSize: 15 },
+  choiceText: { fontFamily: font, color: colors.text, fontSize: type.md, fontWeight: '500' },
   choiceTextOn: { color: colors.primaryText, fontWeight: '600' },
-  chip: { minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.primary, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
-  chipText: { color: colors.primary, fontWeight: '500' },
+  chip: { minHeight: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.surface, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
+  chipText: { fontFamily: font, fontSize: type.base, color: colors.primary, fontWeight: '600' },
   dim: { opacity: 0.5 },
   strip: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  thumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  thumbImage: { width: 64, height: 64 },
+  thumb: { width: 72, height: 72, borderRadius: radius.control, backgroundColor: colors.plannedSoft, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  thumbImage: { width: 72, height: 72 },
   thumbText: { color: colors.muted, fontSize: 11, textAlign: 'center' },
   evidence: { gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  hint: { color: colors.muted, fontSize: 13 },
+  hint: { fontFamily: font, color: colors.muted, fontSize: type.sm },
 });

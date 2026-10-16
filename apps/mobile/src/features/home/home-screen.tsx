@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { headerBlock } from '@/components/chip';
 import { Screen } from '@/components/screen';
 import { GROUP_KEYS, groupOccurrences, homeStats, type HomeStats } from '@/features/checklists/group-occurrences';
 import { OccurrenceCard } from '@/features/checklists/occurrence-card';
@@ -8,22 +9,25 @@ import { NotificationBell } from '@/features/notifications/notification-bell';
 import { groupTasks, taskCounts } from '@/features/tasks/group-tasks';
 import { SyncIndicator } from '@/features/sync/sync-indicator';
 import { useSession } from '@/lib/session';
+import { useLocale } from '@/lib/language';
 import { localDate } from '@/lib/time';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { useOffline } from '@/offline/context';
 import { type OccurrenceView, StartRefusedError } from '@/offline/execution-store';
+import { formatLocalDate } from '@taskop/i18n';
 import { useLiveQuery, useNow } from '@/offline/hooks';
 
 const STATS: { key: keyof HomeStats; color: string }[] = [
   { key: 'myTasks', color: colors.text },
-  { key: 'overdue', color: colors.danger },
-  { key: 'completed', color: colors.success },
-  { key: 'issues', color: colors.danger },
+  { key: 'overdue', color: colors.dangerText },
+  { key: 'completed', color: colors.successText },
+  { key: 'issues', color: colors.dangerText },
 ];
 
 /** "My checklists" (spec §7.3, FR-10.01–02). */
 export function HomeScreen() {
   const { t } = useTranslation();
+  const locale = useLocale();
   const s = useSession();
   const services = useOffline();
   const now = useNow();
@@ -55,10 +59,16 @@ export function HomeScreen() {
 
   return (
     <Screen>
-      <View style={styles.top}>
-        <Text style={styles.greeting}>{t('mobile.home.greeting', { name: firstName })}</Text>
-        <View style={styles.tools}>
-          <NotificationBell />
+      <View style={headerBlock.block}>
+        <View style={styles.top}>
+          <Text style={headerBlock.eyebrow}>{formatLocalDate(localDate(now, services.timeZone), locale, { weekday: true, long: true })}</Text>
+          <NotificationBell tone="light" />
+        </View>
+        <Text accessibilityRole="header" style={headerBlock.title}>
+          {t('mobile.home.greeting', { name: firstName })}
+        </Text>
+        <Text style={headerBlock.subtitle}>{t('mobile.home.subtitle')}</Text>
+        <View style={headerBlock.tools}>
           <SyncIndicator />
         </View>
       </View>
@@ -67,7 +77,6 @@ export function HomeScreen() {
           <Text style={styles.offlineText}>{t('mobile.home.offline')}</Text>
         </View>
       ) : null}
-      <Text style={styles.subtitle}>{t('mobile.home.subtitle')}</Text>
       <View style={styles.grid}>
         {STATS.map((stat) => (
           <View key={stat.key} testID={`stat-${stat.key}`} style={styles.tile}>
@@ -86,7 +95,7 @@ export function HomeScreen() {
         <Text style={styles.section}>{t('mobile.tasks.home.title')}</Text>
         <View style={styles.taskCounts}>
           <Text style={styles.tileLabel}>{t('mobile.tasks.home.open', { count: taskStats?.open ?? 0 })}</Text>
-          <Text style={[styles.tileLabel, { color: colors.danger }]}>{t('mobile.tasks.home.overdue', { count: taskStats?.overdue ?? 0 })}</Text>
+          <Text style={[styles.tileLabel, { color: colors.dangerText }]}>{t('mobile.tasks.home.overdue', { count: taskStats?.overdue ?? 0 })}</Text>
         </View>
       </Pressable>
       {groups ? (
@@ -121,17 +130,15 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  tools: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  offline: { backgroundColor: '#FEF3C7', borderRadius: 10, padding: spacing.md },
-  offlineText: { color: '#92400E' },
-  greeting: { fontSize: 24, fontWeight: '700', color: colors.text, flexShrink: 1 },
-  subtitle: { color: colors.muted },
+  offline: { backgroundColor: colors.warningSoft, borderRadius: radius.control, padding: spacing.md },
+  offlineText: { fontFamily: font, fontSize: type.base, color: colors.warningText, fontWeight: '500' },
+  subtitle: { fontFamily: font, fontSize: type.base, color: colors.muted },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  tile: { width: '48%', backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
-  value: { fontSize: 28, fontWeight: '700' },
-  tileLabel: { color: colors.muted },
-  tasks: { minHeight: 44, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  tile: { flexBasis: '47%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, padding: spacing.md, gap: 2 },
+  value: { fontFamily: font, fontSize: type.display, fontWeight: '600', letterSpacing: -0.5 },
+  tileLabel: { fontFamily: font, fontSize: type.sm, color: colors.muted },
+  tasks: { minHeight: 44, backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   taskCounts: { flexDirection: 'row', gap: spacing.md },
   group: { gap: spacing.sm },
-  section: { fontSize: 16, fontWeight: '600', color: colors.text, marginTop: spacing.sm },
+  section: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text, marginTop: spacing.sm },
 });

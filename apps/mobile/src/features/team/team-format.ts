@@ -1,5 +1,6 @@
 import { CANCEL_REASON_CODES, type LocalDate, type OccurrenceStatus, type ReportRun } from '@taskop/contracts';
-import { intlLocale } from '@taskop/i18n';
+import { formatPercent } from '@taskop/i18n';
+import { currentLanguage } from '@/lib/language';
 import type { TFunction } from 'i18next';
 
 /** A server receipt is shown under a device time only when they differ by more than this (decision 11, as on the web). */
@@ -11,24 +12,28 @@ export const receiptDiffers = (deviceAt: string, receivedAt: string | null): boo
 /** "70%", "66,7%"; "—" when there is nothing to divide (spec §3.1, §8 "Empty period"). */
 export function percentText(t: TFunction, value: number | null): string {
   if (value === null) return t('reports.noValue');
-  return t('executions.percent', { value: new Intl.NumberFormat(intlLocale('az'), { maximumFractionDigits: 1 }).format(value) });
+  return t('executions.percent', { value: formatPercent(value, currentLanguage()) });
 }
 
-export type StatusTone = 'neutral' | 'warning' | 'danger' | 'success';
+export type StatusTone = 'neutral' | 'active' | 'warning' | 'danger' | 'success' | 'audit';
 
 /** The colour of a run's status badge. */
 export function statusTone(status: OccurrenceStatus): StatusTone {
   switch (status) {
     case 'completed':
-    case 'audit_pending':
     case 'audited':
       return 'success';
-    case 'overdue':
+    case 'audit_pending':
+      return 'audit';
     case 'missed':
       return 'danger';
+    case 'overdue':
     case 'partial':
     case 'correction_required':
       return 'warning';
+    case 'started':
+    case 'in_progress':
+      return 'active';
     default:
       return 'neutral';
   }

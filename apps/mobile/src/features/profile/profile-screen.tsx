@@ -2,11 +2,13 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { headerBlock } from '@/components/chip';
 import { FormError, mobileErrorText } from '@/components/form-error';
+import { LanguagePicker } from '@/components/language-picker';
 import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
 import { api, session, useSession } from '@/lib/session';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import { nativePush, openSettings, pushTokenStore } from '@/notifications/native';
 import { clearAppBadge, endPushSignOut, unregisterPush } from '@/notifications/push-registration';
 import { usePushPermission } from '@/notifications/use-push-permission';
@@ -127,8 +129,17 @@ export function ProfileScreen() {
   };
   return (
     <Screen>
-      <Text style={styles.name}>{me.user.fullName}</Text>
-      {me.user.jobTitle ? <Text style={styles.muted}>{me.user.jobTitle}</Text> : null}
+      <View style={headerBlock.block}>
+        <Text style={headerBlock.eyebrow}>{t('mobile.tabs.profile')}</Text>
+        <Text accessibilityRole="header" style={headerBlock.title}>
+          {me.user.fullName}
+        </Text>
+        {me.user.jobTitle ? <Text style={headerBlock.subtitle}>{me.user.jobTitle}</Text> : null}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.section}>{t('common.language')}</Text>
+        <LanguagePicker />
+      </View>
       <View style={styles.card}>
         {rows.map(([label, value]) => (
           <View key={label} style={styles.row}>
@@ -171,11 +182,10 @@ export function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  name: { fontSize: 22, fontWeight: '700', color: colors.text },
-  muted: { color: colors.muted },
-  card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  muted: { fontFamily: font, fontSize: type.base, color: colors.muted },
+  card: { backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: spacing.md },
-  section: { fontSize: 16, fontWeight: '600', color: colors.text },
-  value: { color: colors.text, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  value: { fontFamily: font, fontSize: type.base, color: colors.text, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  section: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 44 },
 });

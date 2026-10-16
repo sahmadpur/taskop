@@ -22,6 +22,7 @@ import { NO_ACTIONS, type RunActions, runActions } from './run-actions';
 import { SendBackMode } from './send-back-mode';
 import { cancelReasonText, formatLocalDay, percentText, receiptDiffers, statusTone } from './team-format';
 import { TeamOffline } from './team-offline';
+import { useLocale } from '@/lib/language';
 
 /** Spec §7.2: media are signed through GET /media/:id/url (Part 1 Task 7 lets reports.view do it). */
 const loadMedia = (id: string) => api.media.url(id);
@@ -215,12 +216,13 @@ function ActionsBar(p: {
 /** The open send-back request: round, due date in the tenant's time zone, and each item with its comment. */
 function ReworkSummary({ rework, content, timeZone }: { rework: ReworkRequest; content: ChecklistContent; timeZone: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const labels = new Map<string, string>();
   walkItems(content, (item) => labels.set(item.id, item.label));
   return (
     <View testID="run-rework" style={styles.rework}>
       <Text style={styles.reworkTitle}>{`${t('corrections.reworkBanner')} · ${t('corrections.round', { round: rework.round })}`}</Text>
-      {rework.dueAt ? <Text style={styles.reworkText}>{t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale: 'az', timeZone }) })}</Text> : null}
+      {rework.dueAt ? <Text style={styles.reworkText}>{t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale, timeZone }) })}</Text> : null}
       {rework.items.map((i) => (
         <Text key={i.itemId} style={styles.reworkText}>{`${labels.get(i.itemId) ?? t('executions.problemsPage.unknownItem')}: ${i.comment}`}</Text>
       ))}
@@ -242,7 +244,8 @@ function Field({ label, value, note = null }: { label: string; value: string; no
 /** Executor, device times with the server receipt when it differs (decision 11), and the score once closed (decision 14). */
 function ExecutionTimes({ execution: e, timeZone }: { execution: ExecutionSummary; timeZone: string }) {
   const { t } = useTranslation();
-  const at = (iso: string) => formatDateTime(iso, { locale: 'az', timeZone });
+  const locale = useLocale();
+  const at = (iso: string) => formatDateTime(iso, { locale, timeZone });
   const receipt = (deviceAt: string, receivedAt: string | null) =>
     receivedAt !== null && receiptDiffers(deviceAt, receivedAt) ? t('executions.receivedAt', { time: at(receivedAt) }) : null;
   return (
@@ -296,7 +299,7 @@ const styles = StyleSheet.create({
   section: { fontSize: 20, fontWeight: '700', color: colors.text, marginTop: spacing.md },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   actions: { gap: spacing.sm },
-  rework: { borderRadius: 10, padding: spacing.md, backgroundColor: '#FEF3C7', gap: spacing.xs },
-  reworkTitle: { color: '#92400E', fontWeight: '700' },
-  reworkText: { color: '#92400E' },
+  rework: { borderRadius: 10, padding: spacing.md, backgroundColor: colors.warningSoft, gap: spacing.xs },
+  reworkTitle: { color: colors.warningText, fontWeight: '700' },
+  reworkText: { color: colors.warningText },
 });

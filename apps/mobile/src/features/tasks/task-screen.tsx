@@ -20,10 +20,12 @@ import { canEditDraft, isTaskOverdue, RESPONSE_LIMITS, TaskStateError } from '@/
 import { RemoteMediaStrip } from './remote-media';
 import { ScreenHeader } from './screen-header';
 import { Badge } from './task-row';
+import { useLocale } from '@/lib/language';
 
 /** Spec §7.2 task detail: instructions, the problem it fixes, Qəbul et / Başla, the response, evidence chips and Tamamla. */
 export function TaskScreen({ taskId }: { taskId: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { tasks, mediaQueue, engine, timeZone } = useOffline();
   const now = useNow();
   const data = useLiveQuery(
@@ -153,7 +155,7 @@ export function TaskScreen({ taskId }: { taskId: string }) {
       {task.status === 'cancelled' && s.cancelReason ? <Text style={styles.warning}>{t('mobile.tasks.detail.cancelled', { reason: s.cancelReason })}</Text> : null}
       {s.site ? <Text style={styles.muted}>{s.site.name}</Text> : null}
       {s.team ? <Text style={styles.muted}>{t('mobile.tasks.team', { name: s.team.name })}</Text> : null}
-      <Text style={styles.muted}>{s.dueAt ? t('mobile.tasks.due', { time: formatDateTime(s.dueAt, { locale: 'az', timeZone }) }) : t('mobile.tasks.noDue')}</Text>
+      <Text style={styles.muted}>{s.dueAt ? t('mobile.tasks.due', { time: formatDateTime(s.dueAt, { locale, timeZone }) }) : t('mobile.tasks.noDue')}</Text>
 
       <Text style={styles.label}>{t('mobile.tasks.detail.instructions')}</Text>
       <Text style={styles.text}>{s.instructions || t('mobile.tasks.detail.noInstructions')}</Text>
@@ -279,7 +281,7 @@ const styles = StyleSheet.create({
   label: { fontWeight: '600', color: colors.text, marginTop: spacing.sm },
   text: { color: colors.text, fontSize: 16 },
   muted: { color: colors.muted },
-  warning: { color: '#92400E', backgroundColor: '#FEF3C7', borderRadius: 10, padding: spacing.md },
+  warning: { color: colors.warningText, backgroundColor: colors.warningSoft, borderRadius: 10, padding: spacing.md },
   error: { color: colors.danger },
   card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   actions: { flexDirection: 'row', gap: spacing.md, justifyContent: 'flex-end' },

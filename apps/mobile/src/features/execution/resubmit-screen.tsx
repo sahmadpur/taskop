@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { type Missing, requirements, visibleItems, walkItems } from '@taskop/contracts';
 import { formatDateTime } from '@taskop/i18n';
 import { router } from 'expo-router';
@@ -13,6 +14,7 @@ import { useNow } from '@/offline/hooks';
 import { FinishScreen, nextJump } from './finish-screen';
 import { reworkOverdue } from './rework';
 import { readOnlyReason, useExecution } from './use-execution';
+import { useLocale } from '@/lib/language';
 
 /**
  * Spec §8.1: the end of a rework round instead of the finish screen. It lists the flagged items with the manager's
@@ -21,6 +23,7 @@ import { readOnlyReason, useExecution } from './use-execution';
  */
 export function ResubmitScreen({ occurrenceId }: { occurrenceId: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { store, userId, timeZone } = useOffline();
   const data = useExecution(occurrenceId);
   const now = useNow();
@@ -82,7 +85,7 @@ export function ResubmitScreen({ occurrenceId }: { occurrenceId: string }) {
           onPress={() => router.push({ pathname: '/execution/[id]', params: { id: occurrenceId } })}
           style={styles.back}
         >
-          <Text style={styles.backText}>‹</Text>
+          <Ionicons name="chevron-back" size={28} color={colors.primary} />
         </Pressable>
         <View style={styles.flex}>
           <Text style={styles.title}>{t('mobile.rework.title')}</Text>
@@ -93,7 +96,7 @@ export function ResubmitScreen({ occurrenceId }: { occurrenceId: string }) {
         <Text style={styles.bannerTitle}>{`${t('corrections.reworkBanner')} · ${t('corrections.round', { round: rework.round })}`}</Text>
         {rework.dueAt ? (
           <Text style={reworkOverdue(rework, now) ? styles.missing : styles.bannerText}>
-            {t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale: 'az', timeZone }) })}
+            {t('corrections.dueAt', { date: formatDateTime(rework.dueAt, { locale, timeZone }) })}
           </Text>
         ) : null}
       </View>
@@ -153,14 +156,13 @@ export function FinishOrResubmit({ occurrenceId }: { occurrenceId: string }) {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   back: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, color: colors.primary },
   flex: { flex: 1 },
   title: { fontSize: 22, fontWeight: '700', color: colors.text },
   muted: { color: colors.muted },
   section: { fontSize: 16, fontWeight: '600', color: colors.text },
-  banner: { borderRadius: 10, padding: spacing.md, backgroundColor: '#FEF3C7', gap: spacing.xs },
-  bannerTitle: { color: '#92400E', fontWeight: '700' },
-  bannerText: { color: '#92400E' },
+  banner: { borderRadius: 10, padding: spacing.md, backgroundColor: colors.warningSoft, gap: spacing.xs },
+  bannerTitle: { color: colors.warningText, fontWeight: '700' },
+  bannerText: { color: colors.warningText },
   sent: { color: colors.text, fontWeight: '600' },
   row: { minHeight: 44, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   rowMissing: { borderColor: colors.warning },

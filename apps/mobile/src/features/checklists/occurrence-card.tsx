@@ -1,26 +1,13 @@
 import { formatDateTime } from '@taskop/i18n';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
+import { StatusChip } from '@/components/chip';
 import { PrimaryButton } from '@/components/primary-button';
 import { notAcceptedText } from '@/features/sync/refusal-text';
+import { useLocale } from '@/lib/language';
 import { formatTime } from '@/lib/time';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
 import type { CardModel, GroupKey } from './group-occurrences';
-
-type Tone = 'danger' | 'warning' | 'muted';
-const TONES: Record<Tone, { bg: string; fg: string }> = {
-  danger: { bg: '#FEE2E2', fg: colors.danger },
-  warning: { bg: '#FEF3C7', fg: '#92400E' },
-  muted: { bg: '#EEF2FF', fg: colors.primary },
-};
-
-function Badge({ tone, text }: { tone: Tone; text: string }) {
-  return (
-    <View style={[styles.badge, { backgroundColor: TONES[tone].bg }]}>
-      <Text style={[styles.badgeText, { color: TONES[tone].fg }]}>{text}</Text>
-    </View>
-  );
-}
 
 interface Props {
   card: CardModel;
@@ -30,32 +17,35 @@ interface Props {
   onOpen: () => void;
 }
 
+/** One run on the Home list: name, site and window, the chips, and the one action the worker can take. */
 export function OccurrenceCard({ card, group, timeZone, onStart, onOpen }: Props) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const o = card.occurrence;
   const e = o.execution;
   const status = e && e.state !== 'active' ? t(`executions.states.${e.state}`) : !e && o.status !== 'pending' ? t(`scheduling.statuses.${o.status}`) : null;
+  const edge = card.overdue ? styles.edgeDanger : card.rework ? styles.edgeWarning : group === 'done' ? styles.edgeDone : group === 'upcoming' ? styles.edgeUpcoming : null;
   return (
-    <View testID={`occurrence-${o.id}`} style={[styles.card, card.overdue ? styles.overdue : null]}>
+    <View testID={`occurrence-${o.id}`} style={[styles.card, edge]}>
       <Text style={styles.title}>{o.checklistName}</Text>
       <Text style={styles.muted}>{o.shiftName ? `${o.siteName} · ${o.shiftName}` : o.siteName}</Text>
-      <Text style={styles.muted}>{t('mobile.checklists.window', { from: formatTime(o.startsAt, timeZone), to: formatTime(o.closesAt, timeZone) })}</Text>
+      <Text style={styles.muted}>{t('mobile.checklists.window', { from: formatTime(o.startsAt, timeZone, locale), to: formatTime(o.closesAt, timeZone, locale) })}</Text>
       {card.rework ? (
         <Text style={styles.muted}>{`${t('corrections.round', { round: card.rework.round })} · ${t('mobile.rework.items', { count: card.rework.items })}`}</Text>
       ) : null}
       {card.rework?.dueAt ? (
         // Spec §8.1: the due date, red once it has passed; in the tenant's time zone (spec §9).
-        <Text style={card.overdue ? styles.note : styles.muted}>{t('corrections.dueAt', { date: formatDateTime(card.rework.dueAt, { locale: 'az', timeZone }) })}</Text>
+        <Text style={card.overdue ? styles.note : styles.muted}>{t('corrections.dueAt', { date: formatDateTime(card.rework.dueAt, { locale, timeZone }) })}</Text>
       ) : null}
       <View style={styles.badges}>
-        {card.overdue ? <Badge tone="danger" text={t('mobile.checklists.overdue')} /> : null}
-        {card.late ? <Badge tone="warning" text={t('executions.flags.late')} /> : null}
-        {card.claimedBy ? <Badge tone="muted" text={t('mobile.checklists.claimedBy', { name: card.claimedBy })} /> : null}
-        {status && !card.claimedBy ? <Badge tone="muted" text={status} /> : null}
+        {card.overdue ? <StatusChip tone="danger" text={t('mobile.checklists.overdue')} /> : null}
+        {card.late ? <StatusChip tone="warning" text={t('executions.flags.late')} /> : null}
+        {card.claimedBy ? <StatusChip tone="active" text={t('mobile.checklists.claimedBy', { name: card.claimedBy })} /> : null}
+        {status && !card.claimedBy ? <StatusChip tone={group === 'done' ? 'success' : 'neutral'} text={status} /> : null}
       </View>
       {e?.syncNote ? <Text style={styles.note}>{notAcceptedText(t, e.syncNote)}</Text> : null}
       {group === 'upcoming' ? (
-        <Text style={styles.muted}>{t('mobile.checklists.opensAt', { time: formatTime(o.startsAt, timeZone) })}</Text>
+        <Text style={styles.muted}>{t('mobile.checklists.opensAt', { time: formatTime(o.startsAt, timeZone, locale) })}</Text>
       ) : null}
       {card.action === 'start' ? (
         <PrimaryButton title={t('mobile.checklists.start')} accessibilityLabel={`${t('mobile.checklists.start')}: ${o.checklistName}`} onPress={onStart} />
@@ -75,12 +65,13 @@ export function OccurrenceCard({ card, group, timeZone, onStart, onOpen }: Props
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
-  overdue: { borderColor: colors.danger, borderLeftWidth: 4 },
-  title: { fontSize: 16, fontWeight: '600', color: colors.text },
-  muted: { color: colors.muted },
+  card: { backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1.5, borderColor: colors.border, borderLeftWidth: 5, borderLeftColor: colors.primary, padding: spacing.md, gap: spacing.xs },
+  edgeDanger: { borderLeftColor: colors.danger },
+  edgeWarning: { borderLeftColor: colors.warning },
+  edgeDone: { borderLeftColor: colors.success },
+  edgeUpcoming: { borderLeftColor: colors.planned },
+  title: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.text },
+  muted: { fontFamily: font, fontSize: type.base, color: colors.muted },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  note: { color: colors.danger },
-  badge: { borderRadius: 8, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  badgeText: { fontSize: 12, fontWeight: '600' },
+  note: { fontFamily: font, fontSize: type.base, color: colors.dangerText },
 });

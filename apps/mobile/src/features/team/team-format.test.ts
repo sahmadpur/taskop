@@ -24,14 +24,14 @@ describe('team formatting', () => {
   it('colours every status', () => {
     expect(Object.fromEntries(OCCURRENCE_STATUSES.map((s) => [s, statusTone(s)]))).toEqual({
       pending: 'neutral',
-      started: 'neutral',
-      in_progress: 'neutral',
+      started: 'active',
+      in_progress: 'active',
       completed: 'success',
       partial: 'warning',
-      overdue: 'danger',
+      overdue: 'warning',
       missed: 'danger',
       cancelled: 'neutral',
-      audit_pending: 'success',
+      audit_pending: 'audit',
       audited: 'success',
       correction_required: 'warning',
     });

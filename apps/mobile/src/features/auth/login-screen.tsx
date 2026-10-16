@@ -1,13 +1,15 @@
 import { loginStaffInputSchema, loginWorkerInputSchema } from '@taskop/contracts';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Field } from '@/components/field';
 import { FormError, mobileErrorText } from '@/components/form-error';
+import { LanguagePicker } from '@/components/language-picker';
 import { PrimaryButton } from '@/components/primary-button';
 import { Screen } from '@/components/screen';
 import { api, session } from '@/lib/session';
-import { colors, spacing } from '@/lib/theme';
+import { colors, font, radius, spacing, type } from '@/lib/theme';
+import markWhite from '../../../assets/mark-white.png';
 
 type Mode = 'worker' | 'staff';
 
@@ -60,13 +62,19 @@ export function LoginScreen() {
 
   return (
     <Screen>
-      <Text style={styles.brand}>Taskop</Text>
-      <Text style={styles.title}>{t('mobile.login.title')}</Text>
-      <View style={styles.toggle}>
+      <View style={styles.brand}>
+        <Image source={markWhite} style={styles.mark} accessibilityIgnoresInvertColors />
+        <Text style={styles.brandName}>Taskop</Text>
+        <Text accessibilityRole="header" style={styles.title}>
+          {t('mobile.login.title')}
+        </Text>
+      </View>
+      <LanguagePicker />
+      <View style={styles.toggle} accessibilityRole="tablist">
         {(['worker', 'staff'] as const).map((m) => (
           <Pressable
             key={m}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityState={{ selected: mode === m }}
             onPress={() => setMode(m)}
             style={[styles.toggleItem, mode === m && styles.toggleActive]}
@@ -95,12 +103,14 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  brand: { fontSize: 28, fontWeight: '700', color: colors.primary, marginTop: spacing.lg },
-  title: { fontSize: 20, fontWeight: '600', color: colors.text },
-  toggle: { flexDirection: 'row', backgroundColor: colors.border, borderRadius: 10, padding: 4 },
-  toggleItem: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  toggleActive: { backgroundColor: colors.surface },
-  toggleText: { color: colors.muted, fontWeight: '500' },
-  toggleTextActive: { color: colors.text },
-  hint: { color: colors.muted, textAlign: 'center' },
+  brand: { backgroundColor: colors.deep, borderRadius: radius.sheet, padding: spacing.lg, paddingTop: spacing.xl, gap: spacing.xs, marginTop: spacing.sm },
+  mark: { width: 44, height: 44, marginBottom: spacing.sm },
+  brandName: { fontFamily: font, fontSize: type.md, fontWeight: '600', color: colors.onDeepMuted, letterSpacing: -0.2 },
+  title: { fontFamily: font, fontSize: type.display, fontWeight: '600', color: colors.onDeep, letterSpacing: -0.5, lineHeight: 36 },
+  toggle: { flexDirection: 'row', backgroundColor: colors.plannedSoft, borderRadius: radius.control, padding: 4 },
+  toggleItem: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.control - 3 },
+  toggleActive: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  toggleText: { fontFamily: font, fontSize: type.base, color: colors.muted, fontWeight: '500' },
+  toggleTextActive: { color: colors.text, fontWeight: '600' },
+  hint: { fontFamily: font, fontSize: type.base, color: colors.muted, textAlign: 'center' },
 });

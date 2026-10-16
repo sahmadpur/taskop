@@ -18,5 +18,5 @@ export function Screen({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md },
+  content: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
 });

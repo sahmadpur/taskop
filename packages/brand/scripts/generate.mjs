@@ -109,13 +109,16 @@ await png(tileSvg({ background: L.primary, color: '#FFFFFF' }), 1024, join(m, 'i
 await png(tileSvg({ background: 'none', color: '#FFFFFF' }), 1024, join(m, 'icon-dark.png'));
 // iOS tinted icons are greyscale on transparent: the system colours them.
 await png(tileSvg({ background: 'none', color: '#9AA3AF' }), 1024, join(m, 'icon-tinted.png'));
-// Android adaptive: the foreground's safe zone is the central 66%, so the mark is scaled to 0.44 of the canvas.
+// Android adaptive: the foreground's safe zone is the central 66%, so the mark is scaled to 0.44 of the canvas; the
+// background is the solid brand colour, set as adaptiveIcon.backgroundColor in app.json.
 await png(tileSvg({ background: 'none', color: '#FFFFFF', scale: 0.44 }), 1024, join(m, 'android-icon-foreground.png'));
-await png(tileSvg({ background: L.primary, color: L.primary }), 1024, join(m, 'android-icon-background.png'));
 await png(tileSvg({ background: 'none', color: '#FFFFFF', scale: 0.44 }), 1024, join(m, 'android-icon-monochrome.png'));
 // Splash: the mark alone, centred by expo-splash-screen on the brand colour.
 await png(tileSvg({ background: 'none', color: '#FFFFFF', scale: 0.7 }), 512, join(m, 'splash-icon.png'));
 await png(favicon, 48, join(m, 'favicon.png'));
+// The mark alone for in-app use (the sign-in header, the Home header): white on transparent, and Caspian on transparent.
+await png(tileSvg({ background: 'none', color: '#FFFFFF', scale: 1 }), 256, join(m, 'mark-white.png'));
+await png(tileSvg({ background: 'none', color: L.primary, scale: 1 }), 256, join(m, 'mark.png'));
 
 /** Packs PNG buffers into one ICO (the ICO container accepts PNG images since Vista). */
 function ico(pngs) {

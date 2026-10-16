@@ -2,9 +2,11 @@ import '@/lib/i18n';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { loadLanguage } from '@/lib/language';
+import i18n from '@/lib/i18n';
 import { session, useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import { configureNotifications } from '@/notifications/native';
@@ -22,11 +24,16 @@ configureNotifications(
 
 export default function RootLayout() {
   const s = useSession();
+  const [languageReady, setLanguageReady] = useState(false);
   useEffect(() => {
     void session.bootstrap();
+    // The stored choice (or the device language) applies before the first screen, so nothing flashes in Azerbaijani.
+    void loadLanguage()
+      .then((lng) => i18n.changeLanguage(lng))
+      .finally(() => setLanguageReady(true));
   }, []);
 
-  if (s.status === 'loading') {
+  if (s.status === 'loading' || !languageReady) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator color={colors.primary} />

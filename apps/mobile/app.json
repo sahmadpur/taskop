@@ -8,13 +8,17 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "az.taskop.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png",
+        "tinted": "./assets/icon-tinted.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#005E8C",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -28,7 +32,24 @@
       "expo-router",
       "expo-secure-store",
       "expo-status-bar",
-      ["expo-sqlite", { "useSQLCipher": true }],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#005E8C",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#021B2B"
+          }
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
       [
         "expo-camera",
         {
@@ -39,15 +60,65 @@
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Taskop sübut kimi qalereyadan foto və video seçmək üçün icazə istəyir." }
+        {
+          "photosPermission": "Taskop sübut kimi qalereyadan foto və video seçmək üçün icazə istəyir."
+        }
       ],
       "expo-video",
       [
         "expo-notifications",
-        { "icon": "./assets/android-icon-monochrome.png", "color": "#1D5BD8", "defaultChannel": "default" }
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#005E8C",
+          "defaultChannel": "default"
+        }
       ],
-      "expo-font",
-      "./plugins/with-scene-lifecycle.js"
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "../../packages/brand/fonts/IBMPlexSans-Regular.ttf",
+            "../../packages/brand/fonts/IBMPlexSans-Medium.ttf",
+            "../../packages/brand/fonts/IBMPlexSans-SemiBold.ttf",
+            "../../packages/brand/fonts/IBMPlexSans-Bold.ttf"
+          ],
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "IBM Plex Sans",
+                "fontDefinitions": [
+                  {
+                    "path": "../../packages/brand/fonts/IBMPlexSans-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "../../packages/brand/fonts/IBMPlexSans-Medium.ttf",
+                    "weight": 500
+                  },
+                  {
+                    "path": "../../packages/brand/fonts/IBMPlexSans-SemiBold.ttf",
+                    "weight": 600
+                  },
+                  {
+                    "path": "../../packages/brand/fonts/IBMPlexSans-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              }
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "../../packages/brand/fonts/IBMPlexSans-Regular.ttf",
+              "../../packages/brand/fonts/IBMPlexSans-Medium.ttf",
+              "../../packages/brand/fonts/IBMPlexSans-SemiBold.ttf",
+              "../../packages/brand/fonts/IBMPlexSans-Bold.ttf"
+            ]
+          }
+        }
+      ],
+      "./plugins/with-scene-lifecycle.js",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true
