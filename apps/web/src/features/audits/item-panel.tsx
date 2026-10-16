@@ -9,6 +9,7 @@ import { answerValue, severityVariant } from '@/features/executions/labels';
 import { MediaLightbox, MediaStrip } from '@/features/executions/media';
 import { useFormatDateTime } from '@/lib/format';
 import { actorName } from './labels';
+import { useLocale } from '@/lib/i18n';
 
 /**
  * The right panel (spec §8.3): the question, the answer (with an "İlkin" toggle when the item was corrected), its
@@ -28,6 +29,7 @@ export function ItemPanel(props: {
   onClear: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const formatDateTime = useFormatDateTime();
   const [showOriginal, setShowOriginal] = useState(false);
   const [open, setOpen] = useState<ExecutionMediaDto | null>(null);
@@ -37,7 +39,7 @@ export function ItemPanel(props: {
   const diff = props.audit.corrections.diff.find((d) => d.itemId === item.id) ?? null;
   const lastCorrection = props.audit.corrections.corrections.findLast((c) => c.itemId === item.id) ?? null;
   const answer = diff && showOriginal ? (diff.original ?? undefined) : e.answers[item.id];
-  const value = answerValue(t, item, answer, formatDateTime);
+  const value = answerValue(t, item, answer, formatDateTime, locale);
   const evidence = [...(answer?.photos ?? []), ...(answer?.videos ?? [])];
   const note = answer?.note?.trim();
   const problems = e.problems.filter((p) => p.itemId === item.id && p.clearedAt === null);
@@ -51,7 +53,7 @@ export function ItemPanel(props: {
   const titleId = `audit-item-${item.id}`;
 
   return (
-    <section aria-labelledby={titleId} className="grid content-start gap-4 rounded-lg border p-4">
+    <section aria-labelledby={titleId} className="grid content-start gap-4 bg-card shadow-card rounded-xl p-4">
       <header className="grid gap-1">
         <h2 id={titleId} className="text-lg font-semibold">
           {item.label}

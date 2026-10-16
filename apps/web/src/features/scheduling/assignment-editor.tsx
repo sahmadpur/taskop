@@ -17,6 +17,8 @@ import { api } from '@/lib/session';
 import { formatLocalDate, scheduleSummary, useDebounced, useTenantToday, useTimeFormat } from './labels';
 import { useAssignableChecklists, useShifts, useSiteUsers } from './queries';
 import { defaultRecurrence, defaultTiming, RecurrenceEditor, TimingEditor } from './schedule-builder';
+import { useLocale } from '@/lib/i18n';
+import { EmptyState } from '@/components/states';
 
 export interface AssignmentEditorProps {
   initial?: AssignmentDetail;
@@ -39,6 +41,7 @@ function describeError(t: TFunction, e: unknown, people: { id: string; fullName:
 
 export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, onCancel }: AssignmentEditorProps) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const tenantToday = useTenantToday();
   const today = todayProp ?? tenantToday;
   const time = useTimeFormat();
@@ -155,7 +158,7 @@ export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, o
           </Button>
         </div>
       </div>
-      <aside aria-label={t('scheduling.assignments.preview')} className="grid content-start gap-2 rounded-md border p-4">
+      <aside aria-label={t('scheduling.assignments.preview')} className="grid content-start gap-2 bg-card shadow-card rounded-xl p-4">
         <h2 className="font-semibold">{t('scheduling.assignments.preview')}</h2>
         <p className="text-sm">{scheduleSummary(t, schedule, timing, shiftName)}</p>
         {preview.error && <p className="text-destructive text-sm">{errorText(t, preview.error)}</p>}
@@ -164,11 +167,11 @@ export function AssignmentEditor({ initial, preset, today: todayProp, onSaved, o
             <AlertDescription>{t(`scheduling.warnings.${w}`)}</AlertDescription>
           </Alert>
         ))}
-        {preview.data && preview.data.slots.length === 0 && <p className="text-muted-foreground text-sm">{t('scheduling.assignments.previewEmpty')}</p>}
+        {preview.data && preview.data.slots.length === 0 && <EmptyState title={t('scheduling.assignments.previewEmpty')} />}
         <ol className="grid gap-1 text-sm">
           {preview.data?.slots.map((s) => (
             <li key={s.startsAt}>
-              {formatLocalDate(s.localDate)} · {time(s.startsAt)}–{time(s.dueAt)}
+              {formatLocalDate(s.localDate, locale)} · {time(s.startsAt)}–{time(s.dueAt)}
             </li>
           ))}
         </ol>

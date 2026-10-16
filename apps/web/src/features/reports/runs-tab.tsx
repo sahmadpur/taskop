@@ -10,11 +10,12 @@ import { receiptDiffers } from '@/features/executions/labels';
 import { formatLocalDate, occurrenceVariant, useTimeFormat } from '@/features/scheduling/labels';
 import { errorText } from '@/lib/errors';
 import { useFormatDateTime } from '@/lib/format';
-import { useMe } from '@/lib/session';
 import { ChipGroup } from './chip-group';
 import { RunDrawer } from './drawers';
 import { percentText, runPeople } from './labels';
 import { useReportRuns } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const COLUMNS = ['date', 'dueAt', 'checklist', 'site', 'status', 'executor', 'completedAt', 'score', 'problemCount'] as const;
 
@@ -37,7 +38,7 @@ export function RunsTab({
   onAuditState?: (state: RunAuditState | null) => void;
 }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const time = useTimeFormat();
   const formatDateTime = useFormatDateTime();
   const runs = useReportRuns(filters, bucket, auditState);
@@ -65,8 +66,8 @@ export function RunsTab({
         )}
       </div>
       {runs.error && <p className="text-destructive">{errorText(t, runs.error)}</p>}
-      {runs.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
-      {runs.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('reports.empty')}</p>}
+      {runs.isPending && <LoadingState />}
+      {runs.isSuccess && items.length === 0 && <EmptyState title={t('reports.empty')} />}
       {items.length > 0 && (
         <Table>
           <TableHeader>
@@ -80,8 +81,8 @@ export function RunsTab({
           <TableBody>
             {items.map((r) => (
               <TableRow key={r.occurrenceId}>
-                <TableCell>{formatLocalDate(r.localDate, tenant.locale)}</TableCell>
-                <TableCell className="font-mono">{time(r.dueAt)}</TableCell>
+                <TableCell>{formatLocalDate(r.localDate, locale)}</TableCell>
+                <TableCell className="tabular-nums">{time(r.dueAt)}</TableCell>
                 <TableCell>
                   <button type="button" className="font-medium underline-offset-4 hover:underline" onClick={() => setOpen(r.occurrenceId)}>
                     {r.checklist.name}
@@ -110,7 +111,7 @@ export function RunsTab({
                 </TableCell>
                 <TableCell className="tabular-nums">
                   <span className="flex flex-wrap items-center gap-1">
-                    {percentText(t, r.score, tenant.locale)}
+                    {percentText(t, r.score, locale)}
                     {r.corrected && <Badge variant="outline">{t('corrections.corrected')}</Badge>}
                   </span>
                 </TableCell>

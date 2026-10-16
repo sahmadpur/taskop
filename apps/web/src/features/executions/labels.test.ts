@@ -28,11 +28,11 @@ describe('execution labels', () => {
     expect(formatPercent(87.5)).toBe('87,5');
     expect(formatPercent(100)).toBe('100');
     expect(executionStateVariant('completed')).toBe('default');
-    expect(executionStateVariant('partial')).toBe('destructive');
-    expect(executionStateVariant('rejected')).toBe('outline');
-    expect(executionStateVariant('rework')).toBe('secondary');
+    expect(executionStateVariant('partial')).toBe('warning');
+    expect(executionStateVariant('rejected')).toBe('destructive');
+    expect(executionStateVariant('rework')).toBe('warning');
     expect(severityVariant('critical')).toBe('destructive');
-    expect(severityVariant('normal')).toBe('secondary');
+    expect(severityVariant('normal')).toBe('warning');
   });
 
   it('turns an answer into text for each item type', () => {

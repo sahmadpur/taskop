@@ -2,9 +2,9 @@ import type { RunCounts } from '@taskop/contracts';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table';
-import { useMe } from '@/lib/session';
 import { nextSort, percentText, type SortState, sortRows } from './labels';
 import { SortableHead } from './sortable-head';
+import { useLocale } from '@/lib/i18n';
 
 export type ComparisonKey = 'name' | 'planned' | 'completed' | 'overdue' | 'partial' | 'missed' | 'withProblems' | 'completionPercent' | 'averageScore';
 
@@ -35,7 +35,7 @@ export function ComparisonTable<T extends ComparisonRow>({
   pinLast?: (row: T) => boolean;
 }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const [sort, setSort] = useState<SortState<ComparisonKey> | null>(null);
   const label = (k: ComparisonKey) =>
     k === 'name' ? nameLabel : k === 'completionPercent' || k === 'averageScore' ? t(`reports.measures.${k}`) : t(`reports.counts.${k}`);
@@ -58,8 +58,8 @@ export function ComparisonTable<T extends ComparisonRow>({
                 {r[k]}
               </TableCell>
             ))}
-            <TableCell className="text-right tabular-nums">{percentText(t, r.completionPercent, tenant.locale)}</TableCell>
-            <TableCell className="text-right tabular-nums">{percentText(t, r.averageScore, tenant.locale)}</TableCell>
+            <TableCell className="text-right tabular-nums">{percentText(t, r.completionPercent, locale)}</TableCell>
+            <TableCell className="text-right tabular-nums">{percentText(t, r.averageScore, locale)}</TableCell>
           </TableRow>
         ))}
       </TableBody>

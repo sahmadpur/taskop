@@ -13,7 +13,7 @@ export function SecretBlock({ orgCode, username, secret }: { orgCode: string; us
   return (
     <div className="grid gap-3">
       <p className="text-muted-foreground text-sm">{t('users.secret.body')}</p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-md border p-4 font-mono text-sm">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-md border p-4 tabular-nums text-sm">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
             <dt className="text-muted-foreground font-sans">{label}</dt>

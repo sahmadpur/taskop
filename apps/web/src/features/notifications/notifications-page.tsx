@@ -8,6 +8,7 @@ import { errorText } from '@/lib/errors';
 import { NotificationRow } from './notification-row';
 import { useOpenNotification } from './open-notification';
 import { useInbox, useMarkAllRead, useUnreadCount } from './queries';
+import { LoadingState } from '@/components/states';
 
 /** Spec §8: the full inbox, newest first, 30 per page, with an "unread only" filter. */
 export function NotificationsPage() {
@@ -35,7 +36,7 @@ export function NotificationsPage() {
           {t('notifications.inbox.unreadOnly')}
         </Label>
       </div>
-      {inbox.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {inbox.isPending && <LoadingState />}
       {inbox.error && <p className="text-destructive">{errorText(t, inbox.error)}</p>}
       {inbox.isSuccess && items.length === 0 && (
         <p className="text-muted-foreground">{unreadOnly ? t('notifications.inbox.emptyUnread') : t('notifications.empty')}</p>

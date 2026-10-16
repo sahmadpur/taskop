@@ -5,10 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { OccurrenceTab } from '@/features/scheduling/occurrence-dialog';
 import { formatLocalDate, useTimeFormat } from '@/features/scheduling/labels';
 import { errorText } from '@/lib/errors';
-import { useMe } from '@/lib/session';
 import { RunDrawer } from './drawers';
 import { runPeople } from './labels';
 import { useCriticalProblems, useOverdueNow } from './queries';
+import { useLocale } from '@/lib/i18n';
 
 const ROW = 'hover:bg-muted flex w-full flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1 text-left text-sm';
 
@@ -18,7 +18,7 @@ const ROW = 'hover:bg-muted flex w-full flex-wrap items-baseline gap-x-2 rounded
  */
 export function AttentionPanel({ filters, today }: { filters: ReportFilters; today: string }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const time = useTimeFormat();
   const overdue = useOverdueNow(filters, today);
   const critical = useCriticalProblems(filters);
@@ -44,7 +44,7 @@ export function AttentionPanel({ filters, today }: { filters: ReportFilters; tod
                 {overdue.data.map((r) => (
                   <li key={r.occurrenceId}>
                     <button type="button" className={ROW} onClick={() => setRun({ id: r.occurrenceId, tab: 'overview' })}>
-                      <span className="font-mono">{time(r.dueAt)}</span>
+                      <span className="tabular-nums">{time(r.dueAt)}</span>
                       <span className="font-medium">{r.checklist.name}</span>
                       <span className="text-muted-foreground">
                         {r.site.name} · {runPeople(t, r)}
@@ -74,7 +74,7 @@ export function AttentionPanel({ filters, today }: { filters: ReportFilters; tod
                     <button type="button" className={ROW} onClick={() => setRun({ id: p.occurrenceId, tab: 'execution' })}>
                       <span className="font-medium">{p.itemLabel ?? p.checklistName}</span>
                       <span className="text-muted-foreground">
-                        {p.checklistName} · {p.siteName} · {formatLocalDate(p.localDate, tenant.locale)}
+                        {p.checklistName} · {p.siteName} · {formatLocalDate(p.localDate, locale)}
                       </span>
                       {p.note && <span className="w-full">{p.note}</span>}
                     </button>

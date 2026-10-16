@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { useCan } from '@/lib/session';
 import { assignmentVariant, scheduleSummary } from './labels';
 import { useAssignments } from './queries';
+import { EmptyState } from '@/components/states';
 
 /** The checklist page's view of where and when the checklist runs (spec §8 item 5). Tenant users only. */
 export function ChecklistAssignments({ checklistId, canAssign }: { checklistId: string; canAssign: boolean }) {
@@ -25,7 +26,7 @@ export function ChecklistAssignments({ checklistId, canAssign }: { checklistId: 
           </Link>
         )}
       </div>
-      {list.isSuccess && items.length === 0 && <p className="text-muted-foreground text-sm">{t('scheduling.assignments.empty')}</p>}
+      {list.isSuccess && items.length === 0 && <EmptyState title={t('scheduling.assignments.empty')} />}
       {items.length > 0 && (
         <Table>
           <TableBody>

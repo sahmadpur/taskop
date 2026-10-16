@@ -10,6 +10,7 @@ import { useFormatDateTime } from '@/lib/format';
 import { ReportTaskDrawer } from './drawers';
 import { useReportTasks } from './queries';
 import { StatList } from './stat-list';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const COLUMNS = ['title', 'status', 'priority', 'assignee', 'site', 'due', 'completed'] as const;
 
@@ -36,8 +37,8 @@ export function TasksTab({ filters }: { filters: ReportFilters }) {
         />
       )}
       {tasks.error && <p className="text-destructive">{errorText(t, tasks.error)}</p>}
-      {tasks.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
-      {tasks.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('reports.empty')}</p>}
+      {tasks.isPending && <LoadingState />}
+      {tasks.isSuccess && items.length === 0 && <EmptyState title={t('reports.empty')} />}
       {items.length > 0 && (
         <Table>
           <TableHeader>

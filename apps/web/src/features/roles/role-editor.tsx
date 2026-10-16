@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { errorText } from '@/lib/errors';
 import { PermissionGrid } from './permission-grid';
 import { roleDisplayName } from './queries';
+import { EmptyState } from '@/components/states';
 
 export interface RoleDraft {
   name: string;
@@ -43,7 +44,7 @@ export function RoleEditor({ role, catalog, held, canManage, onSave, onToggleAct
 
   return (
     <div className="grid gap-4">
-      {role && !role.editable && <p className="text-muted-foreground text-sm">{t('roles.locked')}</p>}
+      {role && !role.editable && <EmptyState title={t('roles.locked')} />}
       <div className="grid gap-1.5">
         <Label htmlFor="role-name">{t('roles.name')}</Label>
         <Input

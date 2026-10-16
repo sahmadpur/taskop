@@ -24,7 +24,7 @@ export function AuditDiff({ before, after }: { before: unknown; after: unknown }
           <th className="py-1 font-normal">{t('audit.after')}</th>
         </tr>
       </thead>
-      <tbody className="font-mono">
+      <tbody className="tabular-nums">
         {rows.map((r) => (
           <tr key={r.key} className="border-t align-top">
             <td className="py-1 pr-4 font-sans font-medium">{r.key}</td>

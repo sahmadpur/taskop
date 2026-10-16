@@ -1,0 +1,36 @@
+{
+  "name": "@taskop/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Taskop's design tokens, logo and generated icons, shared by the web app, the landing page and the mobile app.",
+  "files": [
+    "dist",
+    "logo",
+    "tokens.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./tokens.css": "./tokens.css",
+    "./logo/*": "./logo/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "generate": "pnpm build && node scripts/generate.mjs"
+  },
+  "devDependencies": {
+    "@taskop/config": "workspace:*",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

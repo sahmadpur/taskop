@@ -12,9 +12,11 @@ import { DetailsDialog } from '@/features/checklists/checklist-dialogs';
 import { categoryLabel } from '@/features/checklists/labels';
 import { errorText } from '@/lib/errors';
 import { platformApi } from './platform-session';
+import { useLocale } from '@/lib/i18n';
 
 export function GlobalTemplatesPage() {
   const { t } = useTranslation();
+  const locale = useLocale();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const templates = useQuery({
@@ -65,7 +67,7 @@ export function GlobalTemplatesPage() {
                   {g.published ? t('checklists.templates.published') : t('checklists.templates.unpublished')}
                 </Badge>
               </TableCell>
-              <TableCell>{formatDateTime(g.updatedAt, { locale: 'az', timeZone: 'Asia/Baku' })}</TableCell>
+              <TableCell>{formatDateTime(g.updatedAt, { locale, timeZone: 'Asia/Baku' })}</TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1">
                   <Button size="sm" variant="ghost" onClick={() => open(g.id)}>

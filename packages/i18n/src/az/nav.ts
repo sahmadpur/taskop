@@ -22,4 +22,5 @@ export default {
   welcome: 'Xoş gəlmisiniz, {{name}}!',
   intro:
     'Təşkilatınızı, obyektləri, komandaları və əməkdaşları qurun, yoxlama vərəqələrini yaradın və dərc edin. Planlaşdırma və icra növbəti mərhələlərdə əlavə olunacaq.',
+  groups: { overview: 'Ümumi', operations: 'Əməliyyatlar', people: 'İnsanlar və obyektlər', admin: 'İdarəetmə' },
 } as const;

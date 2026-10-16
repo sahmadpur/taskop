@@ -17,6 +17,8 @@ import { api, useCan } from '@/lib/session';
 import { AssignmentEditor } from './assignment-editor';
 import { assignmentVariant, formatLocalDate, occurrenceVariant, scheduleSummary, useTimeFormat } from './labels';
 import { useAssignment, useAssignments } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState } from '@/components/states';
 
 export function AssignmentsPage() {
   const { t } = useTranslation();
@@ -104,7 +106,7 @@ export function NewAssignmentPage({ checklistId, copyFrom }: { checklistId?: str
   const { t } = useTranslation();
   const navigate = useNavigate();
   const source = useAssignment(copyFrom);
-  if (copyFrom && source.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (copyFrom && source.isPending) return <LoadingState />;
   return (
     <div>
       <PageHeader title={t('scheduling.assignments.createTitle')} />
@@ -119,6 +121,7 @@ export function NewAssignmentPage({ checklistId, copyFrom }: { checklistId?: str
 
 export function AssignmentDetailPage({ assignmentId }: { assignmentId: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const canManage = useCan('assignments.manage');
@@ -134,7 +137,7 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
     }
   };
 
-  if (detail.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (detail.isPending) return <LoadingState />;
   if (detail.error) return <p className="text-destructive">{errorText(t, detail.error)}</p>;
   const a = detail.data;
   const title = a.name ?? a.checklistName;
@@ -187,7 +190,7 @@ export function AssignmentDetailPage({ assignmentId }: { assignmentId: string })
             {a.upcoming.map((o) => (
               <li key={o.id} className="flex items-center gap-3">
                 <span>
-                  {formatLocalDate(o.localDate)} · {time(o.startsAt)}–{time(o.dueAt)}
+                  {formatLocalDate(o.localDate, locale)} · {time(o.startsAt)}–{time(o.dueAt)}
                 </span>
                 <Badge variant={occurrenceVariant(o.status)}>{t(`scheduling.statuses.${o.status}`)}</Badge>
                 {o.unassigned && <Badge variant="destructive">{t('scheduling.schedule.unassigned')}</Badge>}

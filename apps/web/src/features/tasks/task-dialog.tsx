@@ -30,6 +30,8 @@ import { sameChoice } from './labels';
 import { type PendingMedia, prepareFiles, type ReadMediaMeta, readMediaMeta, uploadInstructionMedia } from './media-files';
 import { storeTask, taskKeys, useTaskAssignees } from './queries';
 import { changedFields, choiceOf, createBody, fieldErrors, formErrors, initialValues, type TaskFormErrors, type TaskFormValues } from './task-form';
+import { useLocale } from '@/lib/i18n';
+import { EmptyState } from '@/components/states';
 
 const ACCEPT = [...MEDIA_LIMITS.mimeTypes.photo, ...MEDIA_LIMITS.mimeTypes.video].join(',');
 
@@ -47,6 +49,7 @@ interface Props {
 
 export function TaskDialog({ task: latest, problem, onClose, onSaved, readMeta = readMediaMeta }: Props) {
   const { t } = useTranslation();
+  const locale = useLocale();
   // The task as it was when the dialog opened: the prop follows refetches (and the uploads' own invalidation), but the
   // form is measured against what the user saw, so a later refetch never makes someone else's change look like theirs.
   const [task] = useState(latest);
@@ -155,7 +158,7 @@ export function TaskDialog({ task: latest, problem, onClose, onSaved, readMeta =
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t(task ? 'tasks.dialog.editTitle' : problem ? 'tasks.dialog.fromProblem' : 'tasks.dialog.createTitle')}</DialogTitle>
-          <DialogDescription>{problem ? `${problem.checklistName} · ${formatLocalDate(problem.localDate)}` : t('tasks.dialog.description')}</DialogDescription>
+          <DialogDescription>{problem ? `${problem.checklistName} · ${formatLocalDate(problem.localDate, locale)}` : t('tasks.dialog.description')}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <fieldset disabled={locked} className="m-0 grid min-w-0 gap-4 border-0 p-0">
@@ -215,7 +218,7 @@ export function TaskDialog({ task: latest, problem, onClose, onSaved, readMeta =
             <div className="grid gap-1.5">
               <AssigneePicker label={t('tasks.dialog.assignee')} value={values.assignee} onChange={(c) => set('assignee', c)} />
               {fieldError('assignee')}
-              {reassigning && <p className="text-muted-foreground text-sm">{t('tasks.dialog.reassignNote')}</p>}
+              {reassigning && <EmptyState title={t('tasks.dialog.reassignNote')} />}
             </div>
             <div className="grid gap-1.5">
               <div className="flex flex-wrap gap-3">

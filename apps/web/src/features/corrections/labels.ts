@@ -15,8 +15,8 @@ import type { TFunction } from 'i18next';
 import { answerValue, formatPercent } from '@/features/executions/labels';
 
 /** One answer as a line for the diff and the timeline: the value, else the media counts, else "Cavab yoxdur"; then the note. */
-export function answerSummary(t: TFunction, item: Item, a: Answer | null | undefined, formatDateTime: (iso: string) => string): string {
-  const value = answerValue(t, item, a ?? undefined, formatDateTime);
+export function answerSummary(t: TFunction, item: Item, a: Answer | null | undefined, formatDateTime: (iso: string) => string, locale = 'az'): string {
+  const value = answerValue(t, item, a ?? undefined, formatDateTime, locale);
   const photos = a?.photos?.length ?? 0;
   const videos = a?.videos?.length ?? 0;
   const main = value ?? (photos || videos ? t('corrections.web.media', { photos, videos }) : t('corrections.emptyAnswer'));

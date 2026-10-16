@@ -52,7 +52,7 @@ import {
   TASK_STATUSES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
-import { az, formatDate, formatDateTime, interpolate } from './index.js';
+import { az, en, formatDate, formatDateTime, formatLocalDate, formatNumber, formatPercent, formatShortDate, formatTime, interpolate, LANGUAGE_NAMES, LANGUAGES, resolveLanguage, resources, ru } from './index.js';
 
 describe('az translations', () => {
   it('has a message for every API error code', () => {
@@ -79,12 +79,80 @@ describe('checklist translations', () => {
   });
 });
 
-describe('formatting', () => {
-  it('formats in the tenant timezone', () => {
-    expect(formatDateTime('2026-10-07T10:00:00Z', { locale: 'az', timeZone: 'Asia/Baku' })).toContain('14:00');
+/** Every leaf of a namespace tree by its path ('a/b/c': some keys contain dots), with the string and its `{{placeholders}}`. */
+function leaves(tree: unknown, prefix = ''): Map<string, { text: string; vars: string[] }> {
+  const out = new Map<string, { text: string; vars: string[] }>();
+  for (const [k, v] of Object.entries(tree as Record<string, unknown>)) {
+    const key = prefix ? `${prefix}/${k}` : k;
+    if (typeof v === 'string') out.set(key, { text: v, vars: (v.match(/\{\{\w+\}\}/g) ?? []).sort() });
+    else for (const [ck, cv] of leaves(v, key)) out.set(ck, cv);
+  }
+  return out;
+}
+
+describe.each([
+  ['en', en],
+  ['ru', ru],
+])('%s translations', (_name, tree) => {
+  const source = leaves(az);
+  const target = leaves(tree);
+  it('has exactly the same keys as az', () => {
+    expect([...target.keys()]).toEqual([...source.keys()]);
   });
-  it('formats dates', () => {
-    expect(formatDate('2026-10-07T22:30:00Z', { locale: 'az', timeZone: 'Asia/Baku' })).toContain('2026');
+  it('uses the same {{placeholders}} in every string', () => {
+    for (const [key, { vars }] of source) expect(target.get(key)?.vars, key).toEqual(vars);
+  });
+  it('has no empty strings and no Azerbaijani left behind', () => {
+    for (const [key, { text }] of target) {
+      expect(text.trim(), key).not.toBe('');
+      expect(text, key).not.toMatch(/[əƏğĞışŞ]/u);
+    }
+  });
+});
+
+describe('languages', () => {
+  it('registers every language with its own name and resources', () => {
+    expect(LANGUAGES).toEqual(['az', 'en', 'ru']);
+    for (const l of LANGUAGES) {
+      expect(LANGUAGE_NAMES[l]).toBeTypeOf('string');
+      expect(resources[l].translation).toBeDefined();
+    }
+  });
+  it('resolves the stored choice, then the preferred languages, then Azerbaijani', () => {
+    expect(resolveLanguage('ru', ['en-GB'])).toBe('ru');
+    expect(resolveLanguage(null, ['de-DE', 'en-US'])).toBe('en');
+    expect(resolveLanguage('fr', ['tr'])).toBe('az');
+  });
+});
+
+describe('formatting', () => {
+  const baku = { timeZone: 'Asia/Baku' };
+  it('formats in the tenant timezone', () => {
+    expect(formatDateTime('2026-10-07T10:00:00Z', { locale: 'az', ...baku })).toBe('7 okt 2026, 14:00');
+    expect(formatDateTime('2026-10-07T10:00:00Z', { locale: 'en', ...baku })).toBe('7 Oct 2026, 14:00');
+    expect(formatDateTime('2026-10-07T10:00:00Z', { locale: 'ru', ...baku })).toContain('14:00');
+  });
+  it('formats dates and times', () => {
+    expect(formatDate('2026-10-07T22:30:00Z', { locale: 'az', ...baku })).toBe('8 okt 2026');
+    expect(formatDate('2026-10-07T22:30:00Z', { locale: 'en', ...baku })).toBe('8 Oct 2026');
+    expect(formatTime('2026-10-07T22:30:00Z', { locale: 'az', ...baku })).toBe('02:30');
+    expect(formatTime('2026-10-07T22:30:00Z', { locale: 'ru', ...baku })).toBe('02:30');
+  });
+  it('formats calendar dates without shifting the day', () => {
+    expect(formatLocalDate('2026-10-15', 'az', { weekday: true })).toBe('C.a., 15 okt 2026');
+    expect(formatLocalDate('2026-10-15', 'az', { weekday: true, long: true })).toBe('cümə axşamı, 15 oktyabr 2026');
+    expect(formatLocalDate('2026-10-15', 'en', { weekday: true })).toBe('Thu, 15 Oct 2026');
+    expect(formatLocalDate('2026-10-15', 'ru')).toContain('2026');
+    expect(formatShortDate('2026-01-05', 'az')).toBe('5 yan');
+    expect(formatShortDate('2026-01-05', 'en')).toBe('5 Jan');
+  });
+  it('formats numbers and percentages per language', () => {
+    expect(formatNumber(1234.5, 'az')).toBe('1 234,5');
+    expect(formatNumber(1234.5, 'en')).toBe('1,234.5');
+    expect(formatNumber(1234.5, 'ru')).toBe('1\u00a0234,5');
+    expect(formatPercent(85.714, 'az')).toBe('85,7');
+    expect(formatPercent(85.714, 'en')).toBe('85.7');
+    expect(formatPercent(100, 'ru')).toBe('100');
   });
 });
 

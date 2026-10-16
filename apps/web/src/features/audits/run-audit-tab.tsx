@@ -8,27 +8,29 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { formatPercent } from '@/features/executions/labels';
 import { useExecution } from '@/features/executions/queries';
 import { errorText } from '@/lib/errors';
-import { useCan, useMe } from '@/lib/session';
+import { useCan } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { resultVariant } from './labels';
 import { useStartAudit } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 /** The run dialog's "Audit" tab (spec §8.3): the run's audit and a link to it, or "Start audit" when the rules allow. */
 export function RunAuditTab({ occurrence }: { occurrence: OccurrenceDetail }) {
   const { t } = useTranslation();
-  if (!occurrence.execution) return <p className="text-muted-foreground">{t('executions.notStarted')}</p>;
+  if (!occurrence.execution) return <EmptyState title={t('executions.notStarted')} />;
   return <RunAudit occurrence={occurrence} executionId={occurrence.execution.id} />;
 }
 
 function RunAudit({ occurrence, executionId }: { occurrence: OccurrenceDetail; executionId: string }) {
   const { t } = useTranslation();
-  const { tenant } = useMe();
+  const locale = useLocale();
   const canPerform = useCan('audits.perform');
   const canView = useCan('reports.view');
   const detail = useExecution(executionId);
   const start = useStartAudit();
   if (detail.isError) return <p className="text-destructive">{errorText(t, detail.error)}</p>;
-  if (!detail.data) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (!detail.data) return <LoadingState />;
   const d = detail.data;
   // A cancelled audit no longer counts (Part 1 "What the UI may offer").
   const audit = d.audit && d.audit.status !== 'cancelled' ? d.audit : null;
@@ -53,7 +55,7 @@ function RunAudit({ occurrence, executionId }: { occurrence: OccurrenceDetail; e
         {audit.result && <Badge variant={resultVariant(audit.result)}>{t(`audits.results.${audit.result}`)}</Badge>}
         {audit.percent !== null && (
           <span className="text-sm">
-            {t('audits.score')}: {t('executions.percent', { value: formatPercent(audit.percent, tenant.locale) })}
+            {t('audits.score')}: {t('executions.percent', { value: formatPercent(audit.percent, locale) })}
           </span>
         )}
       </div>

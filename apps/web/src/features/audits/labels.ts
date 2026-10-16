@@ -27,7 +27,7 @@ export const REPORT_POLL_LIMIT_MS = 60_000;
 export const resultVariant = (r: AuditResult): Variant => (r === 'passed' ? 'default' : 'destructive');
 
 export const runAuditStateVariant = (s: RunAuditState): Variant =>
-  s === 'passed' ? 'default' : s === 'failed' ? 'destructive' : s === 'in_progress' ? 'secondary' : 'outline';
+  s === 'passed' ? 'default' : s === 'failed' ? 'destructive' : s === 'in_progress' || s === 'waiting' ? 'audit' : 'outline';
 
 export const verdictVariant = (v: AuditVerdict | null): Variant => (v === 'approved' ? 'default' : v === 'rejected' ? 'destructive' : 'outline');
 

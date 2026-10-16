@@ -11,6 +11,7 @@ import { errorText } from '@/lib/errors';
 import { api } from '@/lib/session';
 import { SecretBlock } from './secret-dialog';
 import { loginLabel, statusVariant } from './user-labels';
+import { EmptyState } from '@/components/states';
 
 interface Props {
   user: UserDto;
@@ -37,10 +38,10 @@ export function UserAccessCard({ user, orgCode, isSelf, canManage, onChanged }: 
       </CardHeader>
       <CardContent className="grid gap-4">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-sm">{loginLabel(user)}</span>
+          <span className="tabular-nums text-sm">{loginLabel(user)}</span>
           <Badge variant={statusVariant(user.status)}>{t(`users.statuses.${user.status}`)}</Badge>
         </div>
-        {isSelf && <p className="text-muted-foreground text-sm">{t('users.detail.you')}</p>}
+        {isSelf && <EmptyState title={t('users.detail.you')} />}
         {canManage && !isSelf && (
           <div className="flex flex-wrap gap-2">
             <ConfirmButton

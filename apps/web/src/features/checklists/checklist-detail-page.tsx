@@ -18,9 +18,12 @@ import { categoryLabel } from './labels';
 import { NewChecklistDialog } from './new-checklist-dialog';
 import { useChecklist } from './queries';
 import { useWorkspace, WsLink } from './workspace';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState } from '@/components/states';
 
 export function ChecklistDetailPage({ checklistId }: { checklistId: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const ws = useWorkspace();
   const qc = useQueryClient();
   const detail = useChecklist(checklistId);
@@ -35,7 +38,7 @@ export function ChecklistDetailPage({ checklistId }: { checklistId: string }) {
     }
   };
 
-  if (detail.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (detail.isPending) return <LoadingState />;
   if (detail.error) return <p className="text-destructive">{errorText(t, detail.error)}</p>;
   const c = detail.data;
   const active = c.status === 'active';
@@ -126,7 +129,7 @@ export function ChecklistDetailPage({ checklistId }: { checklistId: string }) {
           {c.versions.map((v) => (
             <TableRow key={v.id}>
               <TableCell>{v.number ? t('checklists.versionN', { n: v.number }) : <Badge variant="outline">{t('checklists.draft')}</Badge>}</TableCell>
-              <TableCell>{v.publishedAt ? formatDateTime(v.publishedAt, { locale: 'az', timeZone: ws.timeZone }) : '—'}</TableCell>
+              <TableCell>{v.publishedAt ? formatDateTime(v.publishedAt, { locale, timeZone: ws.timeZone }) : '—'}</TableCell>
               <TableCell>{v.publishedBy ? (v.publishedBy.kind === 'platform' ? t('checklists.detail.taskop') : v.publishedBy.name) : '—'}</TableCell>
               <TableCell>{v.changeNote ?? '—'}</TableCell>
               <TableCell className="text-right">

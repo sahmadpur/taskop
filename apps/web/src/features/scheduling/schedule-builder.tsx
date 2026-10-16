@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatLocalDate } from './labels';
+import { useLocale } from '@/lib/i18n';
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const NTHS = [1, 2, 3, 4, -1] as const;
@@ -83,6 +84,7 @@ function DateField({ id, label, value, onChange }: { id: string; label: string; 
 /** A list of dates with an "add" input. `min` dates can never be removed. */
 function DateList({ id, label, values, min, onChange }: { id: string; label: string; values: string[]; min: number; onChange: (v: string[]) => void }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const [next, setNext] = useState('');
   return (
     <div className="grid gap-1.5">
@@ -90,7 +92,7 @@ function DateList({ id, label, values, min, onChange }: { id: string; label: str
       <ul className="flex flex-wrap gap-2">
         {values.map((d) => (
           <li key={d} className="flex items-center gap-1 rounded border px-2 py-0.5 text-sm">
-            {formatLocalDate(d)}
+            {formatLocalDate(d, locale)}
             <Button
               type="button"
               size="sm"

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { errorText } from '@/lib/errors';
 import { ComparisonTable } from './comparison-table';
 import { useEmployeeReport } from './queries';
+import { LoadingState, EmptyState } from '@/components/states';
 
 const isUnassigned = (r: EmployeeReportRow) => r.userId === null;
 
@@ -15,8 +16,8 @@ export function EmployeesTab({ filters, onDrill }: { filters: ReportFilters; onD
   const { t } = useTranslation();
   const people = useEmployeeReport(filters);
   if (people.error) return <p className="text-destructive">{errorText(t, people.error)}</p>;
-  if (!people.data) return <p className="text-muted-foreground">{t('common.loading')}</p>;
-  if (people.data.length === 0) return <p className="text-muted-foreground">{t('reports.empty')}</p>;
+  if (!people.data) return <LoadingState />;
+  if (people.data.length === 0) return <EmptyState title={t('reports.empty')} />;
   return (
     <div className="grid gap-2">
       <ComparisonTable

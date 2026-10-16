@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { optionLabel } from '@/features/checklists/labels';
 import { useMe } from '@/lib/session';
 import { isoToLocalInput, localInputToIso, pruneAnswer } from './labels';
+import { EmptyState } from '@/components/states';
 
 const VALUE_FIELDS = ['optionIds', 'number', 'text', 'datetime'] as const;
 
@@ -80,7 +81,7 @@ export function AnswerEditor({ item, answer, onChange }: { item: Item; answer: A
         ) : (
           <Input aria-label={item.label} type={item.mode} className="w-44" value={answer?.datetime ?? ''} onChange={(e) => patch({ datetime: e.target.value })} />
         ))}
-      {media && <p className="text-muted-foreground text-sm">{t('corrections.web.edit.mediaLocked')}</p>}
+      {media && <EmptyState title={t('corrections.web.edit.mediaLocked')} />}
       {!media && hasValue && (
         <Button type="button" variant="ghost" size="sm" className="w-fit" onClick={() => patch({ optionIds: undefined, number: undefined, text: undefined, datetime: undefined })}>
           {t('corrections.web.edit.clear')}

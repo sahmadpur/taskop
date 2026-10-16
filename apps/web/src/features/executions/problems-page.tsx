@@ -26,6 +26,8 @@ import { errorText } from '@/lib/errors';
 import { useCan } from '@/lib/session';
 import { defaultProblemRange, problemRangeError, severityVariant } from './labels';
 import { type ProblemFilters, useChecklistOptions, useProblems } from './queries';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState, EmptyState } from '@/components/states';
 
 /**
  * Recorded problems (spec §8 of SP4 and SP5). Each row opens its occurrence in the schedule drawer on the "İcra" tab;
@@ -33,6 +35,7 @@ import { type ProblemFilters, useChecklistOptions, useProblems } from './queries
  */
 export function ProblemsPage({ today: fixedToday }: { today?: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const tenantToday = useTenantToday();
   const today = fixedToday ?? tenantToday;
   const canManageTasks = useCan('tasks.manage');
@@ -137,9 +140,9 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
         </div>
       </div>
       {rangeError && <p className="text-destructive text-sm">{t(rangeError)}</p>}
-      {!rangeError && problems.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {!rangeError && problems.isPending && <LoadingState />}
       {!rangeError && problems.error && <p className="text-destructive">{errorText(t, problems.error)}</p>}
-      {!rangeError && problems.isSuccess && items.length === 0 && <p className="text-muted-foreground">{t('executions.problemsPage.empty')}</p>}
+      {!rangeError && problems.isSuccess && items.length === 0 && <EmptyState title={t('executions.problemsPage.empty')} />}
       {!rangeError && items.length > 0 && (
         <Table>
           <TableHeader>
@@ -153,7 +156,7 @@ export function ProblemsPage({ today: fixedToday }: { today?: string }) {
           <TableBody>
             {items.map((p) => (
               <TableRow key={p.id} data-cleared={p.clearedAt ? 'true' : undefined} className={p.clearedAt ? 'opacity-60' : undefined}>
-                <TableCell>{formatLocalDate(p.localDate)}</TableCell>
+                <TableCell>{formatLocalDate(p.localDate, locale)}</TableCell>
                 <TableCell>{p.siteName}</TableCell>
                 <TableCell>{p.checklistName}</TableCell>
                 <TableCell>

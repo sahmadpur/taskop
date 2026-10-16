@@ -46,7 +46,7 @@ function RuleCard({ item, rule, n, depth, dispatch, readOnly }: { item: RuleItem
   const canNest = depth + 1 <= CONTENT_LIMITS.followUpDepth;
 
   return (
-    <fieldset className="grid gap-2 rounded-md border p-3">
+    <fieldset className="grid gap-2 bg-card shadow-card rounded-xl p-3">
       <legend className="px-1 text-xs font-medium">{t('checklists.builder.rules.ruleN', { n: n + 1 })}</legend>
 
       {item.type === 'number' ? (

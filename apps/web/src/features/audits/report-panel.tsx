@@ -44,7 +44,7 @@ export function ReportPanel({ audit, timedOut, onRestart }: { audit: AuditDetail
   const s = audit.reportStatus;
 
   return (
-    <section aria-labelledby="audit-report-title" className="grid gap-3 rounded-lg border p-4">
+    <section aria-labelledby="audit-report-title" className="grid gap-3 bg-card shadow-card rounded-xl p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 id="audit-report-title" className="font-semibold">
           {t('audits.web.report.title')}

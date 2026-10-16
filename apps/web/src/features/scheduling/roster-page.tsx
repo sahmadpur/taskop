@@ -24,9 +24,12 @@ import { api, useCan } from '@/lib/session';
 import { formatLocalDate, useTenantToday } from './labels';
 import { useRoster } from './queries';
 import { parseKey, rowKey, toggleKey, weekDates, weekStartOf } from './roster-grid';
+import { useLocale } from '@/lib/i18n';
+import { LoadingState } from '@/components/states';
 
 export function RosterPage({ initialDate }: { initialDate?: string }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const qc = useQueryClient();
   const today = useTenantToday();
   const canManage = useCan('shifts.manage');
@@ -132,7 +135,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
           {t('scheduling.roster.prevWeek')}
         </Button>
         <span className="text-sm">
-          {formatLocalDate(weekStart)} – {formatLocalDate(to)}
+          {formatLocalDate(weekStart, locale)} – {formatLocalDate(to, locale)}
         </span>
         <Button variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}>
           {t('scheduling.roster.nextWeek')}
@@ -140,7 +143,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
         {dirty && <span className="text-sm text-amber-700">{t('scheduling.roster.unsaved')}</span>}
       </div>
 
-      {siteId && roster.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {siteId && roster.isPending && <LoadingState />}
       {siteId && roster.isError && <p className="text-destructive text-sm">{errorText(t, roster.error)}</p>}
       {siteId && roster.data && people.length === 0 && (
         <p className="text-muted-foreground">{t('scheduling.roster.noPeople')}</p>
@@ -154,7 +157,7 @@ export function RosterPage({ initialDate }: { initialDate?: string }) {
             <TableRow>
               <TableHead>{t('scheduling.roster.person')}</TableHead>
               {days.map((d) => (
-                <TableHead key={d}>{formatLocalDate(d)}</TableHead>
+                <TableHead key={d}>{formatLocalDate(d, locale)}</TableHead>
               ))}
             </TableRow>
           </TableHeader>

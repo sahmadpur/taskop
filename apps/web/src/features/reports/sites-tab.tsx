@@ -4,14 +4,15 @@ import { Badge } from '@/components/ui/badge';
 import { errorText } from '@/lib/errors';
 import { ComparisonTable } from './comparison-table';
 import { useSiteReport } from './queries';
+import { LoadingState, EmptyState } from '@/components/states';
 
 /** Spec §6.2 "Sites": tree order, the parent path under the name, inactive sites marked; a row drills down. */
 export function SitesTab({ filters, onDrill }: { filters: ReportFilters; onDrill: (siteId: string) => void }) {
   const { t } = useTranslation();
   const sites = useSiteReport(filters);
   if (sites.error) return <p className="text-destructive">{errorText(t, sites.error)}</p>;
-  if (!sites.data) return <p className="text-muted-foreground">{t('common.loading')}</p>;
-  if (sites.data.length === 0) return <p className="text-muted-foreground">{t('reports.empty')}</p>;
+  if (!sites.data) return <LoadingState />;
+  if (sites.data.length === 0) return <EmptyState title={t('reports.empty')} />;
   return (
     <ComparisonTable
       rows={sites.data}

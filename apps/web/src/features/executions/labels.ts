@@ -8,7 +8,7 @@ import {
   localDateSchema,
   type ProblemSeverity,
 } from '@taskop/contracts';
-import { intlLocale } from '@taskop/i18n';
+import { formatPercent as formatPercentIn } from '@taskop/i18n';
 import type { TFunction } from 'i18next';
 import { optionLabel } from '@/features/checklists/labels';
 import { formatLocalDate, type Variant } from '@/features/scheduling/labels';
@@ -19,19 +19,18 @@ export const RECEIPT_TOLERANCE_MS = 60_000;
 export const receiptDiffers = (deviceAt: string, receivedAt: string | null): boolean =>
   receivedAt !== null && Math.abs(Date.parse(receivedAt) - Date.parse(deviceAt)) > RECEIPT_TOLERANCE_MS;
 
-export const formatPercent = (value: number, locale = 'az'): string =>
-  new Intl.NumberFormat(intlLocale(locale), { maximumFractionDigits: 1 }).format(value);
+export const formatPercent = (value: number, locale = 'az'): string => formatPercentIn(value, locale);
 
 export const executionStateVariant = (s: ExecutionState): Variant =>
-  s === 'completed' ? 'default' : s === 'active' || s === 'rework' ? 'secondary' : s === 'partial' ? 'destructive' : 'outline';
+  s === 'completed' ? 'default' : s === 'active' ? 'secondary' : s === 'rework' || s === 'partial' ? 'warning' : s === 'rejected' ? 'destructive' : 'outline';
 
-export const severityVariant = (s: ProblemSeverity): Variant => (s === 'critical' ? 'destructive' : 'secondary');
+export const severityVariant = (s: ProblemSeverity): Variant => (s === 'critical' ? 'destructive' : 'warning');
 
 /**
  * The value of one answer as text. Media, notes and problems are shown beside it, so photo and video
  * items have no text value. Null = nothing answered.
  */
-export function answerValue(t: TFunction, item: Item, a: Answer | undefined, formatDateTime: (iso: string) => string): string | null {
+export function answerValue(t: TFunction, item: Item, a: Answer | undefined, formatDateTime: (iso: string) => string, locale = 'az'): string | null {
   if (!a) return null;
   if ('options' in item) {
     const picked = item.options
@@ -47,7 +46,7 @@ export function answerValue(t: TFunction, item: Item, a: Answer | undefined, for
       return a.text?.trim() || null;
     case 'datetime':
       if (!a.datetime) return null;
-      return item.mode === 'date' ? formatLocalDate(a.datetime) : item.mode === 'time' ? a.datetime : formatDateTime(a.datetime);
+      return item.mode === 'date' ? formatLocalDate(a.datetime, locale) : item.mode === 'time' ? a.datetime : formatDateTime(a.datetime);
     default:
       return null;
   }

@@ -55,4 +55,6 @@ export default {
     submit: 'Hesabı aktivləşdir',
   },
   missingToken: 'Keçid natamamdır. E-poçtdakı keçidi yenidən açın.',
+  tagline: 'Sahə komandaları üçün yoxlama vərəqələri, tapşırıqlar və auditlər.',
+  taglineBody: 'İşçilər yoxlamaları telefonda, oflayn da olsa icra edir; siz planlaşdırır, nəticələrə baxır və düzəliş tələb edirsiniz.',
 } as const;

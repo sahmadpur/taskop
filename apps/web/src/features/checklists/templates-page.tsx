@@ -15,6 +15,7 @@ import { categoryLabel } from './labels';
 import { NewChecklistDialog } from './new-checklist-dialog';
 import { useTemplates } from './queries';
 import { useWorkspace } from './workspace';
+import { EmptyState } from '@/components/states';
 
 export function TemplatesPage() {
   const { t } = useTranslation();
@@ -91,7 +92,7 @@ export function TemplatesPage() {
             </CardContent>
           </Card>
         ))}
-        {templates.data?.length === 0 && <p className="text-muted-foreground">{t('checklists.templates.empty')}</p>}
+        {templates.data?.length === 0 && <EmptyState title={t('checklists.templates.empty')} />}
       </div>
       {using && <NewChecklistDialog open initialMode="template" template={using} onOpenChange={(o) => !o && setUsing(null)} />}
       {creating && (

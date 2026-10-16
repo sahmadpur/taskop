@@ -21,6 +21,7 @@ import { assigneeText, historyComment, taskStatusVariant } from './labels';
 import { storeTask, taskKeys, useTask } from './queries';
 import { TaskDialog } from './task-dialog';
 import { ProblemMediaStrip, TaskMediaStrip } from './task-media';
+import { useLocale } from '@/lib/i18n';
 
 /** The task drawer (spec §8), opened by `/tasks?task=<id>`. What the caller may do comes from canManage / canReview. */
 export function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
@@ -110,7 +111,7 @@ function TaskBody({ task, onEdit, onError }: { task: TaskDetail; onEdit: () => v
             {task.submissions.map((s, i) => {
               const name = t('tasks.drawer.submission', { n: i + 1 });
               return (
-                <li key={s.id} aria-label={name} className="grid gap-2 rounded-md border p-3">
+                <li key={s.id} aria-label={name} className="grid gap-2 bg-card shadow-card rounded-xl p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{name}</span>
                     <span className="text-muted-foreground text-xs">{t('tasks.drawer.by', { name: s.submittedBy.fullName, time: formatDateTime(s.submittedAt) })}</span>
@@ -152,14 +153,15 @@ function TaskBody({ task, onEdit, onError }: { task: TaskDetail; onEdit: () => v
 
 function ProblemCard({ taskId, problem: p }: { taskId: string; problem: ProblemDto }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   return (
-    <section aria-label={t('tasks.drawer.problem')} className="grid gap-2 rounded-md border p-3">
+    <section aria-label={t('tasks.drawer.problem')} className="grid gap-2 bg-card shadow-card rounded-xl p-3">
       <h3 className="font-medium">{t('tasks.drawer.problem')}</h3>
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={severityVariant(p.severity)}>{t(`executions.severities.${p.severity}`)}</Badge>
         <span>{p.itemLabel ?? t('executions.problemsPage.unknownItem')}</span>
       </div>
-      <p className="text-muted-foreground">{[p.checklistName, p.siteName, formatLocalDate(p.localDate), p.executorName].join(' · ')}</p>
+      <p className="text-muted-foreground">{[p.checklistName, p.siteName, formatLocalDate(p.localDate, locale), p.executorName].join(' · ')}</p>
       {p.note && <p className="whitespace-pre-line">{p.note}</p>}
       <ProblemMediaStrip taskId={taskId} media={p.media} />
       <Link

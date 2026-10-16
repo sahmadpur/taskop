@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { errorText } from '@/lib/errors';
 import { platformApi, platformSession, usePlatformAdmin } from './platform-session';
+import { useLocale } from '@/lib/i18n';
 
 interface TableProps {
   tenants: PlatformTenantDto[];
@@ -23,6 +24,7 @@ interface TableProps {
 
 export function PlatformTenantsTable({ tenants, onSuspend, onReactivate, onOpenChecklists }: TableProps) {
   const { t } = useTranslation();
+  const locale = useLocale();
   return (
     <Table>
       <TableHeader>
@@ -40,9 +42,9 @@ export function PlatformTenantsTable({ tenants, onSuspend, onReactivate, onOpenC
         {tenants.map((tn) => (
           <TableRow key={tn.id}>
             <TableCell className="font-medium">{tn.name}</TableCell>
-            <TableCell className="font-mono">{tn.orgCode}</TableCell>
+            <TableCell className="tabular-nums">{tn.orgCode}</TableCell>
             <TableCell>{tn.userCount}</TableCell>
-            <TableCell>{formatDateTime(tn.createdAt, { locale: 'az', timeZone: 'Asia/Baku' })}</TableCell>
+            <TableCell>{formatDateTime(tn.createdAt, { locale, timeZone: 'Asia/Baku' })}</TableCell>
             <TableCell>
               <Badge variant={tn.status === 'active' ? 'default' : 'destructive'}>
                 {t(`platform.tenants.${tn.status}`)}

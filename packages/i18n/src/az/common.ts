@@ -28,4 +28,10 @@ export default {
   copy: 'Kopyala',
   copied: 'Kopyalandı',
   all: 'Hamısı',
+  language: 'Dil',
+  theme: { label: 'Görünüş', light: 'İşıqlı', dark: 'Qaranlıq', system: 'Sistem' },
+  menu: 'Menyu',
+  closeMenu: 'Menyunu bağla',
+  skipToContent: 'Məzmuna keç',
+  errorTitle: 'Yükləmək mümkün olmadı',
 } as const;

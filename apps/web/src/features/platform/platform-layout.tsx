@@ -9,13 +9,13 @@ export function PlatformLayout() {
   const admin = usePlatformAdmin();
   return (
     <div className="min-h-screen">
-      <header className="flex items-center gap-6 bg-slate-900 px-6 py-3 text-white">
-        <Logo className="text-white" />
+      <header className="bg-deep text-on-deep flex items-center gap-6 px-6 py-3">
+        <Logo tone="inherit" className="text-white" />
         <nav className="flex gap-4 text-sm">
-          <Link to="/platform/tenants" activeProps={{ className: 'font-semibold underline' }}>
+          <Link to="/platform/tenants" activeProps={{ className: 'font-semibold text-saffron' }}>
             {t('platform.nav.tenants')}
           </Link>
-          <Link to="/platform/templates" activeProps={{ className: 'font-semibold underline' }}>
+          <Link to="/platform/templates" activeProps={{ className: 'font-semibold text-saffron' }}>
             {t('platform.nav.templates')}
           </Link>
         </nav>
