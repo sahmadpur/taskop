@@ -38,8 +38,22 @@ export default {
   leadMinutes: '{{count}} dəq əvvəl',
   /** audit.finished's rule option (SP8 spec §7.1). */
   resultFilters: { any: 'Bütün nəticələr', failed: 'Yalnız uğursuz auditlər' },
-  /** Push and inbox texts of the SP8 types, rendered once at fan-out. */
+  /** Push and inbox texts, rendered at fan-out in each recipient's language (apps/api notification-templates.ts). */
   templates: {
+    'checklist.assigned': { title: 'Yeni checklist təyin edildi', body: '{{checklist}} — {{site}}' },
+    'checklist.available': { title: 'Checklist başladı', body: '{{place}}. Son vaxt: {{time}}.' },
+    'checklist.due_soon': { title: 'Checklistin vaxtı yaxınlaşır', body: '{{place}}. {{time}}-dək tamamlayın.' },
+    'checklist.overdue': { title: 'Checklist gecikir', body: '{{place}}. Son vaxt {{time}} idi ({{date}}).' },
+    'checklist.missed': { title: 'Checklist icra olunmadı', body: '{{place}}, {{date}}.' },
+    /** The problem's note, when there is one, follows the body after a colon. */
+    'problem.recorded': { title: 'Yeni problem', body: '{{site}}, {{checklist}}' },
+    'problem.critical': { title: 'Kritik problem!', body: '{{site}}, {{checklist}}' },
+    'task.assigned': { title: 'Yeni tapşırıq', body: '{{title}}', due: '{{title}}. Son vaxt: {{date}}.' },
+    'task.submitted': { title: 'Tapşırıq yoxlamaya göndərildi', body: '{{title}}' },
+    'task.rejected': { title: 'Tapşırıq geri qaytarıldı', body: '{{title}}' },
+    'task.completed': { title: 'Tapşırıq tamamlandı', body: '{{title}}' },
+    'task.overdue': { title: 'Tapşırıq gecikir', body: '{{title}}', due: '{{title}}. Son vaxt {{date}} idi.' },
+    'task.cancelled': { title: 'Tapşırıq ləğv edildi', body: '{{title}}' },
     'run.correction_required': {
       title: 'Düzəliş tələb olunur',
       body: '{{checklist}} — {{site}}: {{count}} bənd düzəliş gözləyir.',
