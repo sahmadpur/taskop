@@ -1,16 +1,24 @@
-# Production stack for the Hetzner server (§5 of docs/superpowers/specs/2026-10-09-deployment-design.md).
+# Production stack for the server (§5 of docs/superpowers/specs/2026-10-09-deployment-design.md).
 # Lives at /opt/taskop/docker-compose.prod.yml next to Caddyfile and .env (copy of .env.example, mode 600).
 #
-# So far: the edge proxy and the public landing page (taskop.app). The product at admin.taskop.app
-# (caddy site block, api, postgres, seaweedfs, migrate) is added with the remaining deployment work (§15).
+#   taskop.app        → landing   (public page)
+#   admin.taskop.app  → web       (/*), api (/api/*)
+#   files.taskop.app  → seaweedfs (S3 API: presigned photo/video uploads and downloads)
 #
+# Postgres and SeaweedFS are on the internal network only; Caddy is the only service with published ports.
+# Migrations: `docker compose run --rm migrate` before `up -d` (deploy/deploy.sh does both).
 # Local run from the repository: see deploy/README.md.
 name: taskop
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: '5' }
 
 services:
   caddy:
     image: caddy:2.11-alpine
     restart: unless-stopped
+    logging: *logging
     ports:
       - '80:80'
       - '443:443'
@@ -23,8 +31,9 @@ services:
       - caddy_data:/data # certificates and ACME account: must survive restarts to stay within Let's Encrypt's rate limits
       - caddy_config:/config
     depends_on:
-      landing:
-        condition: service_healthy
+      landing: { condition: service_healthy }
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
 
   # The landing page: Astro's static build served by its own small Caddy on port 80 (internal network only).
   # CI builds and pushes the image; `docker compose pull` fetches it on the server. The `build` section lets the
@@ -38,7 +47,118 @@ services:
         # Where the page's Login and Sign up links go. Baked in at build time.
         PLATFORM_URL: ${PLATFORM_URL:-https://admin.taskop.app}
     restart: unless-stopped
+    logging: *logging
+
+  # The web app: Vite's static build served by Caddy (apps/web/Dockerfile).
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/sahmadpur/taskop-web:latest}
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/sahmadpur/taskop-api:latest}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    environment: &api-env
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_OWNER_URL: postgres://taskop_owner:${OWNER_DB_PASSWORD:?}@postgres:5432/taskop
+      DATABASE_APP_URL: postgres://taskop_app:${APP_DB_PASSWORD:?}@postgres:5432/taskop
+      DATABASE_PLATFORM_URL: postgres://taskop_platform:${PLATFORM_DB_PASSWORD:?}@postgres:5432/taskop
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?}
+      WEB_URL: ${WEB_URL:-https://admin.taskop.app}
+      SMTP_URL: ${SMTP_URL:?}
+      MAIL_FROM: ${MAIL_FROM:-Taskop <no-reply@taskop.app>}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: 'true'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-https://files.taskop.app}
+      S3_BUCKET: taskop-media
+      S3_ACCESS_KEY: taskop
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      S3_FORCE_PATH_STYLE: 'true'
+      # EXPO_ACCESS_TOKEN (Expo's enhanced push security) is not passed: an empty value fails the config check.
+    depends_on:
+      postgres: { condition: service_healthy }
+      seaweedfs: { condition: service_started }
+
+  # One-off: creates the taskop_app / taskop_platform roles and applies the Drizzle migrations.
+  # Not started by `up`; run with `docker compose run --rm migrate`.
+  migrate:
+    image: ${API_IMAGE:-ghcr.io/sahmadpur/taskop-api:latest}
+    profiles: [tools]
+    environment: *api-env
+    command: ['node', 'dist/db/scripts/setup.js']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: taskop
+      POSTGRES_USER: taskop_owner
+      POSTGRES_PASSWORD: ${OWNER_DB_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    shm_size: 256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U taskop_owner -d taskop']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible storage for photos, videos and report PDFs. The identity file is written from .env at start,
+  # so the secret lives only in .env.
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.48}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        printf '{"identities":[{"name":"taskop","credentials":[{"accessKey":"taskop","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$S3_SECRET_KEY" > /tmp/s3.json
+        && exec /entrypoint.sh server -s3 -s3.config=/tmp/s3.json -dir=/data -volume.max=0
+    volumes:
+      - seaweedfsdata:/data
+
+  # One-off: creates the private bucket and sets its CORS rule for the web origin; restarts until SeaweedFS answers.
+  seaweedfs-init:
+    image: amazon/aws-cli:latest
+    depends_on: [seaweedfs]
+    restart: on-failure
+    logging: *logging
+    environment:
+      AWS_ACCESS_KEY_ID: taskop
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
+      AWS_DEFAULT_REGION: us-east-1
+      WEB_URL: ${WEB_URL:-https://admin.taskop.app}
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        (aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket taskop-media
+        || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket taskop-media)
+        && aws --endpoint-url http://seaweedfs:8333 s3api put-bucket-cors --bucket taskop-media --cors-configuration
+        "{\"CORSRules\":[{\"AllowedOrigins\":[\"$$WEB_URL\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"HEAD\"],\"AllowedHeaders\":[\"Content-Type\",\"Content-Length\"],\"ExposeHeaders\":[\"ETag\"],\"MaxAgeSeconds\":3000}]}"
 
 volumes:
   caddy_data: {}
   caddy_config: {}
+  pgdata: {}
+  seaweedfsdata: {}

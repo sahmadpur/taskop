@@ -1,0 +1,30 @@
+# Caddy inside the taskop-web image: serves the Vite build in /srv on port 80.
+# TLS, the host name and /api are the edge proxy's job (deploy/Caddyfile), which forwards the rest here.
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	# Vite puts a content hash in every file name under /assets/, so those can be cached for a year.
+	@hashed path /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	# index.html and the unhashed files (favicons, manifest): always revalidate, so a deploy reaches users at once.
+	@unhashed not path /assets/*
+	header @unhashed Cache-Control "no-cache"
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+
+	# Client-side routes (TanStack Router): unknown paths get index.html; missing hashed assets stay 404.
+	@spa not path /assets/*
+	try_files @spa {path} /index.html
+	file_server
+}
