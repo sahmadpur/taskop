@@ -76,6 +76,7 @@
 6. **Registration runs at every app start and after login, and again at each return to the foreground until it has succeeded.**
    - It stops trying once the outcome is `registered`, `simulator` or `noProject`.
    - It keeps trying after `denied` or `failed` without ever prompting again. A user who allows push in the OS settings is therefore registered as soon as they come back, without a restart. This covers the spec's "retried at the next start" and more.
+   - Amended 2026-10-16: a `failed` attempt is also tried again while the app stays in the foreground, after 5 s, 30 s and 2 min (`PUSH_RETRY_DELAYS_MS`); after that only the next foreground tries again, which starts the delays over. Leaving the foreground, a sign-out block and stopping the controller cancel a pending retry. An Android phone whose first Expo token fetch failed right after sign-in had stayed unregistered until it was restarted. A successful registration logs `[push] Registered this device`.
 7. **The registered token is kept in SecureStore** (`taskop.pushToken`) after a successful `PUT /me/push-devices`.
    - Logout removes the device with that stored token, so it works even when the app started offline and never fetched a token in this session.
    - The removal first waits for a registration still running, so that registration cannot re-register a signed-out phone.
