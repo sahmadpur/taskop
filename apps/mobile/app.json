@@ -122,6 +122,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f8634f3e-451c-4158-9272-703ae3226431"
+      }
+    },
+    "owner": "s.ahmadpur"
   }
 }
