@@ -12,6 +12,8 @@ RUN pnpm install --frozen-lockfile
 ARG PLATFORM_URL=https://admin.taskop.app
 ENV PLATFORM_URL=$PLATFORM_URL
 RUN pnpm turbo run build --filter=@taskop/landing...
+# Fail the build if the links were not baked in (e.g. the variable did not reach astro build).
+RUN grep -q "href=\"$PLATFORM_URL/login\"" apps/landing/dist/index.html
 
 FROM caddy:2.11-alpine
 COPY apps/landing/Caddyfile /etc/caddy/Caddyfile
