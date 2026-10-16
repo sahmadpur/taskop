@@ -1,0 +1,21 @@
+# The edge proxy on the production server (§5 of docs/superpowers/specs/2026-10-09-deployment-design.md).
+# Lives at /opt/taskop/Caddyfile, bind-mounted into the caddy service of docker-compose.prod.yml.
+#
+# SITE_SCHEME is unset in production, so every site below gets automatic HTTPS (Let's Encrypt) and an
+# HTTP → HTTPS redirect. A local run sets SITE_SCHEME=http in deploy/.env and the sites answer plain HTTP on :80
+# (see deploy/README.md).
+
+# www.taskop.app → taskop.app
+{$SITE_SCHEME:https}://www.taskop.app {
+	redir https://taskop.app{uri} permanent
+}
+
+# The public landing page: static files served by the taskop-landing image (apps/landing/Dockerfile),
+# which sets the caching headers and compression itself.
+{$SITE_SCHEME:https}://taskop.app {
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy landing:80
+}
+
+# admin.taskop.app (the web app at / and the API at /api) is added together with the taskop-web and
+# taskop-api images (§15 of the deployment plan).

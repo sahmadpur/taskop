@@ -1,0 +1,44 @@
+# Production stack for the Hetzner server (§5 of docs/superpowers/specs/2026-10-09-deployment-design.md).
+# Lives at /opt/taskop/docker-compose.prod.yml next to Caddyfile and .env (copy of .env.example, mode 600).
+#
+# So far: the edge proxy and the public landing page (taskop.app). The product at admin.taskop.app
+# (caddy site block, api, postgres, seaweedfs, migrate) is added with the remaining deployment work (§15).
+#
+# Local run from the repository: see deploy/README.md.
+name: taskop
+
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    environment:
+      # Unset in production (automatic HTTPS). A local run sets http in deploy/.env.
+      SITE_SCHEME: ${SITE_SCHEME:-https}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates and ACME account: must survive restarts to stay within Let's Encrypt's rate limits
+      - caddy_config:/config
+    depends_on:
+      landing:
+        condition: service_healthy
+
+  # The landing page: Astro's static build served by its own small Caddy on port 80 (internal network only).
+  # CI builds and pushes the image; `docker compose pull` fetches it on the server. The `build` section lets the
+  # same file build it from a checkout (CI, local runs).
+  landing:
+    image: ${LANDING_IMAGE:-ghcr.io/sahmadpur/taskop-landing:latest}
+    build:
+      context: ..
+      dockerfile: apps/landing/Dockerfile
+      args:
+        # Where the page's Login and Sign up links go. Baked in at build time.
+        PLATFORM_URL: ${PLATFORM_URL:-https://admin.taskop.app}
+    restart: unless-stopped
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

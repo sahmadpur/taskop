@@ -1,0 +1,28 @@
+# Caddy inside the taskop-landing image: serves the Astro build in /srv on port 80.
+# TLS and the host names are the edge proxy's job (deploy/Caddyfile), which forwards taskop.app here.
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	# Astro puts a content hash in every file name under /_astro/, so those can be cached for a year.
+	@hashed path /_astro/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	# HTML and the other unhashed files (favicons, manifest, sitemap, robots.txt): a few minutes, then revalidate,
+	# so a deploy reaches visitors quickly. Caddy adds ETag and Last-Modified for the revalidation.
+	@unhashed not path /_astro/*
+	header @unhashed Cache-Control "public, max-age=300, must-revalidate"
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Each page is a folder with an index.html (trailingSlash: 'always'), so /en → /en/ → /en/index.html.
+	file_server
+}

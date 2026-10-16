@@ -45,6 +45,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run test --filter='${{ matrix.suite.filter }}'
+  # The production image of the landing page (apps/landing/Dockerfile), built the way the deploy will build it
+  # and checked once: the page answers and its Login link points at the platform.
+  landing-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose -f deploy/docker-compose.prod.yml config --quiet
+      - run: docker compose -f deploy/docker-compose.prod.yml build landing
+      - name: Smoke test the image
+        run: |
+          docker run -d --name landing -p 8080:80 ghcr.io/sahmadpur/taskop-landing:latest
+          for i in $(seq 1 15); do curl -fsS -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          curl -fsS http://localhost:8080/ | grep -q 'href="https://admin.taskop.app/login"'
+          curl -fsSI http://localhost:8080/en/ | grep -i '^cache-control: public, max-age=300'
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30

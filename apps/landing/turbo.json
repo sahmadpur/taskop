@@ -1,0 +1,11 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // Read by astro:env at build time (the Login and Sign up links). Turbo's strict mode would otherwise drop it,
+      // and it belongs in the cache key: a different platform URL is a different build.
+      "env": ["PLATFORM_URL"]
+    }
+  }
+}
