@@ -1,0 +1,13 @@
+---
+import Landing from '../../components/Landing.astro';
+import { isLanguage, type Language } from '../../lib/site';
+
+/** `/` is Azerbaijani (the default locale has no prefix); `/en/` and `/ru/` are the others. */
+export function getStaticPaths() {
+  return [{ params: { locale: undefined } }, { params: { locale: 'en' } }, { params: { locale: 'ru' } }];
+}
+const { locale } = Astro.params;
+const lang: Language = isLanguage(locale) ? locale : 'az';
+---
+
+<Landing lang={lang} />

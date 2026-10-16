@@ -1,0 +1,69 @@
+---
+import type { Language } from '../lib/site';
+import { strings } from '../lib/site';
+interface Props {
+  lang: Language;
+}
+const t = strings(Astro.props.lang).features;
+const items = [
+  ['checklists', 'M4 6h16M4 12h10M4 18h7m7-3 2 2 4-4'],
+  ['offline', 'M2 8.5a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 15.5a6 6 0 0 1 7 0M12 19h.01M3 3l18 18'],
+  ['problems', 'M4 22V4m0 0h12l-2 4 2 4H4'],
+  ['notifications', 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4 13a2 2 0 0 0 4 0'],
+  ['reports', 'M3 3v18h18M7 15l4-4 3 3 5-6'],
+  ['audits', 'M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3zm-3 10 2 2 4-4'],
+] as const;
+---
+
+<section id="features" class="section">
+  <div class="wrap">
+    <h2>{t.title}</h2>
+    <p class="lead">{t.lead}</p>
+    <ul class="list">
+      {items.map(([key, d]) => (
+        <li>
+          <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d={d}></path>
+          </svg>
+          <div>
+            <h3>{t[key].title}</h3>
+            <p>{t[key].body}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .lead {
+    margin-top: 0.75rem;
+  }
+  .list {
+    list-style: none;
+    margin: 3rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 2.25rem 3rem;
+  }
+  li {
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+  svg {
+    color: var(--tp-primary);
+    margin-top: 0.1rem;
+  }
+  li p {
+    margin-top: 0.4rem;
+    color: var(--tp-ink2);
+    max-width: 34rem;
+  }
+  @media (min-width: 48rem) {
+    .list {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

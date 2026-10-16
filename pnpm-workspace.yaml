@@ -23,6 +23,11 @@ minimumReleaseAgeExclude:
   - expo-linking@57.0.13
   - expo-notifications@57.0.23
   - expo-router@57.0.28
+  - '@astrojs/internal-helpers@0.13.0'
+  - '@astrojs/markdown-satteri@0.4.4'
+  - '@astrojs/prism@4.1.0'
+  - '@astrojs/telemetry@3.4.0'
+  - astro@7.4.0
 # One React in the repo, pinned to the version the Expo SDK (apps/mobile) requires.
 overrides:
   react: 19.2.3

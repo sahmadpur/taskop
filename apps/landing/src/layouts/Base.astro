@@ -1,0 +1,69 @@
+---
+import '../styles/global.css';
+import { absolute, type Language, LANGUAGES, localePath, strings } from '../lib/site';
+interface Props {
+  lang: Language;
+  /** The page's path without the locale prefix ('' for the home page, 'privacy/' ...). */
+  path?: string;
+  title?: string;
+  description?: string;
+}
+const { lang, path = '', title, description } = Astro.props;
+const t = strings(lang);
+const pageTitle = title ?? t.meta.title;
+const pageDescription = description ?? t.meta.description;
+const canonical = absolute(localePath(lang, path));
+const ogLocale = { az: 'az_AZ', en: 'en_GB', ru: 'ru_RU' }[lang];
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    <link rel="canonical" href={canonical} />
+    {LANGUAGES.map((l) => <link rel="alternate" hreflang={l} href={absolute(localePath(l, path))} />)}
+    <link rel="alternate" hreflang="x-default" href={absolute(localePath('az', path))} />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#005E8C" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#021B2B" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Taskop" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={absolute('/og-image.png')} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content={ogLocale} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDescription} />
+    <meta name="twitter:image" content={absolute('/og-image.png')} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <script is:inline>
+      // A visitor who chose a language earlier lands on the root in it. Only on the root, only once per session, and
+      // never when a language was chosen by URL (a /en/ or /ru/ link). Everything else works without JavaScript.
+      (function () {
+        try {
+          if (location.pathname !== '/' || sessionStorage.getItem('taskop.landing.redirected')) return;
+          var l = localStorage.getItem('taskop.language');
+          if (l === 'en' || l === 'ru') {
+            sessionStorage.setItem('taskop.landing.redirected', '1');
+            location.replace('/' + l + '/' + location.search + location.hash);
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">{t.nav.skip}</a>
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,70 @@
+---
+import type { Language } from '../lib/site';
+import { fill, localePath, platformUrl, strings } from '../lib/site';
+import Logo from './Logo.astro';
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props;
+const t = strings(lang);
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="wrap grid">
+    <div class="brand">
+      <Logo />
+      <p>{t.meta.description}</p>
+    </div>
+    <nav aria-label={t.footer.contact}>
+      <a href={`mailto:${t.footer.email}`}>{t.footer.email}</a>
+      <a href={localePath(lang, 'privacy/')}>{t.footer.privacy}</a>
+      <a href={localePath(lang, 'terms/')}>{t.footer.terms}</a>
+      <a href={platformUrl('signup')}>{t.nav.signup}</a>
+    </nav>
+  </div>
+  <div class="wrap copyright">{fill(t.footer.copyright, { year })}</div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--tp-line);
+    padding-block: 3rem 2rem;
+    font-size: 0.95rem;
+  }
+  .grid {
+    display: grid;
+    gap: 2rem;
+  }
+  .brand {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 28rem;
+  }
+  .brand p {
+    color: var(--tp-ink2);
+  }
+  nav {
+    display: grid;
+    gap: 0.6rem;
+    align-content: start;
+  }
+  nav a {
+    color: var(--tp-ink);
+    text-decoration: none;
+  }
+  nav a:hover {
+    text-decoration: underline;
+  }
+  .copyright {
+    margin-top: 2.5rem;
+    color: var(--tp-ink2);
+    font-size: 0.85rem;
+  }
+  @media (min-width: 48rem) {
+    .grid {
+      grid-template-columns: 1fr auto;
+      gap: 4rem;
+    }
+  }
+</style>

@@ -1,0 +1,30 @@
+{
+  "name": "@taskop/landing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The public site at taskop.app: what Taskop is, for whom, and the way into the platform.",
+  "scripts": {
+    "dev": "astro dev --port 5180",
+    "build": "astro build",
+    "preview": "astro preview --port 5181",
+    "typecheck": "astro check",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@taskop/brand": "workspace:*",
+    "@taskop/i18n": "workspace:*",
+    "astro": "^7.4.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@taskop/config": "workspace:*",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

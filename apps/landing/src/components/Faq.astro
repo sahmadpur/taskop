@@ -1,0 +1,65 @@
+---
+import type { Language } from '../lib/site';
+import { strings } from '../lib/site';
+interface Props {
+  lang: Language;
+}
+const t = strings(Astro.props.lang).faq;
+const items = [t.q1, t.q2, t.q3, t.q4, t.q5];
+---
+
+<section id="faq" class="section">
+  <div class="wrap narrow">
+    <h2>{t.title}</h2>
+    <div class="items">
+      {items.map((item) => (
+        <details>
+          <summary>{item.q}</summary>
+          <p>{item.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .narrow {
+    max-width: 46rem;
+  }
+  .items {
+    margin-top: 2rem;
+    border-top: 1px solid var(--tp-line);
+  }
+  details {
+    border-bottom: 1px solid var(--tp-line);
+  }
+  summary {
+    cursor: pointer;
+    padding: 1rem 2rem 1rem 0;
+    font-weight: 600;
+    list-style: none;
+    position: relative;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::after {
+    content: '';
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-right: 2px solid var(--tp-ink2);
+    border-bottom: 2px solid var(--tp-ink2);
+    transform: translateY(-70%) rotate(45deg);
+    transition: transform 150ms ease;
+  }
+  details[open] summary::after {
+    transform: translateY(-30%) rotate(-135deg);
+  }
+  details p {
+    padding: 0 2rem 1.25rem 0;
+    color: var(--tp-ink2);
+  }
+</style>

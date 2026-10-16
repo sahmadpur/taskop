@@ -1,0 +1,214 @@
+---
+import type { Language } from '../lib/site';
+import { strings } from '../lib/site';
+interface Props {
+  lang: Language;
+  /** `run`: a checklist being filled in (the hero); `home`: the worker's day (the mobile section). */
+  variant?: 'run' | 'home';
+}
+const { lang, variant = 'run' } = Astro.props;
+const t = strings(lang).phone;
+---
+
+<!-- A worker's screen, drawn from the design tokens rather than a screenshot, so it never goes stale. Decorative. -->
+<div class="phone" aria-hidden="true">
+  {variant === 'run' ? (
+    <div class="screen">
+      <div class="top">
+        <div class="title">{t.checklist}</div>
+        <div class="sub">{t.site}</div>
+        <div class="bar"><span></span></div>
+        <div class="progress">{t.progress}</div>
+      </div>
+      <div class="offline">{t.offline}</div>
+      <div class="item">
+        <div class="q">{t.item1}</div>
+        <div class="choices"><span class="on">{t.yes}</span><span>{t.no}</span></div>
+      </div>
+      <div class="item">
+        <div class="q">{t.item2}</div>
+        <div class="photo"><i></i>{t.photo}</div>
+      </div>
+      <div class="item">
+        <div class="q">{t.item3}</div>
+        <div class="value">{t.value3}</div>
+      </div>
+      <div class="next">{t.next}</div>
+    </div>
+  ) : (
+    <div class="screen">
+      <div class="top">
+        <div class="sub">{t.today}</div>
+        <div class="title big">{t.greeting}</div>
+        <div class="pill">{t.synced}</div>
+      </div>
+      <div class="group">{t.now}</div>
+      <div class="item">
+        <div class="q">{t.checklist}</div>
+        <div class="sub2">{t.site}</div>
+        <div class="next tight">{t.start}</div>
+      </div>
+      <div class="group">{t.later}</div>
+      <div class="item later">
+        <div class="q">{t.card2}</div>
+        <div class="sub2">{t.card2site}</div>
+      </div>
+    </div>
+  )}
+</div>
+
+<style>
+  .phone {
+    width: 19rem;
+    max-width: 100%;
+    padding: 0.6rem;
+    border-radius: 2.4rem;
+    background: var(--tp-deep);
+    box-shadow: 0 30px 60px -30px rgb(2 27 43 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06) inset;
+  }
+  .screen {
+    border-radius: 1.9rem;
+    background: var(--tp-canvas);
+    padding: 1rem 0.9rem 1rem;
+    display: grid;
+    gap: 0.6rem;
+    font-size: 0.86rem;
+    color: var(--tp-ink);
+  }
+  .top {
+    background: var(--tp-deep);
+    color: #fff;
+    border-radius: 1.1rem;
+    padding: 1.4rem 0.9rem 0.9rem;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .title {
+    font-weight: 600;
+    font-size: 1rem;
+  }
+  .title.big {
+    font-size: 1.25rem;
+  }
+  .sub,
+  .progress {
+    color: var(--tp-on-deep-muted);
+    font-size: 0.8rem;
+  }
+  .sub2 {
+    color: var(--tp-ink2);
+    font-size: 0.8rem;
+  }
+  .pill {
+    justify-self: start;
+    margin-top: 0.4rem;
+    padding: 0.2rem 0.6rem 0.2rem 1.3rem;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.12);
+    font-size: 0.75rem;
+    position: relative;
+  }
+  .pill::before {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    top: 50%;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--tp-ok-solid);
+    transform: translateY(-50%);
+  }
+  .group {
+    font-weight: 600;
+    color: var(--tp-ink2);
+    font-size: 0.8rem;
+    margin-top: 0.2rem;
+  }
+  .bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgb(255 255 255 / 0.15);
+    margin-top: 0.4rem;
+    overflow: hidden;
+  }
+  .bar span {
+    display: block;
+    width: 58%;
+    height: 100%;
+    background: var(--tp-saffron);
+    border-radius: 3px;
+  }
+  .offline {
+    background: var(--tp-late-soft);
+    color: var(--tp-late-text);
+    border-radius: 0.7rem;
+    padding: 0.5rem 0.7rem;
+    font-weight: 500;
+    font-size: 0.78rem;
+  }
+  .item {
+    background: var(--tp-surface);
+    border: 1.5px solid var(--tp-line);
+    border-left: 5px solid var(--tp-primary);
+    border-radius: 0.9rem;
+    padding: 0.7rem 0.8rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .item.later {
+    border-left-color: var(--tp-planned-solid);
+  }
+  .q {
+    font-weight: 600;
+  }
+  .choices {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .choices span {
+    flex: 1;
+    text-align: center;
+    padding: 0.5rem;
+    border-radius: 0.6rem;
+    border: 1.5px solid var(--tp-line-strong);
+    font-weight: 600;
+  }
+  .choices .on {
+    background: var(--tp-ok-soft);
+    color: var(--tp-ok-text);
+    border-color: var(--tp-ok-solid);
+  }
+  .photo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--tp-ink2);
+  }
+  .photo i {
+    width: 2.6rem;
+    height: 2rem;
+    border-radius: 0.4rem;
+    background: linear-gradient(135deg, var(--tp-primary-soft), var(--tp-primary));
+  }
+  .value {
+    padding: 0.5rem 0.7rem;
+    border-radius: 0.6rem;
+    border: 1.5px solid var(--tp-line-strong);
+    background: var(--tp-surface);
+    font-variant-numeric: tabular-nums;
+  }
+  .next {
+    margin-top: 0.2rem;
+    background: var(--tp-primary);
+    color: var(--tp-on-primary);
+    border-radius: 0.8rem;
+    padding: 0.85rem;
+    text-align: center;
+    font-weight: 600;
+  }
+  .next.tight {
+    margin-top: 0;
+    padding: 0.7rem;
+  }
+</style>

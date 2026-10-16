@@ -1,0 +1,60 @@
+---
+import { type Language, LANGUAGE_NAMES, LANGUAGES, localePath, strings } from '../lib/site';
+interface Props {
+  lang: Language;
+  /** The page's path without the locale prefix (so the switch stays on the same page). */
+  path?: string;
+}
+const { lang, path = '' } = Astro.props;
+const t = strings(lang);
+---
+
+<nav class="lang" aria-label={t.nav.language}>
+  {LANGUAGES.map((l) => (
+    <a href={localePath(l, path)} hreflang={l} lang={l} data-lang={l} aria-current={l === lang ? 'page' : undefined}>
+      {LANGUAGE_NAMES[l]}
+    </a>
+  ))}
+</nav>
+
+<script>
+  // Remember the chosen language on this browser (the same key the platform uses), so the next visit to the root
+  // opens in it. Links work without this script; it only adds the memory.
+  import { LANGUAGE_STORAGE_KEY } from '@taskop/i18n';
+  for (const a of document.querySelectorAll<HTMLAnchorElement>('.lang a[data-lang]')) {
+    a.addEventListener('click', () => {
+      try {
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, a.dataset.lang ?? 'az');
+      } catch {
+        // Storage blocked: the link still navigates.
+      }
+    });
+  }
+</script>
+
+<style>
+  .lang {
+    display: inline-flex;
+    gap: 0.125rem;
+    padding: 0.2rem;
+    border-radius: 999px;
+    background: var(--tp-planned-soft);
+  }
+  a {
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    color: var(--tp-ink2);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  a[aria-current='page'] {
+    background: var(--tp-surface);
+    color: var(--tp-ink);
+    box-shadow: var(--tp-shadow-card);
+  }
+  a:hover:not([aria-current='page']) {
+    color: var(--tp-ink);
+  }
+</style>
