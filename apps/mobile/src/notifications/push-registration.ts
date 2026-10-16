@@ -15,6 +15,13 @@ export type RegisterOutcome = 'registered' | 'simulator' | 'denied' | 'noProject
 /** These end the attempts of this session; after 'denied' or 'failed' the next foreground tries again (decision 6). */
 const FINAL: ReadonlySet<RegisterOutcome> = new Set(['registered', 'simulator', 'noProject']);
 
+/**
+ * After 'failed', while the app stays in the foreground, the next attempts wait this long; after the last one only the
+ * next foreground tries again (decision 6). A failed Expo token fetch right after sign-in must not leave the phone
+ * without push for as long as the user keeps the app open.
+ */
+export const PUSH_RETRY_DELAYS_MS: readonly number[] = [5_000, 30_000, 120_000];
+
 const message = (e: unknown) => (e instanceof Error ? e.message : 'unknown error');
 
 let inFlight: Promise<RegisterOutcome> | null = null;
@@ -69,6 +76,7 @@ async function attempt({ push, tokens, api }: PushDeps): Promise<RegisterOutcome
     if (cancelled()) return 'blocked';
     await api.pushDevices.register({ expoToken, platform: push.platform() });
     await tokens.set(expoToken);
+    console.info('[push] Registered this device');
     return 'registered';
   } catch (e) {
     console.warn('[push] Registration failed; it is tried again later', message(e));
@@ -85,7 +93,10 @@ export function registerPush(deps: PushDeps): Promise<RegisterOutcome> {
   return run;
 }
 
-/** Registers now (app start or login) and at each return to the foreground until an outcome is final. */
+/**
+ * Registers now (app start or login) and at each return to the foreground until an outcome is final. A 'failed' attempt
+ * is also tried again while the app stays in the foreground, after each of `PUSH_RETRY_DELAYS_MS` in turn.
+ */
 export function startPushRegistration(deps: PushDeps & { appState: AppStatePort; userId: string }): () => void {
   // A sign-in lifts the sign-out block, but a restart for the very user being signed out does not. Either way an
   // attempt left over from before (the previous session, or a controller that was replaced) is dropped.
@@ -95,20 +106,37 @@ export function startPushRegistration(deps: PushDeps & { appState: AppStatePort;
   let done = false;
   let running = false;
   let stopped = false;
+  let retries = 0; // Failed attempts tried again since the last foreground.
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  const cancelRetry = () => {
+    if (retry) clearTimeout(retry);
+    retry = null;
+  };
   const tryOnce = () => {
+    cancelRetry();
     if (done || running || stopped || blocked) return;
     running = true;
     void registerPush(deps).then((outcome) => {
       done = FINAL.has(outcome);
       running = false;
+      const delay = PUSH_RETRY_DELAYS_MS[retries];
+      if (outcome !== 'failed' || stopped || blocked || delay === undefined) return;
+      retries += 1;
+      retry = setTimeout(tryOnce, delay);
     });
   };
   const off = deps.appState.subscribe((active) => {
-    if (active) tryOnce();
+    if (active) {
+      retries = 0;
+      tryOnce();
+    } else {
+      cancelRetry(); // Only a foreground tries again once the app has left it.
+    }
   });
   tryOnce();
   return () => {
     stopped = true;
+    cancelRetry();
     epoch += 1; // Its own attempt, if still waiting, must not register after the controller is gone.
     off();
   };

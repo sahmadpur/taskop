@@ -1,5 +1,5 @@
 import { ApiError } from '@taskop/api-client';
-import { blockPushRegistration, clearAppBadge, endPushSignOut, registerPush, startPushRegistration, unregisterPush } from './push-registration';
+import { blockPushRegistration, clearAppBadge, endPushSignOut, PUSH_RETRY_DELAYS_MS, registerPush, startPushRegistration, unregisterPush } from './push-registration';
 import { fakeAppState, fakePush, fakePushApi, fakeTokens, PROJECT_ID, PUSH_TOKEN } from './testing/fakes';
 
 const USER = 'user-a';
@@ -12,10 +12,15 @@ function gate() {
 }
 
 let warn: jest.SpyInstance;
+let info: jest.SpyInstance;
 beforeEach(() => {
   warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
 });
-afterEach(() => warn.mockRestore());
+afterEach(() => {
+  warn.mockRestore();
+  info.mockRestore();
+});
 
 describe('registerPush', () => {
   it("creates the channel first, gets the Expo token with the project's id and registers it as this phone", async () => {
@@ -28,6 +33,7 @@ describe('registerPush', () => {
     expect(api.pushDevices.register).toHaveBeenCalledWith({ expoToken: PUSH_TOKEN, platform: 'android' });
     expect(tokens.value).toBe(PUSH_TOKEN);
     expect(push.requestPermission).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith('[push] Registered this device');
   });
 
   it('asks for permission once when the OS has not asked yet', async () => {
@@ -83,6 +89,7 @@ describe('registerPush', () => {
     push.expoToken.mockRejectedValueOnce(new Error('Expo unreachable'));
     expect(await registerPush({ push, tokens, api })).toBe('failed');
     expect(warn).toHaveBeenCalledWith('[push] Registration failed; it is tried again later', 'Expo unreachable');
+    expect(info).not.toHaveBeenCalled();
   });
 });
 
@@ -391,5 +398,96 @@ describe('stopping the controller', () => {
     await flush();
     expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
     stopSecond();
+  });
+});
+
+describe('trying a failed registration again in the foreground', () => {
+  const [first, second, third] = PUSH_RETRY_DELAYS_MS as [number, number, number];
+  const tick = (ms: number) => jest.advanceTimersByTimeAsync(ms);
+
+  beforeEach(async () => {
+    await liftBlock();
+    jest.useFakeTimers();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('tries again after 5 s and then 30 s while the app stays in the foreground, and stops once registered', async () => {
+    const api = fakePushApi();
+    api.pushDevices.register.mockRejectedValueOnce(ApiError.network()).mockRejectedValueOnce(ApiError.network());
+    const tokens = fakeTokens();
+    const stop = startPushRegistration({ push: fakePush(), tokens, api, appState: fakeAppState(), userId: USER });
+    await tick(0);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
+    await tick(first - 1);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
+    await tick(1);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(2);
+    await tick(second);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(3);
+    expect(tokens.value).toBe(PUSH_TOKEN);
+    expect(info).toHaveBeenCalledTimes(1);
+    await tick(10 * 60_000);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(3);
+    stop();
+  });
+
+  it('stops after the last delay until the next foreground, which starts the delays over', async () => {
+    const push = fakePush();
+    push.expoToken.mockRejectedValue(new Error('Expo unreachable'));
+    const appState = fakeAppState();
+    const stop = startPushRegistration({ push, tokens: fakeTokens(), api: fakePushApi(), appState, userId: USER });
+    await tick(0);
+    await tick(first);
+    await tick(second);
+    await tick(third);
+    expect(push.expoToken).toHaveBeenCalledTimes(4);
+    await tick(60 * 60_000);
+    expect(push.expoToken).toHaveBeenCalledTimes(4);
+    expect(jest.getTimerCount()).toBe(0);
+    appState.emit(true);
+    await tick(0);
+    expect(push.expoToken).toHaveBeenCalledTimes(5);
+    await tick(first);
+    expect(push.expoToken).toHaveBeenCalledTimes(6);
+    stop();
+  });
+
+  it('leaving the foreground cancels the pending retry', async () => {
+    const api = fakePushApi();
+    api.pushDevices.register.mockRejectedValueOnce(ApiError.network());
+    const appState = fakeAppState();
+    const stop = startPushRegistration({ push: fakePush(), tokens: fakeTokens(), api, appState, userId: USER });
+    await tick(0);
+    appState.emit(false);
+    await tick(10 * 60_000);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
+    appState.emit(true);
+    await tick(0);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it('does not try again after a sign-out block', async () => {
+    const api = fakePushApi();
+    api.pushDevices.register.mockRejectedValueOnce(ApiError.network());
+    const stop = startPushRegistration({ push: fakePush(), tokens: fakeTokens(), api, appState: fakeAppState(), userId: USER });
+    await tick(0);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
+    blockPushRegistration();
+    await tick(10 * 60_000);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('stopping the controller cancels a pending retry', async () => {
+    const api = fakePushApi();
+    api.pushDevices.register.mockRejectedValueOnce(ApiError.network());
+    const stop = startPushRegistration({ push: fakePush(), tokens: fakeTokens(), api, appState: fakeAppState(), userId: USER });
+    await tick(0);
+    expect(jest.getTimerCount()).toBe(1);
+    stop();
+    expect(jest.getTimerCount()).toBe(0);
+    await tick(10 * 60_000);
+    expect(api.pushDevices.register).toHaveBeenCalledTimes(1);
   });
 });
