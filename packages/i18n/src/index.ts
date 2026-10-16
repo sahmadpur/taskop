@@ -4,7 +4,8 @@ import { ru } from './ru/index.js';
 
 export { az, en, ru };
 export type { Translations } from './az/index.js';
-export type { Shape } from './shape.js';
+import type { Shape } from './shape.js';
+export type { Shape };
 export * from './format.js';
 
 /** The UI languages, in the order the selectors list them. Azerbaijani is the source of truth and the default. */
@@ -40,7 +41,7 @@ export function pickLanguage(...candidates: readonly unknown[]): Language {
   return DEFAULT_LOCALE;
 }
 
-const BUNDLES: Record<Language, Translations> = { az, en, ru };
+const BUNDLES: Record<Language, Shape<Translations>> = { az, en, ru };
 
 /** The whole bundle of a language, for server-side rendering (e-mail, push, PDF, exports). */
-export const translationsFor = (locale: Language): Translations => BUNDLES[locale];
+export const translationsFor = (locale: Language): Shape<Translations> => BUNDLES[locale];
