@@ -16,7 +16,7 @@ const mockRemove = jest.fn();
 const mockUpdate = jest.fn();
 const mockPatchUser = jest.fn();
 const mockEvents: string[] = [];
-let mockUser = { id: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01', fullName: 'Aysel Əliyeva', jobTitle: null as string | null, username: 'aysel', email: null as string | null, emailNotifications: true };
+let mockUser = { id: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01', fullName: 'Aysel Əliyeva', jobTitle: null as string | null, username: 'aysel', email: null as string | null, emailNotifications: true, locale: null };
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/lib/session', () => ({
   api: {
@@ -51,7 +51,7 @@ beforeEach(() => {
   mockPatchUser.mockImplementation(async (patch: Partial<typeof mockUser>) => {
     mockUser = { ...mockUser, ...patch };
   });
-  mockUser = { id: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01', fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true };
+  mockUser = { id: '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01', fullName: 'Aysel Əliyeva', jobTitle: null, username: 'aysel', email: null, emailNotifications: true, locale: null };
   native.pushTokenStore.value = null;
   native.nativePush.setBadge.mockReset();
   native.nativePush.setBadge.mockImplementation(async (n: number) => void mockEvents.push(`badge:${n}`));
@@ -265,7 +265,7 @@ describe('notification settings', () => {
     expect(screen.getByText('Hesabınızda e-poçt ünvanı yoxdur, ona görə e-poçt göndərilmir.')).toBeTruthy();
     await fireEvent(emailSwitch(), 'valueChange', true);
     await eventually(async () => expect(mockPatchUser).toHaveBeenCalledWith({ emailNotifications: false }, '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01'));
-    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: true });
+    expect(mockUpdate).toHaveBeenCalledWith({ emailNotifications: true, locale: null });
     await eventually(async () => expect(emailSwitch().props.disabled).toBe(false));
     expect(emailSwitch().props.value).toBe(false);
   });

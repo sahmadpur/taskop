@@ -63,7 +63,7 @@ describe('meSchema', () => {
   it('parses a full profile', () => {
     expect(
       meSchema.parse({
-        user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
+        user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true, locale: null },
         role: { id, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
         permissions: ['users.view'],
         tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },

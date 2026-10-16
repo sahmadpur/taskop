@@ -86,12 +86,25 @@ describe('inbox, preferences and push devices', () => {
     expect((await w.manager.api.get('/api/v1/me')).body.user.emailNotifications).toBe(true);
     const res = await w.manager.api.patch('/api/v1/me/preferences', { emailNotifications: false });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ emailNotifications: false });
+    expect(res.body).toEqual({ emailNotifications: false, locale: null });
     expect((await w.manager.api.get('/api/v1/me')).body.user.emailNotifications).toBe(false);
     expect((await w.owner.get('/api/v1/me')).body.user.emailNotifications).toBe(true);
     // A worker without an email address can still set it; it has no effect.
-    expect((await w.workers[0].api.patch('/api/v1/me/preferences', { emailNotifications: false })).body).toEqual({ emailNotifications: false });
+    expect((await w.workers[0].api.patch('/api/v1/me/preferences', { emailNotifications: false })).body).toEqual({ emailNotifications: false, locale: null });
     expect((await w.workers[0].api.patch('/api/v1/me/preferences', {})).status).toBe(400);
+  });
+
+  it('stores the caller\'s language, leaves the other preference alone, and reports it on GET /me', async () => {
+    const w = await taskWorld(t);
+    expect((await w.manager.api.get('/api/v1/me')).body.user.locale).toBeNull();
+    const res = await w.manager.api.patch('/api/v1/me/preferences', { locale: 'ru' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ emailNotifications: true, locale: 'ru' });
+    expect((await w.manager.api.get('/api/v1/me')).body.user.locale).toBe('ru');
+    expect((await w.manager.api.patch('/api/v1/me/preferences', { emailNotifications: false })).body).toEqual({ emailNotifications: false, locale: 'ru' });
+    expect((await w.manager.api.patch('/api/v1/me/preferences', { locale: null })).body).toEqual({ emailNotifications: false, locale: null });
+    expect((await w.manager.api.patch('/api/v1/me/preferences', { locale: 'de' })).status).toBe(400);
+    expect((await w.owner.get('/api/v1/me')).body.user.locale).toBeNull();
   });
 
   it('registers a device idempotently, re-enables it, and removes it', async () => {

@@ -29,12 +29,15 @@ const tokenStore: TokenStore = {
 
 const cacheMe = (me: Me) => secureStorage.set(STORAGE_KEYS.me, JSON.stringify(me));
 
-/** A profile cached before sub-project 6 has no emailNotifications; the server's default (true) stands in until the next refresh. */
+/**
+ * A profile cached by an older app version lacks the preferences added since (emailNotifications before sub-project 6,
+ * locale before the language preference); the server's defaults stand in until the next refresh.
+ */
 function withPreferenceDefaults(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null) return raw;
   const user = (raw as { user?: unknown }).user;
-  if (typeof user !== 'object' || user === null || 'emailNotifications' in user) return raw;
-  return { ...raw, user: { ...user, emailNotifications: true } };
+  if (typeof user !== 'object' || user === null) return raw;
+  return { ...raw, user: { emailNotifications: true, locale: null, ...user } };
 }
 
 async function loadCachedMe(): Promise<Me | null> {

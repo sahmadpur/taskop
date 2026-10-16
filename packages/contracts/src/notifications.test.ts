@@ -126,9 +126,13 @@ describe('inbox schemas', () => {
     expect(registerPushDeviceSchema.safeParse({ expoToken: 'ExpoPushToken[abc]', platform: 'web' }).success).toBe(false);
   });
 
-  it('shares one preferences schema between read and update', () => {
-    expect(updatePreferencesSchema).toBe(preferencesSchema);
+  it('reads both preferences and updates any non-empty subset of them', () => {
+    expect(preferencesSchema.parse({ emailNotifications: false, locale: 'ru' })).toEqual({ emailNotifications: false, locale: 'ru' });
+    expect(preferencesSchema.safeParse({ emailNotifications: false }).success).toBe(false);
     expect(updatePreferencesSchema.parse({ emailNotifications: false })).toEqual({ emailNotifications: false });
+    expect(updatePreferencesSchema.parse({ locale: 'en' })).toEqual({ locale: 'en' });
+    expect(updatePreferencesSchema.parse({ locale: null })).toEqual({ locale: null });
+    expect(updatePreferencesSchema.safeParse({ locale: 'de' }).success).toBe(false);
     expect(updatePreferencesSchema.safeParse({}).success).toBe(false);
   });
 
@@ -216,12 +220,12 @@ describe('changes to existing contracts', () => {
 
   it('reports the email preference on the profile', () => {
     const me = {
-      user: { id: ID, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: false },
+      user: { id: ID, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: false, locale: 'en' },
       role: { id: ID, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
       permissions: [],
       tenant: { id: ID, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
     };
-    expect(meSchema.parse(me).user.emailNotifications).toBe(false);
+    expect(meSchema.parse(me).user).toMatchObject({ emailNotifications: false, locale: 'en' });
   });
 
   it('adds the notification permissions, with the role defaults', () => {

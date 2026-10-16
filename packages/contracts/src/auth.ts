@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { idSchema, isoDateTimeSchema } from './common.js';
 import { credentialKindSchema, emailSchema, orgCodeSchema, passwordSchema } from './credentials.js';
 import { dataScopeSchema, permissionKeySchema, systemRoleKeySchema } from './permissions.js';
+import { localeSchema } from './tenant.js';
 
 export const clientSchema = z.enum(['web', 'mobile']);
 export type Client = z.infer<typeof clientSchema>;
@@ -67,6 +68,8 @@ export const meSchema = z.object({
     credentialKind: credentialKindSchema.nullable(),
     /** B-12: the only per-user notification switch. */
     emailNotifications: z.boolean(),
+    /** The language server-generated text (e-mail, push, PDF, exports) uses for this user; null = the tenant's. */
+    locale: localeSchema.nullable(),
   }),
   role: z.object({ id: idSchema, name: z.string(), systemKey: systemRoleKeySchema.nullable(), dataScope: dataScopeSchema }),
   permissions: z.array(permissionKeySchema),

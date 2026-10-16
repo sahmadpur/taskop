@@ -13,6 +13,11 @@ export const timezoneSchema = z.string().refine(
   { error: 'errors.validation.timezone' },
 );
 
+/** The UI languages a user or tenant can choose; Azerbaijani is the source of truth. Mirrored by @taskop/i18n LANGUAGES. */
+export const LOCALES = ['az', 'en', 'ru'] as const;
+export const localeSchema = z.enum(LOCALES);
+export type Locale = z.infer<typeof localeSchema>;
+
 export const tenantDtoSchema = z.object({
   id: idSchema,
   name: z.string(),

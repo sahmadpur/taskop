@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { NotificationItem, NotificationType, Page, Preferences } from '@taskop/contracts';
+import { isLanguage } from '@taskop/i18n';
 import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { Clock } from '../common/clock';
@@ -101,13 +102,18 @@ export class InboxService {
       .where(and(eq(pushDevices.expoToken, token), eq(pushDevices.userId, p.userId)));
   }
 
+  /** Any subset of the preferences; a field left out keeps its value. */
   async updatePreferences(p: Principal, input: UpdatePreferencesDto): Promise<Preferences> {
     const [row] = await this.db
       .tx()
       .update(users)
-      .set({ emailNotifications: input.emailNotifications, updatedAt: this.clock.now() })
+      .set({
+        ...(input.emailNotifications === undefined ? {} : { emailNotifications: input.emailNotifications }),
+        ...(input.locale === undefined ? {} : { locale: input.locale }),
+        updatedAt: this.clock.now(),
+      })
       .where(eq(users.id, p.userId))
-      .returning({ emailNotifications: users.emailNotifications });
-    return { emailNotifications: row!.emailNotifications };
+      .returning({ emailNotifications: users.emailNotifications, locale: users.locale });
+    return { emailNotifications: row!.emailNotifications, locale: isLanguage(row!.locale) ? row!.locale : null };
   }
 }

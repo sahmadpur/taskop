@@ -17,7 +17,7 @@ vi.mock('@/lib/session', () => ({
 }));
 
 const me = (user: Record<string, unknown> = {}) => ({
-  user: { id: 'u1', fullName: 'Elvin Əhmədov', email: 'e@a.az', emailNotifications: true, ...user },
+  user: { id: 'u1', fullName: 'Elvin Əhmədov', email: 'e@a.az', emailNotifications: true, locale: null, ...user },
   tenant: { timezone: 'Asia/Baku', locale: 'az' },
 });
 
@@ -89,11 +89,11 @@ describe('NotificationPreferencesDialog', () => {
     mocks.me.current = me();
     sessionFollowsSetMe();
     // The user asked for "off", the server says "on" (e.g. changed from the phone meanwhile).
-    mocks.api.preferences.update.mockResolvedValue({ emailNotifications: true });
+    mocks.api.preferences.update.mockResolvedValue({ emailNotifications: true, locale: null });
     const { rerender } = renderDialog();
     const toggle = screen.getByRole('switch', { name: 'E-poçt bildirişləri' });
     await userEvent.click(toggle);
-    await waitFor(() => expect(mocks.setMe).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ emailNotifications: true }) })));
+    await waitFor(() => expect(mocks.setMe).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ emailNotifications: true, locale: null }) })));
     rerender();
     await waitFor(() => expect(toggle).toBeChecked());
   });

@@ -7,7 +7,7 @@ import { renderWithProviders } from '@/test/render';
 const state: { current: { status: string; me?: unknown } } = { current: { status: 'authenticated' } };
 const listeners = new Set<() => void>();
 const me = (permissions: string[]) => ({
-  user: { id: 'u', fullName: 'Elvin Əhmədov', jobTitle: null, kind: 'staff', email: 'e@a.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
+  user: { id: 'u', fullName: 'Elvin Əhmədov', jobTitle: null, kind: 'staff', email: 'e@a.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true, locale: null },
   role: { id: 'r', name: 'Manager', systemKey: 'manager', dataScope: 'site_subtree' },
   permissions,
   tenant: { id: 't', name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },

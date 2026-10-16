@@ -3,7 +3,7 @@ import { ApiClient, ApiError, createPlatformApi, createTaskopApi, memoryTokenSto
 
 const id = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 const me = {
-  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true },
+  user: { id, fullName: 'A B', jobTitle: null, kind: 'staff', email: 'a@b.az', username: null, emailVerified: true, credentialKind: 'password', emailNotifications: true, locale: null },
   role: { id, name: 'Owner', systemKey: 'owner', dataScope: 'all' },
   permissions: [],
   tenant: { id, name: 'Acme', orgCode: 'acme', timezone: 'Asia/Baku', locale: 'az' },
@@ -460,7 +460,7 @@ describe('notification endpoints', () => {
       if (url.includes('/push-devices')) return new Response(null, { status: 204 });
       if (url.endsWith('/unread-count')) return json(200, { count: 2 });
       if (url.includes('/me/notifications')) return json(200, { items: [item], nextCursor: null });
-      if (url.endsWith('/me/preferences')) return json(200, { emailNotifications: false });
+      if (url.endsWith('/me/preferences')) return json(200, { emailNotifications: false, locale: 'ru' });
       if (url.endsWith('/notification-rules')) return json(200, [rule]);
       if (url.includes('/notification-rules/')) return json(200, rule);
       if (url.includes('/messages/options')) return json(200, { users: [{ id, fullName: 'Nigar', jobTitle: null }], teams: [], sites: [] });
@@ -476,7 +476,7 @@ describe('notification endpoints', () => {
     await t.notifications.markAllRead();
     await t.pushDevices.register({ expoToken: token, platform: 'ios' });
     await t.pushDevices.remove(token);
-    expect(await t.preferences.update({ emailNotifications: false })).toEqual({ emailNotifications: false });
+    expect(await t.preferences.update({ emailNotifications: false })).toEqual({ emailNotifications: false, locale: 'ru' });
     expect(await t.notificationRules.list()).toEqual([rule]);
     await t.notificationRules.update('task.assigned', { enabled: true, push: true, email: false, notifyAssignees: true, notifyCreator: false, roleIds: [], leadMinutes: null });
     await t.notificationRules.reset('task.assigned');
