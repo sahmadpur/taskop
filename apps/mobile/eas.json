@@ -16,5 +16,7 @@
       "env": { "EXPO_PUBLIC_API_URL": "https://admin.taskop.app" }
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": { "ios": { "ascAppId": "6820003053" } }
+  }
 }
