@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { loadLanguage } from '@/lib/language';
+import { loadLanguage, setLanguage } from '@/lib/language';
 import i18n from '@/lib/i18n';
 import { session, useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -32,6 +32,12 @@ export default function RootLayout() {
       .then((lng) => i18n.changeLanguage(lng))
       .finally(() => setLanguageReady(true));
   }, []);
+
+  // A language saved on the profile wins over the phone's choice, so every device of the user agrees.
+  const profileLanguage = s.status === 'authenticated' ? s.me.user.locale : null;
+  useEffect(() => {
+    if (profileLanguage) void setLanguage(profileLanguage);
+  }, [profileLanguage]);
 
   if (s.status === 'loading' || !languageReady) {
     return (

@@ -11,7 +11,7 @@ const fetchMock = vi.hoisted(() => {
 const { session } = await import('./session');
 const { queryClient } = await import('./query');
 
-const me = { id: 'u1', permissions: [] } as unknown as Me;
+const me = { user: { id: 'u1', locale: null }, permissions: [] } as unknown as Me;
 const loginResult = { accessToken: 'access', refreshToken: null, me } as unknown as LoginResult;
 
 function unauthenticated(): Response {

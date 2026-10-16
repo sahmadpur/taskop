@@ -3,6 +3,7 @@ import { DEFAULT_LOCALE, type Language, LANGUAGE_STORAGE_KEY, resolveLanguage } 
 import { getLocales } from 'expo-localization';
 import { useTranslation } from 'react-i18next';
 import i18n from './i18n';
+import { api, session } from './session';
 
 const warn = (what: string, e: unknown) => console.warn(`[language] ${what}`, e instanceof Error ? e.message : 'unknown error');
 
@@ -30,6 +31,23 @@ export async function setLanguage(lng: Language): Promise<void> {
     await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, lng);
   } catch (e) {
     warn('Could not store the language', e);
+  }
+}
+
+/**
+ * The picker's action: the UI switches and the phone remembers the choice at once; a signed-in user's profile is
+ * updated too, so e-mails, push, PDFs and exports follow and other devices agree. A failed save (offline) keeps the
+ * local choice.
+ */
+export async function chooseLanguage(lng: Language): Promise<void> {
+  await setLanguage(lng);
+  const s = session.get();
+  if (s.status !== 'authenticated') return;
+  try {
+    const saved = await api.preferences.update({ locale: lng });
+    await session.patchUser({ locale: saved.locale }, s.me.user.id);
+  } catch (e) {
+    warn('Could not save the language to the profile', e);
   }
 }
 
