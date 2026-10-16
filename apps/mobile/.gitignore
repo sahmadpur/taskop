@@ -19,6 +19,9 @@ expo-env.d.ts
 *.mobileprovision
 # Firebase config for Android push: EAS builds use the GOOGLE_SERVICES_JSON file variable (decision 10)
 google-services.json
+# Firebase service-account key (FCM V1, uploaded to Expo): local copy only
+credentials/
+*firebase-adminsdk*.json
 
 # Metro
 .metro-health-check*
