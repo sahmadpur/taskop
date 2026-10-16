@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { REPORT_CONTENT_TYPES, REPORT_LIMITS, type ReportExportKind, type ReportExportParams, type ReportTaskCounts, reportFileName, type RunBucket } from '@taskop/contracts';
-import { az } from '@taskop/i18n';
+import { type Language, translationsFor } from '@taskop/i18n';
 import { and, eq, type SQL } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import type { Principal } from '../common/request';
+import { userLanguage } from '../common/locale';
 import { ScopeService } from '../common/scope.service';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
@@ -50,15 +51,18 @@ export class ReportExporter {
   async export(p: Principal, kind: ReportExportKind, q: ReportExportParams): Promise<ExportedFile> {
     if (kind === 'full' && q.format === 'csv') throw new AppError('VALIDATION_FAILED', { fields: { format: 'reports.issues.fullNotCsv' } });
     return this.reports.guarded(q, async (f) => {
-      const sections = await this.sections(p, kind, f, q);
+      // The requesting user's language (their locale, else the tenant's), for every label of the file.
+      const locale = await userLanguage(this.db.tx(), p.userId);
+      const sections = await this.sections(p, kind, f, q, locale);
       const doc: ReportDocument = {
-        title: az.reports.titles[kind],
+        title: translationsFor(locale).reports.titles[kind],
         tenantName: f.tenantName,
         from: f.from,
         to: f.to,
-        filters: await this.filterLabels(p, kind, f, q),
+        filters: await this.filterLabels(p, kind, f, q, locale),
         generatedAt: f.now,
         timezone: f.timezone,
+        locale,
         sections,
       };
       const body = q.format === 'csv' ? toCsv(doc) : q.format === 'xlsx' ? await toXlsx(doc) : await toPdf(doc);
@@ -87,34 +91,34 @@ export class ReportExporter {
     });
   }
 
-  private async sections(p: Principal, kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams): Promise<ReportTable[]> {
+  private async sections(p: Principal, kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams, locale: Language): Promise<ReportTable[]> {
     const occ: SQL | undefined = this.scheduling.occurrences(p);
     const taskScope = this.taskScope.readable(p);
     switch (kind) {
       case 'summary':
-        return summaryTables(await this.queries.summary(f, occ));
+        return summaryTables(await this.queries.summary(f, occ), locale);
       case 'sites': {
         const rows = await this.queries.sites(f, occ);
         assertCap(rows.length);
-        return [sitesTable(rows)];
+        return [sitesTable(rows, locale)];
       }
       case 'employees': {
         const rows = await this.queries.employees(f, occ);
         assertCap(rows.length);
-        return [employeesTable(rows)];
+        return [employeesTable(rows, locale)];
       }
       case 'runs': {
         const bucket = q.bucket ?? 'all';
         assertCap(await this.queries.countRuns(f, occ, bucket, q.auditState));
-        return [runsTable((await this.queries.runs(f, occ, bucket, { limit: null, auditState: q.auditState })).items, runsTitle(bucket))];
+        return [runsTable((await this.queries.runs(f, occ, bucket, { limit: null, auditState: q.auditState })).items, runsTitle(bucket, locale), locale)];
       }
       case 'problems': {
         assertCap((await this.queries.problemCounts(f, occ, q.severity)).total);
-        return [problemsTable((await this.queries.problems(f, occ, q.severity, { limit: null })).items)];
+        return [problemsTable((await this.queries.problems(f, occ, q.severity, { limit: null })).items, locale)];
       }
       case 'tasks': {
         assertCap(taskTotal(await this.queries.taskCounts(f, taskScope)));
-        return [tasksTable((await this.queries.tasks(f, taskScope, { limit: null })).items)];
+        return [tasksTable((await this.queries.tasks(f, taskScope, { limit: null })).items, locale)];
       }
       case 'full': {
         // Every list section is counted before any rows are read.
@@ -126,39 +130,40 @@ export class ReportExporter {
         const taskCount = taskTotal(await this.queries.taskCounts(f, taskScope));
         assertCap(Math.max(siteRows.length, employeeRows.length, ...runCounts, problemTotal, taskCount));
         const runSections: ReportTable[] = [];
-        for (const b of FULL_RUN_BUCKETS) runSections.push(runsTable((await this.queries.runs(f, occ, b, { limit: null })).items, az.reports.sheets[b]));
+        for (const b of FULL_RUN_BUCKETS) runSections.push(runsTable((await this.queries.runs(f, occ, b, { limit: null })).items, translationsFor(locale).reports.sheets[b], locale));
         return [
-          ...summaryTables(await this.queries.summary(f, occ)),
-          sitesTable(siteRows),
-          employeesTable(employeeRows),
+          ...summaryTables(await this.queries.summary(f, occ), locale),
+          sitesTable(siteRows, locale),
+          employeesTable(employeeRows, locale),
           ...runSections,
-          problemsTable((await this.queries.problems(f, occ, undefined, { limit: null })).items),
-          tasksTable((await this.queries.tasks(f, taskScope, { limit: null })).items),
+          problemsTable((await this.queries.problems(f, occ, undefined, { limit: null })).items, locale),
+          tasksTable((await this.queries.tasks(f, taskScope, { limit: null })).items, locale),
         ];
       }
     }
   }
 
   /** "Obyekt: Zona A1"-style lines for the PDF header; names as they are now, only for what the viewer's scope can see (else "—"). */
-  private async filterLabels(p: Principal, kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams): Promise<string[]> {
+  private async filterLabels(p: Principal, kind: ReportExportKind, f: ResolvedFilters, q: ReportExportParams, locale: Language): Promise<string[]> {
     const tx = this.db.tx();
-    const F = az.reports.filters;
+    const T = translationsFor(locale);
+    const F = T.reports.filters;
     const out: string[] = [];
     if (f.siteId) {
       const [s] = await tx.select({ name: sites.name }).from(sites).where(and(eq(sites.id, f.siteId), this.scheduling.readableSites(p)));
-      out.push(`${F.site}: ${s?.name ?? az.reports.noValue}`);
+      out.push(`${F.site}: ${s?.name ?? T.reports.noValue}`);
     }
     if (f.userId) {
       const [u] = await tx.select({ name: users.fullName }).from(users).where(and(eq(users.id, f.userId), this.scope.usersFilter(p)));
-      out.push(`${F.employee}: ${u?.name ?? az.reports.noValue}`);
+      out.push(`${F.employee}: ${u?.name ?? T.reports.noValue}`);
     }
     if (f.checklistId) {
       const [c] = await tx.select({ name: checklists.name }).from(checklists).where(eq(checklists.id, f.checklistId));
-      out.push(`${F.checklist}: ${c?.name ?? az.reports.noValue}`);
+      out.push(`${F.checklist}: ${c?.name ?? T.reports.noValue}`);
     }
-    if (kind === 'runs' && q.bucket && q.bucket !== 'all') out.push(`${F.bucket}: ${az.reports.buckets[q.bucket]}`);
-    if (kind === 'runs' && q.auditState) out.push(`${az.audits.audit}: ${az.audits.runAuditStates[q.auditState]}`);
-    if (kind === 'problems' && q.severity) out.push(`${F.severity}: ${az.executions.severities[q.severity]}`);
+    if (kind === 'runs' && q.bucket && q.bucket !== 'all') out.push(`${F.bucket}: ${T.reports.buckets[q.bucket]}`);
+    if (kind === 'runs' && q.auditState) out.push(`${T.audits.audit}: ${T.audits.runAuditStates[q.auditState]}`);
+    if (kind === 'problems' && q.severity) out.push(`${F.severity}: ${T.executions.severities[q.severity]}`);
     return out;
   }
 }

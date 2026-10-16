@@ -1,4 +1,4 @@
-import { az } from '@taskop/i18n';
+import { type Language, translationsFor } from '@taskop/i18n';
 import writeXlsxFile, { type Cell, type Row, type Sheet } from 'write-excel-file/node';
 import { type CellValue, type ReportColumn, type ReportDocument, wallClock } from './report-table';
 
@@ -15,7 +15,7 @@ export function sheetName(title: string, used: Set<string>): string {
 }
 
 /** Typed cells, so people can sort and sum (spec §5.4). Dates hold the tenant's wall clock (Spec decision 21). */
-function xlsxCell(col: ReportColumn, v: CellValue, tz: string): Cell {
+function xlsxCell(col: ReportColumn, v: CellValue, tz: string, locale: Language): Cell {
   if (v === null) return null;
   switch (col.type) {
     case 'text':
@@ -33,7 +33,7 @@ function xlsxCell(col: ReportColumn, v: CellValue, tz: string): Cell {
     case 'datetime':
       return { type: Date, value: wallClock(v as string, tz), format: 'dd.mm.yyyy hh:mm' };
     case 'bool':
-      return { type: String, value: v ? az.reports.yes : az.reports.no };
+      return { type: String, value: v ? translationsFor(locale).reports.yes : translationsFor(locale).reports.no };
   }
 }
 
@@ -46,7 +46,7 @@ export function toXlsx(doc: ReportDocument): Promise<Buffer> {
     sheet: sheetName(t.title, used),
     data: [
       t.columns.map((c): Cell => ({ type: String, value: c.label, fontWeight: 'bold' })),
-      ...t.rows.map((r): Row => r.map((v, i) => xlsxCell(t.columns[i]!, v, doc.timezone))),
+      ...t.rows.map((r): Row => r.map((v, i) => xlsxCell(t.columns[i]!, v, doc.timezone, doc.locale))),
     ],
     columns: t.columns.map((c) => ({ width: widthOf(c) })),
     stickyRowsCount: 1,

@@ -1,10 +1,10 @@
 import { type Language, LANGUAGE_NAMES, LANGUAGES } from '@taskop/i18n';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { setLanguage, useLocale } from '@/lib/language';
+import { chooseLanguage, useLocale } from '@/lib/language';
 import { colors, font, radius, spacing, type } from '@/lib/theme';
 
-/** Three chips, each language named in itself; the choice is stored on the phone. On the sign-in screen and in the profile. */
+/** Three chips, each language named in itself; the choice is stored on the phone and, when signed in, on the profile. On the sign-in screen and in the profile. */
 export function LanguagePicker({ testID = 'language-picker' }: { testID?: string }) {
   const { t } = useTranslation();
   const current = useLocale();
@@ -19,7 +19,7 @@ export function LanguagePicker({ testID = 'language-picker' }: { testID?: string
             accessibilityLabel={LANGUAGE_NAMES[lng]}
             accessibilityState={{ selected: on, checked: on }}
             testID={`${testID}-${lng}`}
-            onPress={() => void setLanguage(lng)}
+            onPress={() => void chooseLanguage(lng)}
             style={[styles.chip, on && styles.chipOn]}
           >
             <Text style={[styles.text, on && styles.textOn]}>{LANGUAGE_NAMES[lng]}</Text>

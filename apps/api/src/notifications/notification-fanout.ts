@@ -1,14 +1,16 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { NotificationRuleDto, NotificationType } from '@taskop/contracts';
+import type { Language } from '@taskop/i18n';
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
+import { userLanguages } from '../common/locale';
 import { sanitiseForLog } from '../common/error.filter';
 import { DbService } from '../db/db.service';
 import { notificationDeliveries, notificationEvents, notifications, pushDevices, users } from '../db/schema';
 import { JobsService } from '../scheduling/jobs.service';
 import { NotificationRecipients } from './notification-recipients';
 import { NotificationTargets } from './notification-targets';
-import { renderNotification } from './notification-templates';
+import { type RenderedNotification, renderNotification } from './notification-templates';
 import { type DeliverJob, deliveryJobs, type FanoutJob, failureText, NOTIFICATION_LIMITS, NOTIFICATION_QUEUES, NOTIFICATION_WORKER } from './queues';
 import { NotificationRules } from './rules.service';
 
@@ -111,13 +113,16 @@ export class NotificationFanout implements OnModuleInit {
       target.kind === 'manual' ? await this.recipients.forMessage(target) : await this.recipients.resolve(filtered ? { ...rule!, roleIds: [] } : rule!, target, ev.actorUserId);
     if (!userIds.length) return finish('no_recipients');
 
-    const rendered = renderNotification(type, target);
+    // Each recipient reads the notification in their own language (their locale, else the tenant's): one rendering per language.
+    const languages = await userLanguages(tx, userIds);
+    const rendered = new Map<Language, RenderedNotification>();
+    for (const lang of new Set(languages.values())) rendered.set(lang, renderNotification(type, target, lang));
     const push = target.kind === 'manual' ? true : rule!.push;
     const email = target.kind === 'manual' ? target.email : rule!.email;
     const now = this.clock.now();
     const inbox = await tx
       .insert(notifications)
-      .values(userIds.map((userId) => ({ tenantId: ev.tenantId, eventId: ev.id, userId, type, ...rendered, createdAt: now })))
+      .values(userIds.map((userId) => ({ tenantId: ev.tenantId, eventId: ev.id, userId, type, ...rendered.get(languages.get(userId)!)!, createdAt: now })))
       .onConflictDoNothing({ target: [notifications.eventId, notifications.userId] })
       .returning({ id: notifications.id, userId: notifications.userId });
     const rows: DeliveryInsert[] = [];

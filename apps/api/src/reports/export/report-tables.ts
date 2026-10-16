@@ -9,21 +9,25 @@ import {
   type RunCounts,
   type SiteReportRow,
 } from '@taskop/contracts';
-import { az } from '@taskop/i18n';
+import { type Language, translationsFor } from '@taskop/i18n';
 import type { CellValue, ReportColumn, ReportTable } from './report-table';
 
-const L = az.reports;
-const C = L.columns;
-
-const COUNT_COLUMNS: ReportColumn[] = RUN_COUNT_KEYS.map((k) => ({ label: L.counts[k], type: 'int' }));
+/** The report strings of a language, with the column groups every table shares. */
+function texts(locale: Language) {
+  const T = translationsFor(locale);
+  const L = T.reports;
+  const countColumns: ReportColumn[] = RUN_COUNT_KEYS.map((k) => ({ label: L.counts[k], type: 'int' }));
+  const measureColumns: ReportColumn[] = [
+    { label: L.measures.completionPercent, type: 'decimal' },
+    { label: L.measures.averageScore, type: 'decimal' },
+  ];
+  return { T, L, C: L.columns, countColumns, measureColumns };
+}
 const countCells = (c: RunCounts): CellValue[] => RUN_COUNT_KEYS.map((k) => c[k]);
-const measureColumns: ReportColumn[] = [
-  { label: L.measures.completionPercent, type: 'decimal' },
-  { label: L.measures.averageScore, type: 'decimal' },
-];
 
 /** The summary export: the measures, then the daily trend (Spec decision 17). */
-export function summaryTables(s: ReportSummary): ReportTable[] {
+export function summaryTables(s: ReportSummary, locale: Language): ReportTable[] {
+  const { L, C } = texts(locale);
   return [
     {
       title: L.sheets.summary,
@@ -38,27 +42,33 @@ export function summaryTables(s: ReportSummary): ReportTable[] {
   ];
 }
 
-export function sitesTable(rows: SiteReportRow[]): ReportTable {
+export function sitesTable(rows: SiteReportRow[], locale: Language): ReportTable {
+  const { L, C, countColumns, measureColumns } = texts(locale);
   return {
     title: L.sheets.sites,
-    columns: [{ label: C.site, type: 'text', width: 24 }, { label: C.path, type: 'text', width: 30 }, { label: C.active, type: 'bool' }, ...COUNT_COLUMNS, ...measureColumns],
+    columns: [{ label: C.site, type: 'text', width: 24 }, { label: C.path, type: 'text', width: 30 }, { label: C.active, type: 'bool' }, ...countColumns, ...measureColumns],
     rows: rows.map((r) => [r.name, r.path.join(' › '), r.active, ...countCells(r), r.completionPercent, r.averageScore]),
   };
 }
 
-export function employeesTable(rows: EmployeeReportRow[]): ReportTable {
+export function employeesTable(rows: EmployeeReportRow[], locale: Language): ReportTable {
+  const { L, C, countColumns, measureColumns } = texts(locale);
   return {
     title: L.sheets.employees,
-    columns: [{ label: C.employee, type: 'text', width: 24 }, { label: C.active, type: 'bool' }, ...COUNT_COLUMNS, ...measureColumns],
+    columns: [{ label: C.employee, type: 'text', width: 24 }, { label: C.active, type: 'bool' }, ...countColumns, ...measureColumns],
     rows: rows.map((r) => [r.name, r.active, ...countCells(r), r.completionPercent, r.averageScore]),
   };
 }
 
 /** "İcralar", or "İcralar (Buraxılmış)" for one bucket. */
-export const runsTitle = (bucket: RunBucket): string => (bucket === 'all' ? L.sheets.runs : `${L.sheets.runs} (${L.buckets[bucket]})`);
+export function runsTitle(bucket: RunBucket, locale: Language): string {
+  const { L } = texts(locale);
+  return bucket === 'all' ? L.sheets.runs : `${L.sheets.runs} (${L.buckets[bucket]})`;
+}
 
 /** Device start and completion beside the server receipt (FR-10.14), with the late and clock-suspect flags (spec §8). */
-export function runsTable(rows: ReportRun[], title: string): ReportTable {
+export function runsTable(rows: ReportRun[], title: string, locale: Language): ReportTable {
+  const { T, C } = texts(locale);
   return {
     title,
     columns: [
@@ -78,15 +88,15 @@ export function runsTable(rows: ReportRun[], title: string): ReportTable {
       { label: C.late, type: 'bool' },
       { label: C.clockSuspect, type: 'bool' },
       // SP8 spec §8.3.
-      { label: az.audits.audit, type: 'text', width: 16 },
-      { label: az.corrections.corrected, type: 'bool' },
+      { label: T.audits.audit, type: 'text', width: 16 },
+      { label: T.corrections.corrected, type: 'bool' },
     ],
     rows: rows.map((r) => [
       r.localDate,
       r.dueAt,
       r.checklist.name,
       r.site.name,
-      az.scheduling.statuses[r.status],
+      T.scheduling.statuses[r.status],
       r.assignees.map((a) => a.fullName).join(', '),
       r.executor?.fullName ?? null,
       r.startedAt,
@@ -97,13 +107,14 @@ export function runsTable(rows: ReportRun[], title: string): ReportTable {
       r.criticalCount,
       r.late,
       r.clockSuspect,
-      r.auditState ? az.audits.runAuditStates[r.auditState] : null,
+      r.auditState ? T.audits.runAuditStates[r.auditState] : null,
       r.corrected,
     ]),
   };
 }
 
-export function problemsTable(rows: ReportProblem[]): ReportTable {
+export function problemsTable(rows: ReportProblem[], locale: Language): ReportTable {
+  const { T, L, C } = texts(locale);
   return {
     title: L.sheets.problems,
     columns: [
@@ -124,18 +135,19 @@ export function problemsTable(rows: ReportProblem[]): ReportTable {
       p.siteName,
       p.checklistName,
       p.itemLabel,
-      az.executions.severities[p.severity],
-      az.executions.problemSources[p.source],
+      T.executions.severities[p.severity],
+      T.executions.problemSources[p.source],
       p.note,
       p.executorName,
       p.createdAt,
-      az.tasks.resolutions[p.resolution],
-      p.taskStatus ? az.tasks.statuses[p.taskStatus] : null,
+      T.tasks.resolutions[p.resolution],
+      p.taskStatus ? T.tasks.statuses[p.taskStatus] : null,
     ]),
   };
 }
 
-export function tasksTable(rows: ReportTask[]): ReportTable {
+export function tasksTable(rows: ReportTask[], locale: Language): ReportTable {
+  const { T, L, C } = texts(locale);
   return {
     title: L.sheets.tasks,
     columns: [
@@ -152,8 +164,8 @@ export function tasksTable(rows: ReportTask[]): ReportTable {
       x.title,
       x.site?.name ?? null,
       x.assignee?.fullName ?? x.team?.name ?? null,
-      az.tasks.statuses[x.status],
-      az.tasks.priorities[x.priority],
+      T.tasks.statuses[x.status],
+      T.tasks.priorities[x.priority],
       x.dueAt,
       x.completedAt,
       x.overdue,

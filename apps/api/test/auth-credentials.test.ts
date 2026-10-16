@@ -28,6 +28,15 @@ describe('password reset', () => {
     expect(again.body.error.code).toBe('TOKEN_INVALID');
   });
 
+  it('mails the reset link in the language the user chose', async () => {
+    const s = await signupTenant(t);
+    await ownerQuery('update users set locale = $2 where id = $1', [s.ownerId, 'en']);
+    await t.http().post('/api/v1/auth/password/forgot').send({ email: s.email });
+    await vi.waitFor(() => t.mailer.tokenFor(s.email));
+    expect(t.mailer.lastTo(s.email)?.subject).toBe('Taskop — password reset');
+    expect(t.mailer.lastTo(s.email)?.text).toContain('Open the link to set a new password');
+  });
+
   it('rejects expired reset tokens', async () => {
     const s = await signupTenant(t);
     await t.http().post('/api/v1/auth/password/forgot').send({ email: s.email });

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Me } from '@taskop/contracts';
+import { isLanguage } from '@taskop/i18n';
 import { eq } from 'drizzle-orm';
 import { AppError } from '../common/app-error';
 import { DbService } from '../db/db.service';
@@ -33,6 +34,7 @@ export class MeService {
         emailVerified: row.user.emailVerifiedAt !== null,
         credentialKind: row.user.credentialKind,
         emailNotifications: row.user.emailNotifications,
+        locale: isLanguage(row.user.locale) ? row.user.locale : null,
       },
       role: { id: row.role.id, name: row.role.name, systemKey: row.role.systemKey, dataScope },
       permissions,

@@ -3,11 +3,12 @@ import { Check, Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { setLanguage, useLocale } from '@/lib/i18n';
+import { chooseLanguage } from '@/lib/choose-language';
+import { useLocale } from '@/lib/i18n';
 
 /**
  * The language selector: a globe button opening the three languages, each named in itself. The choice is kept in
- * localStorage (decision: no server-side preference yet). `compact` shows only the icon, for the app header.
+ * localStorage and, while signed in, on the profile (chooseLanguage). `compact` shows only the icon, for the app header.
  */
 export function LanguageMenu({ compact = false, className }: { compact?: boolean; className?: string }) {
   const { t } = useTranslation();
@@ -22,7 +23,7 @@ export function LanguageMenu({ compact = false, className }: { compact?: boolean
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48" aria-label={t('common.language')}>
         {LANGUAGES.map((lng: Language) => (
-          <DropdownMenuItem key={lng} lang={lng} aria-current={lng === current ? 'true' : undefined} onSelect={() => void setLanguage(lng)}>
+          <DropdownMenuItem key={lng} lang={lng} aria-current={lng === current ? 'true' : undefined} onSelect={() => void chooseLanguage(lng)}>
             <span className="flex-1">{LANGUAGE_NAMES[lng]}</span>
             {lng === current && <Check aria-hidden />}
           </DropdownMenuItem>

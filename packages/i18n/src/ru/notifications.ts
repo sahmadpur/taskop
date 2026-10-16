@@ -38,8 +38,21 @@ export default {
   leadMinutes: 'За {{count}} мин',
   /** audit.finished's rule option (SP8 spec §7.1). */
   resultFilters: { any: 'Все результаты', failed: 'Только непройденные аудиты' },
-  /** Push and inbox texts of the SP8 types, rendered once at fan-out. */
+  /** Push and inbox texts, rendered at fan-out in each recipient's language (apps/api notification-templates.ts). */
   templates: {
+    'checklist.assigned': { title: 'Назначен новый чек-лист', body: '{{checklist}} — {{site}}' },
+    'checklist.available': { title: 'Чек-лист начался', body: '{{place}}. Срок: {{time}}.' },
+    'checklist.due_soon': { title: 'Скоро срок чек-листа', body: '{{place}}. Завершите до {{time}}.' },
+    'checklist.overdue': { title: 'Чек-лист опаздывает', body: '{{place}}. Срок был {{time}} ({{date}}).' },
+    'checklist.missed': { title: 'Чек-лист не выполнен', body: '{{place}}, {{date}}.' },
+    'problem.recorded': { title: 'Новая проблема', body: '{{site}}, {{checklist}}' },
+    'problem.critical': { title: 'Критичная проблема!', body: '{{site}}, {{checklist}}' },
+    'task.assigned': { title: 'Новая задача', body: '{{title}}', due: '{{title}}. Срок: {{date}}.' },
+    'task.submitted': { title: 'Задача отправлена на проверку', body: '{{title}}' },
+    'task.rejected': { title: 'Задача возвращена', body: '{{title}}' },
+    'task.completed': { title: 'Задача завершена', body: '{{title}}' },
+    'task.overdue': { title: 'Задача просрочена', body: '{{title}}', due: '{{title}}. Срок был {{date}}.' },
+    'task.cancelled': { title: 'Задача отменена', body: '{{title}}' },
     'run.correction_required': {
       title: 'Требуется исправление',
       body: '{{checklist}} — {{site}}: пунктов на исправление: {{count}}.',

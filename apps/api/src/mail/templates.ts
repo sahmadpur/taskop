@@ -1,34 +1,41 @@
 import { AUDIT_REPORT_CONTENT_TYPE, type AuditResult } from '@taskop/contracts';
-import { az, interpolate } from '@taskop/i18n';
+import { interpolate, type Language, translationsFor } from '@taskop/i18n';
 import type { MailMessage } from './mailer';
 
 const link = (webUrl: string, path: string, token: string) => `${webUrl}${path}?token=${encodeURIComponent(token)}`;
 
-export function verifyEmailMail(p: { to: string; fullName: string; webUrl: string; token: string }): MailMessage {
+/** Every account e-mail: the recipient, their name, the web app and the one-time token, in the recipient's language. */
+interface AccountMail {
+  to: string;
+  fullName: string;
+  webUrl: string;
+  token: string;
+  locale: Language;
+}
+
+export function verifyEmailMail(p: AccountMail): MailMessage {
+  const T = translationsFor(p.locale).mail.verifyEmail;
+  return { to: p.to, subject: T.subject, text: interpolate(T.body, { name: p.fullName, link: link(p.webUrl, '/verify-email', p.token) }) };
+}
+
+export function inviteMail(p: AccountMail & { orgName: string }): MailMessage {
+  const T = translationsFor(p.locale).mail.invite;
   return {
     to: p.to,
-    subject: 'Taskop — e-poçt ünvanınızı təsdiqləyin',
-    text: `Salam, ${p.fullName}!\n\nTaskop hesabınızı aktivləşdirmək üçün e-poçt ünvanınızı təsdiqləyin:\n${link(p.webUrl, '/verify-email', p.token)}\n\nKeçid 72 saat etibarlıdır.`,
+    subject: interpolate(T.subject, { org: oneLine(p.orgName) }),
+    text: interpolate(T.body, { name: p.fullName, org: p.orgName, link: link(p.webUrl, '/accept-invite', p.token) }),
   };
 }
 
-export function inviteMail(p: { to: string; fullName: string; orgName: string; webUrl: string; token: string }): MailMessage {
-  return {
-    to: p.to,
-    subject: `Taskop — ${p.orgName} təşkilatına dəvət`,
-    text: `Salam, ${p.fullName}!\n\nSizi Taskop-da "${p.orgName}" təşkilatına dəvət ediblər. Şifrənizi təyin etmək üçün keçidə daxil olun:\n${link(p.webUrl, '/accept-invite', p.token)}\n\nKeçid 7 gün etibarlıdır.`,
-  };
+export function passwordResetMail(p: AccountMail): MailMessage {
+  const T = translationsFor(p.locale).mail.passwordReset;
+  return { to: p.to, subject: T.subject, text: interpolate(T.body, { name: p.fullName, link: link(p.webUrl, '/reset-password', p.token) }) };
 }
 
-export function passwordResetMail(p: { to: string; fullName: string; webUrl: string; token: string }): MailMessage {
-  return {
-    to: p.to,
-    subject: 'Taskop — şifrənin bərpası',
-    text: `Salam, ${p.fullName}!\n\nŞifrənizi yeniləmək üçün keçidə daxil olun:\n${link(p.webUrl, '/reset-password', p.token)}\n\nKeçid 1 saat etibarlıdır. Bu sorğunu siz etməmisinizsə, məktubu nəzərə almayın.`,
-  };
-}
+// A header must stay on one line: a name with a line break would otherwise end the subject early (header injection).
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-/** SP8 spec §7.2: plain text with the PDF attached; one message per recipient. */
+/** SP8 spec §7.2: plain text with the PDF attached; one message per recipient, in the auditor's language. */
 export function auditReportMail(p: {
   to: string;
   checklistName: string;
@@ -38,13 +45,14 @@ export function auditReportMail(p: {
   auditorName: string;
   pdf: Buffer;
   filename: string;
+  locale: Language;
 }): MailMessage {
-  const vars = { checklist: p.checklistName, site: p.siteName, date: p.localDate.split('-').reverse().join('.'), result: az.audits.results[p.result], auditor: p.auditorName };
+  const T = translationsFor(p.locale).audits;
+  const vars = { checklist: p.checklistName, site: p.siteName, date: p.localDate.split('-').reverse().join('.'), result: T.results[p.result], auditor: p.auditorName };
   return {
     to: p.to,
-    // A header must stay on one line: a name with a line break would otherwise end the subject early (header injection).
-    subject: interpolate(az.audits.email.subject, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v.replace(/\s+/g, ' ').trim()]))),
-    text: interpolate(az.audits.email.body, vars),
+    subject: interpolate(T.email.subject, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, oneLine(v)]))),
+    text: interpolate(T.email.body, vars),
     attachments: [{ filename: p.filename, content: p.pdf, contentType: AUDIT_REPORT_CONTENT_TYPE }],
   };
 }

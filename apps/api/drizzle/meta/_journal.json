@@ -120,6 +120,13 @@
       "when": 1792049620314,
       "tag": "0016_audit_corrections_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792127724573,
+      "tag": "0017_user_locale",
+      "breakpoints": true
     }
   ]
 }

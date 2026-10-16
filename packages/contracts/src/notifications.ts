@@ -3,6 +3,7 @@ import { cursorQuerySchema, idSchema, isoDateTimeSchema } from './common.js';
 import { userRefSchema } from './occurrences.js';
 import type { SystemRoleKey } from './permissions.js';
 import { localDateSchema } from './scheduling-time.js';
+import { localeSchema } from './tenant.js';
 
 /** Spec §3.1. Every notification type; `manual` is an admin message and has no rule. */
 export const NOTIFICATION_TYPES = [
@@ -212,10 +213,11 @@ export const registerPushDeviceSchema = z.object({
 });
 export type RegisterPushDeviceInput = z.input<typeof registerPushDeviceSchema>;
 
-/** The caller's notification preferences; PUT takes the same shape. */
-export const preferencesSchema = z.object({ emailNotifications: z.boolean() });
+/** The caller's preferences: the e-mail switch (B-12) and the language of server-generated text (null = the tenant's). */
+export const preferencesSchema = z.object({ emailNotifications: z.boolean(), locale: localeSchema.nullable() });
 export type Preferences = z.infer<typeof preferencesSchema>;
-export const updatePreferencesSchema = preferencesSchema;
+/** PATCH: any subset, at least one field. */
+export const updatePreferencesSchema = preferencesSchema.partial().refine((v) => Object.keys(v).length > 0, { error: 'errors.validation.required' });
 export type UpdatePreferencesInput = z.input<typeof updatePreferencesSchema>;
 
 /** The `data` of every push (spec §6.1 step 5). The phone parses it with safeParse. */

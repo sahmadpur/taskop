@@ -153,6 +153,8 @@ export const users = pgTable(
     totpSecretEnc: text('totp_secret_enc'),
     // B-12: the only per-user notification switch (SP6 spec §5).
     emailNotifications: boolean('email_notifications').notNull().default(true),
+    // The language of server-generated text for this user; null = the tenant's locale.
+    locale: text('locale'),
     status: userStatus('status').notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -163,6 +165,7 @@ export const users = pgTable(
     foreignKey({ columns: [t.tenantId, t.managerId], foreignColumns: [t.tenantId, t.id], name: 'users_manager_fk' }),
     foreignKey({ columns: [t.tenantId, t.roleId], foreignColumns: [roles.tenantId, roles.id], name: 'users_role_fk' }),
     check('users_username_lower', sql`${t.username} = lower(${t.username})`),
+    check('users_locale_ck', sql`${t.locale} in ('az', 'en', 'ru')`),
     check(
       'users_kind_identity',
       sql`(${t.kind} = 'staff' and ${t.email} is not null) or (${t.kind} = 'worker' and ${t.username} is not null)`,

@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { NotificationTargetKind, NotificationType, PushData } from '@taskop/contracts';
+import { type Language, pickLanguage } from '@taskop/i18n';
 import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { Clock } from '../common/clock';
+import { tenantLanguage } from '../common/locale';
 import { sanitiseForLog } from '../common/error.filter';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { DbService, type Tx } from '../db/db.service';
@@ -74,6 +76,8 @@ interface Claimed {
   userActive: boolean;
   email: string | null;
   emailNotifications: boolean;
+  /** The recipient's language for the e-mail wrapper (their locale, else the tenant's). */
+  locale: Language;
   expoToken: string | null;
   deviceDisabled: boolean;
 }
@@ -147,6 +151,7 @@ export class NotificationDelivery implements OnModuleInit {
       )
       .returning({ id: notificationDeliveries.id });
     if (!claimed.length) return { push: [], email: [] };
+    const tenantLocale = await tenantLanguage(tx);
 
     const rows: Claimed[] = (
       await tx
@@ -165,6 +170,7 @@ export class NotificationDelivery implements OnModuleInit {
           userStatus: users.status,
           email: users.email,
           emailNotifications: users.emailNotifications,
+          locale: users.locale,
           expoToken: pushDevices.expoToken,
           disabledAt: pushDevices.disabledAt,
         })
@@ -176,6 +182,7 @@ export class NotificationDelivery implements OnModuleInit {
         .orderBy(notificationDeliveries.id)
     ).map(({ userStatus, disabledAt, ...r }) => ({
       ...r,
+      locale: pickLanguage(r.locale, tenantLocale),
       type: r.type as NotificationType,
       userActive: userStatus === 'active',
       deviceDisabled: disabledAt !== null,
@@ -240,7 +247,7 @@ export class NotificationDelivery implements OnModuleInit {
   private async sendEmail(job: DeliverJob, item: EmailItem, claimedAt: Date): Promise<void> {
     let result: AttemptResult;
     try {
-      await this.mailer.send(notificationMail({ to: item.email, webUrl: this.config.WEB_URL, notification: item }));
+      await this.mailer.send(notificationMail({ to: item.email, webUrl: this.config.WEB_URL, locale: item.locale, notification: item }));
       result = { status: 'sent', providerRef: null };
     } catch (e) {
       if (!permanentSmtp(e)) {

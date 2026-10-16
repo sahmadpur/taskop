@@ -1,10 +1,11 @@
-import { az } from './az/index.js';
+import { az, type Translations } from './az/index.js';
 import { en } from './en/index.js';
 import { ru } from './ru/index.js';
 
 export { az, en, ru };
 export type { Translations } from './az/index.js';
-export type { Shape } from './shape.js';
+import type { Shape } from './shape.js';
+export type { Shape };
 export * from './format.js';
 
 /** The UI languages, in the order the selectors list them. Azerbaijani is the source of truth and the default. */
@@ -33,3 +34,14 @@ export function resolveLanguage(stored: unknown, preferred: readonly string[] = 
 export const LANGUAGE_STORAGE_KEY = 'taskop.language';
 
 export const resources = { az: { translation: az }, en: { translation: en }, ru: { translation: ru } } as const;
+
+/** The first candidate that is a language, else Azerbaijani: `pickLanguage(user.locale, tenant.locale)` on the server. */
+export function pickLanguage(...candidates: readonly unknown[]): Language {
+  for (const c of candidates) if (isLanguage(c)) return c;
+  return DEFAULT_LOCALE;
+}
+
+const BUNDLES: Record<Language, Shape<Translations>> = { az, en, ru };
+
+/** The whole bundle of a language, for server-side rendering (e-mail, push, PDF, exports). */
+export const translationsFor = (locale: Language): Shape<Translations> => BUNDLES[locale];

@@ -1,6 +1,15 @@
 import { emptyRunCounts, type ReportProblem, type ReportRun, type ReportSummary, type ReportTask, type SiteReportRow } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
-import { employeesTable, problemsTable, runsTable, runsTitle, sitesTable, summaryTables, tasksTable } from './report-tables';
+import * as T from './report-tables';
+
+// The Azerbaijani tables, which most cases check.
+const summaryTables = (s: ReportSummary) => T.summaryTables(s, 'az');
+const sitesTable = (r: SiteReportRow[]) => T.sitesTable(r, 'az');
+const employeesTable = (r: Parameters<typeof T.employeesTable>[0]) => T.employeesTable(r, 'az');
+const runsTable = (r: ReportRun[], title: string) => T.runsTable(r, title, 'az');
+const runsTitle = (b: Parameters<typeof T.runsTitle>[0]) => T.runsTitle(b, 'az');
+const problemsTable = (r: ReportProblem[]) => T.problemsTable(r, 'az');
+const tasksTable = (r: ReportTask[]) => T.tasksTable(r, 'az');
 
 const ID = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e5f';
 
@@ -69,5 +78,25 @@ describe('report tables', () => {
       dueAt: '2026-11-03T08:00:00.000Z', completedAt: '2026-11-03T09:00:00.000Z', createdAt: '2026-11-01T08:00:00.000Z', overdue: true, problemId: null,
     };
     expect(tasksTable([task]).rows[0]).toEqual(['Qapını təmir et', null, 'Texniki xidmət', 'Tamamlanıb', 'Yüksək', '2026-11-03T08:00:00.000Z', '2026-11-03T09:00:00.000Z', true]);
+  });
+});
+
+describe('report table languages', () => {
+  it('labels the headings, columns and enum cells in English and Russian', () => {
+    const run: ReportRun = {
+      occurrenceId: ID, executionId: ID, localDate: '2026-11-02', dueAt: '2026-11-02T06:00:00.000Z',
+      checklist: { id: ID, name: 'Açılış yoxlaması' }, site: { id: ID, name: 'Zona A1' }, status: 'completed',
+      assignees: [], executor: null, startedAt: null, completedAt: null, completedReceivedAt: null,
+      score: null, problemCount: 0, criticalCount: 0, late: false, clockSuspect: false, auditState: 'passed', corrected: false,
+    };
+    const en = T.runsTable([run], T.runsTitle('missed', 'en'), 'en');
+    expect(en.title).toBe('Runs (Missed)');
+    expect(en.columns.slice(0, 5).map((c) => c.label)).toEqual(['Date', 'Due by', 'Checklist', 'Site', 'Status']);
+    expect(en.rows[0]![4]).toBe('Completed');
+    expect(en.rows[0]![15]).toBe('Audit passed');
+    const ru = T.runsTable([run], T.runsTitle('all', 'ru'), 'ru');
+    expect(ru.title).toBe('Выполнения');
+    expect(ru.rows[0]![4]).toBe('Завершено');
+    expect(T.summaryTables({ counts: emptyRunCounts(), completionPercent: 0, averageScore: null, trend: [] }, 'en')[0]!.title).toBe('Summary');
   });
 });

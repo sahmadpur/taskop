@@ -45,9 +45,9 @@ A ring with a check whose long stroke breaks out through the ring at the top rig
 
 ## Languages
 
-Azerbaijani (default), English, Russian, as asked. The `intlLocale` map already knows Turkish but it is not added. The choice is stored locally (`localStorage` on the web and the landing page, AsyncStorage/SecureStore on mobile) and read before i18next initialises. Dates, numbers and percentages format with the UI language through a shared `@taskop/i18n` formatter, which also fixes the Chromium az month-name gap with its own month and weekday names. No server-side preference in this round; if you want one, the API gets a nullable `locale` on the user profile and the web/mobile selectors write it in a follow-up.
+Azerbaijani (default), English, Russian, as asked. The `intlLocale` map already knows Turkish but it is not added. The choice is stored locally (`localStorage` on the web and the landing page, AsyncStorage/SecureStore on mobile) and read before i18next initialises. Dates, numbers and percentages format with the UI language through a shared `@taskop/i18n` formatter, which also fixes the Chromium az month-name gap with its own month and weekday names. Follow-up done (Redesign 4/4): the user profile carries a nullable `locale` (PATCH `/me/preferences`), the web and mobile selectors write it while signed in, and a profile language applies on sign-in so every device agrees; the landing page stays local-only.
 
-Server-generated text (emails, the audit PDF, push notifications, exports) stays Azerbaijani; it is listed as a follow-up.
+Server-generated text follows the language too (Redesign 4/4): e-mails and notifications in the recipient's language, the audit PDF and its covering e-mail in the auditor's, exports in the requester's; the tenant locale is the fallback for a user without a choice, an invitee or a platform admin.
 
 ## Landing page: Astro
 

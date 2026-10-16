@@ -38,8 +38,21 @@ export default {
   leadMinutes: '{{count}} min before',
   /** audit.finished's rule option (SP8 spec §7.1). */
   resultFilters: { any: 'All results', failed: 'Failed audits only' },
-  /** Push and inbox texts of the SP8 types, rendered once at fan-out. */
+  /** Push and inbox texts, rendered at fan-out in each recipient's language (apps/api notification-templates.ts). */
   templates: {
+    'checklist.assigned': { title: 'New checklist assigned', body: '{{checklist}} — {{site}}' },
+    'checklist.available': { title: 'Checklist started', body: '{{place}}. Due: {{time}}.' },
+    'checklist.due_soon': { title: 'Checklist due soon', body: '{{place}}. Complete by {{time}}.' },
+    'checklist.overdue': { title: 'Checklist overdue', body: '{{place}}. Was due at {{time}} ({{date}}).' },
+    'checklist.missed': { title: 'Checklist not completed', body: '{{place}}, {{date}}.' },
+    'problem.recorded': { title: 'New problem', body: '{{site}}, {{checklist}}' },
+    'problem.critical': { title: 'Critical problem!', body: '{{site}}, {{checklist}}' },
+    'task.assigned': { title: 'New task', body: '{{title}}', due: '{{title}}. Due: {{date}}.' },
+    'task.submitted': { title: 'Task submitted for review', body: '{{title}}' },
+    'task.rejected': { title: 'Task sent back', body: '{{title}}' },
+    'task.completed': { title: 'Task completed', body: '{{title}}' },
+    'task.overdue': { title: 'Task overdue', body: '{{title}}', due: '{{title}}. Was due {{date}}.' },
+    'task.cancelled': { title: 'Task cancelled', body: '{{title}}' },
     'run.correction_required': {
       title: 'Correction required',
       body: '{{checklist}} — {{site}}: {{count}} items await correction.',

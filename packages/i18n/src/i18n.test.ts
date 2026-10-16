@@ -52,7 +52,7 @@ import {
   TASK_STATUSES,
   TEMPLATE_CATEGORIES,
 } from '@taskop/contracts';
-import { az, en, formatDate, formatDateTime, formatLocalDate, formatNumber, formatPercent, formatShortDate, formatTime, interpolate, LANGUAGE_NAMES, LANGUAGES, resolveLanguage, resources, ru } from './index.js';
+import { az, en, formatDate, formatDateTime, formatLocalDate, formatNumber, formatPercent, formatShortDate, formatTime, interpolate, LANGUAGE_NAMES, LANGUAGES, pickLanguage, resolveLanguage, resources, ru, translationsFor } from './index.js';
 
 describe('az translations', () => {
   it('has a message for every API error code', () => {
@@ -672,5 +672,30 @@ describe('audit and correction web translations', () => {
     expect(az.corrections.original).toBe('İlkin');
     expect(az.corrections.emptyAnswer).toBe('Cavab yoxdur');
     expect(az.nav.audits).toBe('Auditlər');
+  });
+});
+
+describe('server-side language', () => {
+  it('picks the first candidate that is a language, else Azerbaijani', () => {
+    expect(pickLanguage(null, 'ru')).toBe('ru');
+    expect(pickLanguage('en', 'ru')).toBe('en');
+    expect(pickLanguage(undefined, null, 'de')).toBe('az');
+    expect(pickLanguage()).toBe('az');
+  });
+  it('returns the bundle of a language', () => {
+    expect(translationsFor('az')).toBe(az);
+    expect(translationsFor('en')).toBe(en);
+    expect(translationsFor('ru')).toBe(ru);
+  });
+  it('has the mail texts and every server notification text in every language', () => {
+    for (const t of [az, en, ru]) {
+      for (const k of ['verifyEmail', 'invite', 'passwordReset'] as const) {
+        expect(t.mail[k].subject).toBeTypeOf('string');
+        expect(t.mail[k].body).toContain('{{link}}');
+      }
+      expect(t.mail.notification.open).toContain('{{link}}');
+      expect(t.mail.notification.footer).toBeTypeOf('string');
+      for (const type of NOTIFICATION_TYPES) if (type !== 'manual') expect(t.notifications.templates[type].title, type).toBeTypeOf('string');
+    }
   });
 });

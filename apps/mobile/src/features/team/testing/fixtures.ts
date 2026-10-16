@@ -56,7 +56,7 @@ export function teamMe(o: { id?: string; permissions?: PermissionKey[]; dataScop
       username: null,
       emailVerified: true,
       credentialKind: 'password',
-      emailNotifications: true,
+      emailNotifications: true, locale: null,
     },
     role: { id: ROLE, name: 'Manager', systemKey: 'manager', dataScope: o.dataScope ?? 'site_subtree' },
     permissions: o.permissions ?? ['assignments.view', 'reports.view', 'reports.export'],

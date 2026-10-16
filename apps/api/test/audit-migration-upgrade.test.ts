@@ -75,7 +75,9 @@ describe('upgrading an existing database to the SP8 migrations (0015, 0016)', ()
     await after.connect();
     try {
       const applied = await after.query('select count(*)::int as n from drizzle.__drizzle_migrations');
-      expect(applied.rows[0].n).toBe(17);
+      // Every migration in the journal, whatever has been added since 0016.
+      const journalEntries = (JSON.parse(readFileSync(path.join(DRIZZLE_DIR, 'meta', '_journal.json'), 'utf8')) as { entries: unknown[] }).entries.length;
+      expect(applied.rows[0].n).toBe(journalEntries);
       const tables = await after.query(
         "select relname from pg_class where relname = any($1) and relkind = 'r' order by relname",
         [['audit_item_verdicts', 'audits', 'execution_corrections', 'execution_rework_requests']],

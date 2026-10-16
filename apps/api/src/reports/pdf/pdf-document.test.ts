@@ -12,6 +12,7 @@ const doc: ReportDocument = {
   filters: ['Obyekt: Zona A1'],
   generatedAt: new Date('2026-11-04T08:00:00Z'),
   timezone: 'Asia/Baku',
+  locale: 'az',
   sections: [
     { title: 'Xülasə', columns: [{ label: 'Göstərici', type: 'text' }, { label: 'Dəyər', type: 'number' }], rows: [['Tamamlanma faizi', 53.8], ['Planlaşdırılıb', 15], ['Orta bal', null]] },
     { title: 'Tapşırıqlar', columns: [{ label: 'Başlıq', type: 'text' }], rows: [] },
@@ -34,6 +35,13 @@ describe('PDF writer', () => {
     ]) {
       expect(flat, s).toContain(s);
     }
+  });
+
+  it('prints the fixed texts in English and Russian', async () => {
+    const en = (await extractText(new Uint8Array(await toPdf({ ...doc, filters: [], locale: 'en' })), { mergePages: true })).text.replace(/\s+/g, ' ');
+    for (const s of ['Period: 02.11.2026 – 04.11.2026', 'Filters: none', 'Generated: 04.11.2026 12:00', 'No data.', 'Page 1 / 1']) expect(en, s).toContain(s);
+    const ru = (await extractText(new Uint8Array(await toPdf({ ...doc, locale: 'ru' })), { mergePages: true })).text.replace(/\s+/g, ' ');
+    for (const s of ['Период: 02.11.2026 – 04.11.2026', 'Страница 1 / 1']) expect(ru, s).toContain(s);
   });
 
   it('says "yoxdur" without filters', async () => {

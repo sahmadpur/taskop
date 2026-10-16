@@ -40,7 +40,7 @@ describe('audit report performance', () => {
       startedAt: new Date('2026-11-02T04:10:00Z'), completedAt: new Date('2026-11-02T05:00:00Z'), syncedAt: new Date('2026-11-02T05:00:00Z'),
       auditorName: 'Auditor', finishedAt: new Date('2026-11-02T06:00:00Z'), result: 'passed',
       auditScore: { approved: 171, rejected: 29, reviewed: 200, percent: 85.5 }, runScore: 90, originalScore: 80, comment: null,
-      sections, generatedAt: new Date('2026-11-02T06:01:00Z'),
+      sections, generatedAt: new Date('2026-11-02T06:01:00Z'), locale: 'az',
     };
     // maxRSS is a high-water mark, so it does not depend on when V8 collects (spec §7.2). Collect first when node runs with --expose-gc (optional).
     (globalThis as { gc?: () => void }).gc?.();

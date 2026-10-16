@@ -1,6 +1,9 @@
 import { type Item, newItem, type NumberItem, type SingleChoiceItem, type YesNoItem } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
-import { answerLine, answerText } from './answer-text';
+import { answerLine as line, answerText as text } from './answer-text';
+
+const answerText = (item: Item, a: Parameters<typeof text>[1]) => text(item, a, 'az');
+const answerLine = (item: Item, a: Parameters<typeof line>[1]) => line(item, a, 'az');
 
 describe('answer text', () => {
   it('prints every item type in Azerbaijani', () => {
@@ -24,5 +27,15 @@ describe('answer text', () => {
     const n = newItem('number') as NumberItem;
     expect(answerLine(n, { number: 10, note: 'isti' })).toBe('10 — isti');
     expect(answerLine(n, { number: 10 })).toBe('10');
+  });
+});
+
+describe('answer text languages', () => {
+  it('prints the fixed options and the counts in English and Russian', () => {
+    const yn = newItem('yes_no') as YesNoItem;
+    expect(text(yn, { optionIds: [yn.options[0].id] }, 'en')).toBe('Yes');
+    expect(text(yn, { optionIds: [yn.options[1].id] }, 'ru')).toBe('Нет');
+    expect(text(newItem('photo'), { photos: ['a', 'b'] }, 'en')).toBe('2 photos');
+    expect(text(newItem('text'), undefined, 'ru')).toBe('Нет ответа');
   });
 });

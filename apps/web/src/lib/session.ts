@@ -1,6 +1,7 @@
 import { ApiClient, ApiError, createTaskopApi, memoryTokenStore } from '@taskop/api-client';
 import type { LoginResult, Me, PermissionKey } from '@taskop/contracts';
 import { useSyncExternalStore } from 'react';
+import { setLanguage } from './i18n';
 import { queryClient } from './query';
 
 export type SessionState = { status: 'loading' } | { status: 'anonymous' } | { status: 'authenticated'; me: Me };
@@ -25,6 +26,11 @@ export const apiClient = new ApiClient({
 });
 export const api = createTaskopApi(apiClient);
 
+/** A language saved on the profile wins over this browser's choice, so every device of the user agrees. */
+function applyProfileLanguage(me: Me): void {
+  if (me.user.locale) void setLanguage(me.user.locale);
+}
+
 export const session = {
   get: (): SessionState => state,
   subscribe(listener: () => void): () => void {
@@ -35,6 +41,7 @@ export const session = {
   async bootstrap(): Promise<void> {
     try {
       const result = await apiClient.refresh();
+      if (result) applyProfileLanguage(result.me);
       set(result ? { status: 'authenticated', me: result.me } : { status: 'anonymous' });
     } catch {
       set({ status: 'anonymous' });
@@ -44,6 +51,7 @@ export const session = {
     await tokenStore.save({ accessToken: result.accessToken, refreshToken: null });
     // Never let a previous (expired or other) user's cached data survive into the new session.
     queryClient.clear();
+    applyProfileLanguage(result.me);
     set({ status: 'authenticated', me: result.me });
   },
   setMe(me: Me): void {
