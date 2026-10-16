@@ -45,15 +45,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run test --filter='${{ matrix.suite.filter }}'
-  # The production image of the landing page (apps/landing/Dockerfile), built the way the deploy will build it
-  # and checked once: the page answers and its Login link points at the platform.
-  landing-image:
+  # The production images (landing, web, api), built the way the deploy builds them, and the landing page checked
+  # once: the page answers and its Login link points at the platform.
+  images:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      - name: Placeholder secrets for the compose file
+        run: |
+          cp deploy/.env.example deploy/.env
+          for k in OWNER_DB_PASSWORD APP_DB_PASSWORD PLATFORM_DB_PASSWORD S3_SECRET_KEY JWT_PRIVATE_KEY JWT_PUBLIC_KEY; do
+            sed -i "s|^$k=.*|$k=ci|" deploy/.env
+          done
       - run: docker compose -f deploy/docker-compose.prod.yml config --quiet
-      - run: docker compose -f deploy/docker-compose.prod.yml build landing
+      - run: docker compose -f deploy/docker-compose.prod.yml build landing web api
       - name: Smoke test the image
         run: |
           docker run -d --name landing -p 8080:80 ghcr.io/sahmadpur/taskop-landing:latest

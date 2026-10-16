@@ -17,5 +17,30 @@
 	reverse_proxy landing:80
 }
 
-# admin.taskop.app (the web app at / and the API at /api) is added together with the taskop-web and
-# taskop-api images (§15 of the deployment plan).
+# The product: the API under /api, the web app (taskop-web image, SPA fallback) for everything else.
+{$SITE_SCHEME:https}://admin.taskop.app {
+	header Strict-Transport-Security "max-age=31536000"
+	# Evidence uploads go straight to files.taskop.app; requests here are JSON plus report downloads.
+	request_body /api/* {
+		max_size 20MB
+	}
+	handle /api/* {
+		# The API trusts one proxy hop (TRUST_PROXY) for the client IP used by the rate limits.
+		reverse_proxy api:3000
+	}
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+# Storage: SeaweedFS's S3 API for presigned uploads and downloads (S3_PUBLIC_ENDPOINT). The Host header is passed
+# through unchanged, which the S3 signatures cover. Videos are capped at 60 MB (EXECUTION_LIMITS).
+{$SITE_SCHEME:https}://files.taskop.app {
+	header Strict-Transport-Security "max-age=31536000"
+	request_body {
+		max_size 100MB
+	}
+	reverse_proxy seaweedfs:8333 {
+		flush_interval -1
+	}
+}

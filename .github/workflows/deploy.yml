@@ -1,0 +1,100 @@
+name: Deploy
+# Production deploy (§9 of docs/superpowers/specs/2026-10-09-deployment-design.md): after CI passes on main, build
+# the three images, push them to GHCR as sha-<commit> and latest, then run deploy/deploy.sh on the server over SSH.
+# Rollback: run this workflow by hand with the tag of an earlier deploy (sha-<commit>); it skips the build.
+#
+# Secrets: DEPLOY_HOST (server address), DEPLOY_SSH_KEY (private key of the deploy user, used only here),
+# DEPLOY_KNOWN_HOSTS (the server's host key line, from ssh-keyscan).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (sha-<commit>). Empty: build and deploy the head of main.'
+        required: false
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      || (github.event_name == 'workflow_dispatch' && !inputs.tag)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        image: [api, web, landing]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag
+        id: tag
+        run: echo "sha=sha-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: PLATFORM_URL=https://admin.taskop.app
+          tags: |
+            ghcr.io/sahmadpur/taskop-${{ matrix.image }}:${{ steps.tag.outputs.sha }}
+            ghcr.io/sahmadpur/taskop-${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    needs: build
+    # Runs after a successful build, or alone for a rollback (build skipped because a tag was given).
+    if: >-
+      always() && (needs.build.result == 'success'
+      || (needs.build.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.tag))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://admin.taskop.app
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then echo "tag=$INPUT_TAG"; else echo "tag=sha-$(git rev-parse --short=7 HEAD)"; fi >> "$GITHUB_OUTPUT"
+      - name: SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Copy the stack files
+        # A rollback keeps the server's current files: they may belong to a newer release than the images.
+        if: ${{ !inputs.tag }}
+        run: scp deploy/docker-compose.prod.yml deploy/Caddyfile deploy/deploy.sh deploy/backup.sh deploy/.env.example deploy@${{ secrets.DEPLOY_HOST }}:/opt/taskop/
+      - name: Deploy ${{ steps.tag.outputs.tag }}
+        run: |
+          ssh deploy@${{ secrets.DEPLOY_HOST }} bash -s <<'EOF'
+          set -euo pipefail
+          trap 'docker logout ghcr.io > /dev/null' EXIT
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin > /dev/null
+          /opt/taskop/deploy.sh '${{ steps.tag.outputs.tag }}'
+          EOF
+      - name: Public health check
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-all-errors https://admin.taskop.app/api/v1/health
