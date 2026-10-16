@@ -9,6 +9,9 @@
     "ios": {
       "bundleIdentifier": "az.taskop.app",
       "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "icon": {
         "light": "./assets/icon.png",
         "dark": "./assets/icon-dark.png",
