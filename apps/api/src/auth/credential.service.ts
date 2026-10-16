@@ -8,6 +8,8 @@ import { APP_CONFIG, type AppConfig } from '../config/config';
 import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { tenants, users } from '../db/schema';
+import { pickLanguage } from '@taskop/i18n';
+import { userLanguage } from '../common/locale';
 import { inviteMail, passwordResetMail } from '../mail/templates';
 import { type IssuedLogin, AuthService } from './auth.service';
 import { parseOpaqueToken } from './crypto/opaque-token';
@@ -39,7 +41,7 @@ export class CredentialService {
     const mail = await this.db.withTenant(candidate.tenantId, null, async (tx) => {
       const [user] = await tx.select({ fullName: users.fullName }).from(users).where(eq(users.id, candidate.id));
       const token = await this.oneTime.create({ tenantId: candidate.tenantId, userId: candidate.id, purpose: 'password_reset' });
-      return passwordResetMail({ to: email, fullName: user?.fullName ?? '', webUrl: this.config.WEB_URL, token });
+      return passwordResetMail({ to: email, fullName: user?.fullName ?? '', webUrl: this.config.WEB_URL, token, locale: await userLanguage(tx, candidate.id) });
     });
     // Not awaited: response time must not reveal whether the account exists (sendMail catches and logs).
     void this.auth.sendMail(mail);
@@ -106,16 +108,17 @@ export class CredentialService {
    * so SMTP latency never holds the transaction open and a rolled-back invite never mails a dead link.
    */
   async issueInvite(input: { tenantId: string; userId: string; email: string; fullName: string }): Promise<void> {
-    const [tenant] = await this.db.tx().select({ name: tenants.name }).from(tenants).where(eq(tenants.id, input.tenantId));
+    const [tenant] = await this.db.tx().select({ name: tenants.name, locale: tenants.locale }).from(tenants).where(eq(tenants.id, input.tenantId));
     const token = await this.oneTime.create({ tenantId: input.tenantId, userId: input.userId, purpose: 'invite' });
-    const mail = inviteMail({ to: input.email, fullName: input.fullName, orgName: tenant?.name ?? '', webUrl: this.config.WEB_URL, token });
+    // An invitee has made no choice yet: the tenant's language.
+    const mail = inviteMail({ to: input.email, fullName: input.fullName, orgName: tenant?.name ?? '', webUrl: this.config.WEB_URL, token, locale: pickLanguage(tenant?.locale) });
     this.db.afterCommit(() => this.auth.sendMail(mail));
   }
 
   /** Admin-triggered staff reset: creates a reset token in the current tenant transaction and mails it after commit. */
   async issuePasswordReset(input: { tenantId: string; userId: string; email: string; fullName: string }): Promise<void> {
     const token = await this.oneTime.create({ tenantId: input.tenantId, userId: input.userId, purpose: 'password_reset' });
-    const mail = passwordResetMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token });
+    const mail = passwordResetMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token, locale: await userLanguage(this.db.tx(), input.userId) });
     this.db.afterCommit(() => this.auth.sendMail(mail));
   }
 }

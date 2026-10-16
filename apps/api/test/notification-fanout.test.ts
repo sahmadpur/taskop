@@ -84,6 +84,21 @@ describe('notification fan-out', () => {
     expect(await inboxOf(w.workers[0].id)).toEqual([expect.objectContaining({ type: 'checklist.assigned' })]);
   });
 
+  it('renders each recipient’s inbox row in that recipient’s language, the tenant’s for those without a choice', async () => {
+    const run = await closedRunWithProblems(t, clock);
+    const w = run.w;
+    const inRussian = await staffAt(t, w.s.tenantId, w.owner, 'manager', [w.siteId], 'Менеджер');
+    const inEnglish = await staffAt(t, w.s.tenantId, w.owner, 'admin', [], 'Admin');
+    const noChoice = await staffAt(t, w.s.tenantId, w.owner, 'manager', [w.siteId], 'Menecer 2');
+    await ownerQuery('update users set locale = $2 where id = $1', [inRussian.id, 'ru']);
+    await ownerQuery('update users set locale = $2 where id = $1', [inEnglish.id, 'en']);
+    await fanOutAll(t, w.s.tenantId);
+    const critical = async (userId: string) => (await inboxOf(userId)).find((n) => n.type === 'problem.critical');
+    expect(await critical(inRussian.id)).toMatchObject({ title: 'Критичная проблема!', body: 'Filial 1, İcra yoxlaması: Kondisioner xarabdır' });
+    expect(await critical(inEnglish.id)).toMatchObject({ title: 'Critical problem!', body: 'Filial 1, İcra yoxlaması: Kondisioner xarabdır' });
+    expect(await critical(noChoice.id)).toMatchObject({ title: 'Kritik problem!' });
+  });
+
   it('marks disabled rules, gone targets and empty audiences as processed with their outcome', async () => {
     const w = await taskWorld(t);
     expect((await w.owner.put('/api/v1/notification-rules/task.assigned', rule({ enabled: false }))).status).toBe(200);

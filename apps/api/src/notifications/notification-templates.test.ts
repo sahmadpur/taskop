@@ -1,7 +1,11 @@
 import { isAuditType, NOTIFICATION_TYPES, type NotificationType } from '@taskop/contracts';
 import { describe, expect, it } from 'vitest';
-import type { AssignmentTarget, ManualTarget, OccurrenceTarget, ProblemTarget, RunTarget, TaskTarget } from './notification-targets';
-import { notificationLink, notificationMail, renderNotification } from './notification-templates';
+import type { AssignmentTarget, ManualTarget, NotificationTarget, OccurrenceTarget, ProblemTarget, RunTarget, TaskTarget } from './notification-targets';
+import type { RenderedNotification } from './notification-templates';
+import { notificationLink, notificationMail, renderNotification as render } from './notification-templates';
+
+/** The Azerbaijani rendering, which most cases check; the language cases below call render() directly. */
+const renderNotification: (type: NotificationType, target: NotificationTarget) => RenderedNotification = (type, target) => render(type, target, 'az');
 
 const OCC = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e01';
 const TASK = '0192f1e2-7c3a-7b4d-8e5f-0a1b2c3d4e02';
@@ -128,10 +132,34 @@ describe('links and email', () => {
 
   it('mails the title as the subject and the body with the link', () => {
     const rendered = renderNotification('problem.critical', problem);
-    expect(notificationMail({ to: 'menecer@example.az', webUrl: web, notification: { type: 'problem.critical', ...rendered } })).toEqual({
+    expect(notificationMail({ to: 'menecer@example.az', webUrl: web, locale: 'az', notification: { type: 'problem.critical', ...rendered } })).toEqual({
       to: 'menecer@example.az',
       subject: 'Kritik problem!',
       text: `Filial 1, Açılış yoxlaması: Kondisioner xarabdır\n\nAçmaq üçün: ${web}/schedule?date=2026-11-02&occurrence=${OCC}&tab=execution\n\nBu e-poçtları profil ayarlarında söndürə bilərsiniz.`,
     });
+  });
+});
+
+describe('languages', () => {
+  it('renders the same notification in English and Russian', () => {
+    expect(render('task.assigned', task, 'en')).toMatchObject({ title: 'New task', body: 'Soyuducunun qapısını təmir edin. Due: 02.11.2026 14:30.' });
+    expect(render('task.assigned', task, 'ru')).toMatchObject({ title: 'Новая задача', body: 'Soyuducunun qapısını təmir edin. Срок: 02.11.2026 14:30.' });
+    expect(render('checklist.overdue', occurrence, 'en').body).toBe('Açılış yoxlaması — Filial 1. Was due at 10:00 (02.11.2026).');
+    expect(render('checklist.overdue', occurrence, 'ru').body).toBe('Açılış yoxlaması — Filial 1. Срок был 10:00 (02.11.2026).');
+    expect(render('problem.critical', problem, 'en')).toMatchObject({ title: 'Critical problem!', body: 'Filial 1, Açılış yoxlaması: Kondisioner xarabdır' });
+    expect(render('audit.finished', run, 'en').body).toBe('Açılış yoxlaması — Filial 1: Failed, audit score 66.7%.');
+    expect(render('audit.finished', run, 'ru').body).toBe('Açılış yoxlaması — Filial 1: Не пройден, балл аудита 66.7%.');
+    expect(render('checklist.assigned', assignment, 'ru').title).toBe('Назначен новый чек-лист');
+    // A manual message is the sender's own words in any language.
+    expect(render('manual', manual, 'en')).toMatchObject({ title: 'Diqqət', body: 'Sabah iclas var.' });
+  });
+
+  it('mails the open line and the footer in the recipient’s language', () => {
+    const web = 'http://localhost:5173';
+    const n = { type: 'task.assigned' as const, ...render('task.assigned', task, 'en') };
+    expect(notificationMail({ to: 'm@example.az', webUrl: web, locale: 'en', notification: n }).text).toBe(
+      `Soyuducunun qapısını təmir edin. Due: 02.11.2026 14:30.\n\nOpen: ${web}/tasks?task=${TASK}\n\nYou can turn these e-mails off in your profile settings.`,
+    );
+    expect(notificationMail({ to: 'm@example.az', webUrl: web, locale: 'ru', notification: n }).text).toContain(`Открыть: ${web}/tasks?task=${TASK}\n\nЭти письма можно отключить в настройках профиля.`);
   });
 });

@@ -1,5 +1,5 @@
 import { isProblemType, type NotificationTargetKind, type NotificationType } from '@taskop/contracts';
-import { az, interpolate } from '@taskop/i18n';
+import { interpolate, type Language, translationsFor } from '@taskop/i18n';
 import type { MailMessage } from '../mail/mailer';
 import type { NotificationTarget, OccurrenceTarget, ProblemTarget, RunTarget, TaskTarget } from './notification-targets';
 
@@ -33,50 +33,41 @@ const onTask = (t: TaskTarget) => ({ targetKind: 'task' as const, targetId: t.ta
 const nowhere = { targetKind: 'none' as const, targetId: null, targetDate: null };
 
 const place = (o: OccurrenceTarget) => `${o.checklistName} — ${o.siteName}`;
-const problemBody = (p: ProblemTarget) => `${p.occurrence.siteName}, ${p.occurrence.checklistName}${p.note ? `: ${cut(p.note)}` : ''}`;
 
 type OccurrenceType = Exclude<Extract<NotificationType, `checklist.${string}`>, 'checklist.assigned'>;
 type ProblemType = Extract<NotificationType, `problem.${string}`>;
 type TaskType = Extract<NotificationType, `task.${string}`>;
-
-// Each table is total over its slice of NotificationType: a new type that fits a slice fails typecheck until it has a text.
-const OCCURRENCE_TEXTS = {
-  'checklist.available': ['Checklist başladı', (o) => `${place(o)}. Son vaxt: ${time(o.dueAt, o.timezone)}.`],
-  'checklist.due_soon': ['Checklistin vaxtı yaxınlaşır', (o) => `${place(o)}. ${time(o.dueAt, o.timezone)}-dək tamamlayın.`],
-  'checklist.overdue': ['Checklist gecikir', (o) => `${place(o)}. Son vaxt ${time(o.dueAt, o.timezone)} idi (${day(o.localDate)}).`],
-  'checklist.missed': ['Checklist icra olunmadı', (o) => `${place(o)}, ${day(o.localDate)}.`],
-} satisfies Record<OccurrenceType, [string, (o: OccurrenceTarget) => string]>;
-
-const PROBLEM_TITLES = {
-  'problem.recorded': 'Yeni problem',
-  'problem.critical': 'Kritik problem!',
-} satisfies Record<ProblemType, string>;
-
-const TASK_TITLES = {
-  'task.assigned': 'Yeni tapşırıq',
-  'task.submitted': 'Tapşırıq yoxlamaya göndərildi',
-  'task.rejected': 'Tapşırıq geri qaytarıldı',
-  'task.completed': 'Tapşırıq tamamlandı',
-  'task.overdue': 'Tapşırıq gecikir',
-  'task.cancelled': 'Tapşırıq ləğv edildi',
-} satisfies Record<TaskType, string>;
-
-const taskBody = (type: NotificationType, t: TaskTarget) => {
-  if (type === 'task.assigned' && t.dueAt) return `${t.title}. Son vaxt: ${dayTime(t.dueAt, t.timezone)}.`;
-  if (type === 'task.overdue' && t.dueAt) return `${t.title}. Son vaxt ${dayTime(t.dueAt, t.timezone)} idi.`;
-  return t.title;
-};
-
-/** Looks a type up in a table that covers only some types; undefined when the type does not belong to it. */
-const entry = <V>(table: Partial<Record<NotificationType, V>>, type: NotificationType): V | undefined =>
-  Object.hasOwn(table, type) ? table[type] : undefined;
+type Templates = ReturnType<typeof translationsFor>['notifications']['templates'];
 
 const mismatch = (type: NotificationType, target: NotificationTarget) =>
   new Error(`Notification type ${type} cannot be rendered for a ${target.kind} target`);
 
-/** SP8 spec §7.1: the texts live in @taskop/i18n (az.notifications.templates). */
-function runText(type: NotificationType, r: RunTarget): { title: string; body: string } | null {
-  const T = az.notifications.templates;
+const OCCURRENCE_TYPES: ReadonlySet<NotificationType> = new Set<OccurrenceType>(['checklist.available', 'checklist.due_soon', 'checklist.overdue', 'checklist.missed']);
+const PROBLEM_TYPES: ReadonlySet<NotificationType> = new Set<ProblemType>(['problem.recorded', 'problem.critical']);
+const TASK_TYPES: ReadonlySet<NotificationType> = new Set<TaskType>(['task.assigned', 'task.submitted', 'task.rejected', 'task.completed', 'task.overdue', 'task.cancelled']);
+
+const occurrenceText = (T: Templates, type: NotificationType, o: OccurrenceTarget): { title: string; body: string } | null => {
+  if (!OCCURRENCE_TYPES.has(type)) return null;
+  const t = T[type as OccurrenceType];
+  return { title: t.title, body: interpolate(t.body, { place: place(o), time: time(o.dueAt, o.timezone), date: day(o.localDate) }) };
+};
+
+const problemText = (T: Templates, type: NotificationType, p: ProblemTarget): { title: string; body: string } | null => {
+  if (!PROBLEM_TYPES.has(type)) return null;
+  const t = T[type as ProblemType];
+  return { title: t.title, body: `${interpolate(t.body, { site: p.occurrence.siteName, checklist: p.occurrence.checklistName })}${p.note ? `: ${cut(p.note)}` : ''}` };
+};
+
+const taskText = (T: Templates, type: NotificationType, t: TaskTarget): { title: string; body: string } | null => {
+  if (!TASK_TYPES.has(type)) return null;
+  const tpl = T[type as TaskType];
+  const withDue = 'due' in tpl && t.dueAt ? interpolate(tpl.due, { title: t.title, date: dayTime(t.dueAt, t.timezone) }) : interpolate(tpl.body, { title: t.title });
+  return { title: tpl.title, body: withDue };
+};
+
+/** SP8 spec §7.1: the texts live in @taskop/i18n (notifications.templates). */
+function runText(L: ReturnType<typeof translationsFor>, type: NotificationType, r: RunTarget): { title: string; body: string } | null {
+  const T = L.notifications.templates;
   const place = { checklist: r.occurrence.checklistName, site: r.occurrence.siteName };
   switch (type) {
     case 'run.correction_required': {
@@ -91,9 +82,9 @@ function runText(type: NotificationType, r: RunTarget): { title: string; body: s
         title: T['audit.finished'].title,
         body: interpolate(T['audit.finished'].body, {
           ...place,
-          result: r.auditResult ? az.audits.results[r.auditResult] : az.audits.report.none,
+          result: r.auditResult ? L.audits.results[r.auditResult] : L.audits.report.none,
           // The template carries no % sign of its own.
-          percent: r.auditPercent === null ? az.audits.report.none : `${r.auditPercent}%`,
+          percent: r.auditPercent === null ? L.audits.report.none : `${r.auditPercent}%`,
         }),
       };
     default:
@@ -101,32 +92,34 @@ function runText(type: NotificationType, r: RunTarget): { title: string; body: s
   }
 }
 
-/** Spec §6.1 step 4: the Azerbaijani title and body, rendered once at fan-out. */
-export function renderNotification(type: NotificationType, target: NotificationTarget): RenderedNotification {
+/** Spec §6.1 step 4: the title and body in the recipient's language, rendered at fan-out. A manual message is the sender's own words. */
+export function renderNotification(type: NotificationType, target: NotificationTarget, locale: Language): RenderedNotification {
+  const L = translationsFor(locale);
+  const T = L.notifications.templates;
   switch (target.kind) {
     case 'manual':
       if (type !== 'manual') throw mismatch(type, target);
       return { title: target.title, body: target.body, ...nowhere };
     case 'assignment':
       if (type !== 'checklist.assigned') throw mismatch(type, target);
-      return { title: 'Yeni checklist təyin edildi', body: `${target.checklistName} — ${target.siteName}`, ...nowhere };
+      return { title: T['checklist.assigned'].title, body: interpolate(T['checklist.assigned'].body, { checklist: target.checklistName, site: target.siteName }), ...nowhere };
     case 'occurrence': {
-      const texts = entry<[string, (o: OccurrenceTarget) => string]>(OCCURRENCE_TEXTS, type);
-      if (!texts) throw mismatch(type, target);
-      return { title: texts[0], body: texts[1](target), ...onOccurrence(target) };
+      const text = occurrenceText(T, type, target);
+      if (!text) throw mismatch(type, target);
+      return { ...text, ...onOccurrence(target) };
     }
     case 'problem': {
-      const title = entry<string>(PROBLEM_TITLES, type);
-      if (title === undefined) throw mismatch(type, target);
-      return { title, body: problemBody(target), ...onOccurrence(target.occurrence) };
+      const text = problemText(T, type, target);
+      if (!text) throw mismatch(type, target);
+      return { ...text, ...onOccurrence(target.occurrence) };
     }
     case 'task': {
-      const title = entry<string>(TASK_TITLES, type);
-      if (title === undefined) throw mismatch(type, target);
-      return { title, body: taskBody(type, target), ...onTask(target) };
+      const text = taskText(T, type, target);
+      if (!text) throw mismatch(type, target);
+      return { ...text, ...onTask(target) };
     }
     case 'run': {
-      const text = runText(type, target);
+      const text = runText(L, type, target);
       if (!text) throw mismatch(type, target);
       return { ...text, ...onOccurrence(target.occurrence) };
     }
@@ -149,12 +142,13 @@ export function notificationLink(
   return `${webUrl}/notifications`;
 }
 
-/** Plain-text email (spec §6.1 step 5), next to mail/templates.ts in style. */
-export function notificationMail(p: { to: string; webUrl: string; notification: RenderedNotification & { type: NotificationType } }): MailMessage {
+/** Plain-text email (spec §6.1 step 5), next to mail/templates.ts in style; the two trailing lines in the recipient's language. */
+export function notificationMail(p: { to: string; webUrl: string; locale: Language; notification: RenderedNotification & { type: NotificationType } }): MailMessage {
   const n = p.notification;
+  const T = translationsFor(p.locale).mail.notification;
   return {
     to: p.to,
     subject: n.title,
-    text: `${n.body}\n\nAçmaq üçün: ${notificationLink(p.webUrl, n)}\n\nBu e-poçtları profil ayarlarında söndürə bilərsiniz.`,
+    text: `${n.body}\n\n${interpolate(T.open, { link: notificationLink(p.webUrl, n) })}\n\n${T.footer}`,
   };
 }

@@ -203,6 +203,17 @@ describe('notification delivery', () => {
       expect((await deliveriesOf(manager.id)).map((d) => [d.channel, d.status, d.attempts])).toEqual([['email', 'sent', 1]]);
     });
 
+    it('mails a recipient who chose English or Russian in that language', async () => {
+      const { w, manager, task } = await mailed();
+      await ownerQuery('update users set locale = $2 where id = $1', [manager.id, 'en']);
+      await deliverAll(t, w.s.tenantId);
+      expect(t.mailer.lastTo(manager.email)?.text).toBe(`Soyuducunun qapısını təmir edin\n\nOpen: http://localhost:5173/tasks?task=${task.id}\n\nYou can turn these e-mails off in your profile settings.`);
+      const second = await mailed();
+      await ownerQuery('update users set locale = $2 where id = $1', [second.manager.id, 'ru']);
+      await deliverAll(t, second.w.s.tenantId);
+      expect(t.mailer.lastTo(second.manager.email)?.text).toContain('Открыть: http://localhost:5173/tasks?task=');
+    });
+
     it('fails on a permanent SMTP reply, retries a temporary one, and skips a user who opted out since', async () => {
       const { w, manager } = await mailed();
       const [d] = await deliveriesOf(manager.id);

@@ -10,6 +10,8 @@ import { AuditService } from '../db/audit.service';
 import { DbService } from '../db/db.service';
 import { roles, sessions, tenants, users } from '../db/schema';
 import { MAILER, type Mailer, type MailMessage } from '../mail/mailer';
+import { userLanguage } from '../common/locale';
+import { pickLanguage } from '@taskop/i18n';
 import { verifyEmailMail } from '../mail/templates';
 import { seedTenantDefaults } from '../tenancy/bootstrap';
 import { hashOpaqueToken, parseOpaqueToken } from './crypto/opaque-token';
@@ -90,7 +92,8 @@ export class AuthService {
       });
       return this.issueLogin({ id: userId, tenantId, roleId: roleIds.owner, kind: 'staff' }, input.client);
     });
-    await this.sendMail(verifyEmailMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token: verifyToken }));
+    // A new tenant has the default locale and its owner no choice yet.
+    await this.sendMail(verifyEmailMail({ to: input.email, fullName: input.fullName, webUrl: this.config.WEB_URL, token: verifyToken, locale: pickLanguage() }));
     return issued;
   }
 
@@ -255,10 +258,11 @@ export class AuthService {
   async resendVerification(p: Principal): Promise<void> {
     if (p.emailVerified) return;
     await this.rateLimit.consume(`verify-resend:${p.userId}`, 3, 3600);
-    const [user] = await this.db.tx().select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, p.userId));
+    const tx = this.db.tx();
+    const [user] = await tx.select({ email: users.email, fullName: users.fullName }).from(users).where(eq(users.id, p.userId));
     if (!user?.email) return;
     const token = await this.oneTime.create({ tenantId: p.tenantId, userId: p.userId, purpose: 'email_verify' });
-    await this.sendMail(verifyEmailMail({ to: user.email, fullName: user.fullName, webUrl: this.config.WEB_URL, token }));
+    await this.sendMail(verifyEmailMail({ to: user.email, fullName: user.fullName, webUrl: this.config.WEB_URL, token, locale: await userLanguage(tx, p.userId) }));
   }
 
   /** Mail failures are logged, never surfaced: the user-facing action already succeeded. */

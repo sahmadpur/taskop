@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type Answers, answersEqual, type AuditResult, type AuditScore, type ScoreResult, visibleItems } from '@taskop/contracts';
+import { type Language, pickLanguage } from '@taskop/i18n';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import PDFDocument from 'pdfkit';
 import { sanitiseForLog } from '../../common/error.filter';
+import { tenantLanguage } from '../../common/locale';
 import { DbService } from '../../db/db.service';
 import { auditItemVerdicts, audits, checklists, checklistVersions, executionCorrections, executionMedia, executionProblems, executions, occurrences, sites, tenants, users } from '../../db/schema';
 import { ExecutionLookups } from '../../executions/execution-lookups';
@@ -16,6 +18,8 @@ export interface ReportMailInfo {
   localDate: string;
   result: AuditResult;
   auditorName: string;
+  /** The auditor's language (the tenant's for a platform admin). */
+  locale: Language;
 }
 
 interface Media {
@@ -74,7 +78,7 @@ export class AuditReportLoader {
   async mailInfo(tenantId: string, auditId: string): Promise<ReportMailInfo | null> {
     return this.db.withTenant(tenantId, null, async (tx) => {
       const [r] = await tx
-        .select({ checklistName: checklists.name, siteName: sites.name, localDate: occurrences.localDate, result: audits.result, auditorName: users.fullName })
+        .select({ checklistName: checklists.name, siteName: sites.name, localDate: occurrences.localDate, result: audits.result, auditorName: users.fullName, auditorLocale: users.locale })
         .from(audits)
         .innerJoin(occurrences, eq(occurrences.id, audits.occurrenceId))
         .innerJoin(checklists, eq(checklists.id, occurrences.checklistId))
@@ -82,7 +86,9 @@ export class AuditReportLoader {
         .leftJoin(users, eq(users.id, audits.auditorUserId))
         .where(eq(audits.id, auditId));
       if (!r?.result) return null;
-      return { checklistName: r.checklistName, siteName: r.siteName, localDate: r.localDate, result: r.result, auditorName: r.auditorName ?? 'Taskop' };
+      // The auditor's language, the tenant's for a platform admin or a deleted auditor; the PDF uses the same (load()).
+      const locale = pickLanguage(r.auditorLocale, await tenantLanguage(tx));
+      return { checklistName: r.checklistName, siteName: r.siteName, localDate: r.localDate, result: r.result, auditorName: r.auditorName ?? 'Taskop', locale };
     });
   }
 
